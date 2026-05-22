@@ -1,0 +1,287 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+.site-theme {
+  /* Cores Principais */
+  --primary: #004b49; /* Verde Industrial CEC */
+  --primary-dark: #003332;
+  --primary-light: #006b68;
+  --accent: #00d1b2; /* Verde Vibrante para Destaques */
+  --accent-soft: rgba(0, 209, 178, 0.1);
+  
+  /* Cores de Fundo e Superfície */
+  --bg-main: #ffffff;
+  --bg-soft: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  
+  /* Tipografia */
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+  
+  /* Efeitos */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --glass: rgba(255, 255, 255, 0.8);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color: var(--text-main);
+  background-color: var(--bg-main);
+}
+
+.site-theme h1, .site-theme h2, .site-theme h3, .site-theme h4, .site-theme h5, .site-theme h6 {
+  color: var(--primary-dark);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.site-theme a {
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition);
+}
+
+.site-theme ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.site-theme img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.site-theme button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  transition: var(--transition);
+}
+
+/* Utilitários */
+.site-theme .container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.site-theme .section-padding {
+  padding: 5rem 0;
+}
+
+@media (max-width: 768px) {
+  .site-theme .section-padding {
+    padding: 3rem 0;
+  }
+}
+
+.site-theme .glass {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-theme .btn-site-primary {
+  background: var(--primary);
+  color: var(--text-inverse);
+  padding: 0.75rem 1.75rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+}
+
+.site-theme .btn-site-primary:hover {
+  background: var(--primary-light);
+  color: var(--text-inverse);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.site-theme .btn-site-outline {
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  padding: 0.625rem 1.625rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+}
+
+.site-theme .btn-site-outline:hover {
+  background: var(--primary);
+  color: var(--text-inverse);
+}
+
+/* -------------------------------------- */
+/* Estilos para o EditableImage (Global) */
+/* -------------------------------------- */
+.editable-image-container {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+.img-wrapper-fluid {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: block;
+}
+.img-wrapper-fluid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.h-100 { height: 100%; }
+
+.editable-img-preview {
+  border: 2px dashed rgba(0, 209, 178, 0.4);
+}
+.image-edit-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 5;
+}
+.editable-image-container:hover .image-edit-overlay {
+  opacity: 1;
+}
+.image-url-prompt {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 450px;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Fundo escuro para a tela toda quando abrir o editor de imagem */
+.image-url-prompt::before {
+  content: '';
+  position: fixed;
+  top: -100vh;
+  left: -100vw;
+  width: 300vw;
+  height: 300vh;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: -1;
+}
+.prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-transform: uppercase;
+}
+.image-url-prompt input[type="text"] {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  outline: none;
+}
+.prompt-upload-divider {
+  text-align: center;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0.2rem 0;
+}
+.btn-upload-local {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-upload-local:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.btn-upload-local:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.btn-cancel, .btn-confirm {
+  padding: 0.3rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+}
+.btn-cancel { background: #f1f5f9; color: #64748b; }
+.btn-confirm { background: var(--primary); color: white; }
+ 
+ .icon-editable-mini-hero {
+   width: 48px !important;
+   height: 48px !important;
+   border-radius: 12px;
+ }
+ 
+ .icon-editable-mini-hero .image-edit-overlay {
+   background: rgba(0, 75, 73, 0.8) !important;
+ }
+ 
+ .icon-editable-mini-hero .image-edit-overlay span {
+   display: none; /* Esconde o texto em ícones muito pequenos */
+ }
+ 
+ .icon-editable-mini-hero .image-edit-overlay svg {
+   width: 16px;
+   height: 16px;
+ }
+

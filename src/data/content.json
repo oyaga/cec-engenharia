@@ -2,11 +2,12 @@
   "navbar": {
     "logo": "CEC",
     "sublogo": "Engenharia",
-    "logo_img": "logo_oficial.png",
+    "logo_img": "/assets/logo.png",
     "links": ["Home", "Cursos", "Sobre Nós", "Contato"],
     "social": {
-      "instagram": "https://www.instagram.com/cec_engenharia_capacitacao/",
-      "linkedin": "https://linkedin.com/company/cec-engenharia"
+      "instagram": "https://www.instagram.com/cectreinamentos/",
+      "facebook": "https://www.facebook.com/profile.php?id=61565923454914&ref=PROFILE_EDIT_xav_ig_profile_page_web#",
+      "linkedin": "https://linkedin.com/"
     },
     "actions": {
       "login": "Acesso Aluno",
@@ -14,36 +15,46 @@
     }
   },
   "hero": {
-    "badge": "CAPACITAÇÃO PROFISSIONAL",
-    "title": "Domine a\nPrecisão Industrial.",
-    "description": "Formação técnica especializada para o setor de engenharia, caldeiraria e montagem industrial com instrutores certificados e infraestrutura de ponta.",
+    "badge": "CAPACITAÇÃO TÉCNICA",
+    "title": "Domine o Controle\nDimensional da Indústria.",
+    "description": "Formação técnica especializada para o setor de Controle Dimensional, Qualidade visando prepará-los para as provas de certificação Abendi.",
     "cta": "Ver Cursos Disponíveis",
+    "btns": [
+      { "label": "Ver Cursos", "url": "#cursos", "primary": true },
+      { "label": "Acesso Aluno", "url": "/login", "primary": false }
+    ],
     "image": "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=2070&auto=format&fit=crop",
-    "cert_badge": "logo_abendi_new.png",
+    "cert_badge": "/logo abendi.jpeg",
     "features": ["Certificação Reconhecida", "Infraestrutura Completa"],
-    "cert_card": {
-      "title": "CERTIFICAÇÃO RECONHECIDA",
-      "text": "Diplomas válidos em todo território nacional."
-    }
+    "certifications": [
+      {
+        "title": "CERTIFICAÇÃO RECONHECIDA",
+        "text": "Diplomas válidos em todo território nacional.",
+        "icon": "https://cdn-icons-png.flaticon.com/512/190/190411.png"
+      }
+    ]
   },
   "about_page": {
     "title": "Quem Somos",
+    "image": "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2070&auto=format&fit=crop",
     "content": "A C&C Engenharia e Capacitação foi fundada com o propósito de preencher uma lacuna crítica no mercado de qualificação e capacitação industrial, especialmente nas áreas de caldeiraria e tubulação. Desde sua fundação, a empresa tem se dedicado a oferecer treinamentos de alta qualidade, reconhecidos por sua excelência técnica e alinhados às necessidades reais da indústria.",
     "mission": {
       "title": "Missão",
-      "text": "Nossa missão é capacitar profissionais com o conhecimento e as habilidades necessárias para desempenhar suas funções com precisão e segurança, contribuindo para o sucesso de projetos industriais em todo o Brasil."
+      "text": "Nossa missão é capacitar profissionais com o conhecimento e as habilidades necessárias para desempenhar suas funções com precisão e segurança, contribuindo para o sucesso de projetos industriais em todo o Brasil.",
+      "image": "https://images.unsplash.com/photo-1521737711867-e3b97375f902?q=80&w=800"
     },
     "vision": {
       "title": "Visão",
-      "text": "Ser referência nacional em treinamento e qualificação industrial, reconhecida pela Abendi e por nossos parceiros, como uma empresa que promove a excelência técnica e a inovação no setor."
+      "text": "Ser referência nacional em treinamento e qualificação industrial, reconhecida pela Abendi e por nossos parceiros, como uma empresa que promove a excelência técnica e a inovação no setor.",
+      "image": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=800"
     },
     "values": {
       "title": "Valores",
       "list": [
-        { "title": "Compromisso com a Qualidade", "text": "Garantimos que todos os nossos cursos atendam aos os mais altos padrões de ensino e prática industrial." },
-        { "title": "Ética e Integridade", "text": "Agimos com transparência e respeito em todas as nossas relações, tanto com nossos clientes quanto com nossos colaboradores." },
-        { "title": "Inovação Contínua", "text": "Buscamos constantemente novas metodologias e tecnologias para aprimorar nossos treinamentos e oferecer as melhores soluções aos nossos alunos." },
-        { "title": "Foco no Aluno", "text": "O sucesso dos nossos alunos é o nosso principal objetivo. Estamos comprometidos em oferecer um ambiente de aprendizado que estimule o desenvolvimento profissional e pessoal." }
+        { "title": "Compromisso com a Qualidade", "text": "Garantimos que todos os nossos cursos atendam aos os mais altos padrões de ensino e prática industrial.", "image": "/assets/quality.png" },
+        { "title": "Ética e Integridade", "text": "Agimos com transparência e respeito em todas as nossas relações, tanto com nossos clientes quanto com nossos colaboradores.", "image": "/assets/ethics.png" },
+        { "title": "Inovação Contínua", "text": "Buscamos constantemente novas metodologias e tecnologias para aprimorar nossos treinamentos e oferecer as melhores soluções aos nossos alunos.", "image": "/assets/innovation.png" },
+        { "title": "Foco no Aluno", "text": "O sucesso dos nossos alunos é o nosso principal objetivo. Estamos comprometidos em oferecer um ambiente de aprendizado que estimule o desenvolvimento profissional e pessoal.", "image": "/assets/student-focus.png" }
       ]
     },
     "quote": "Deixe o conhecimento libertar você!"
@@ -60,7 +71,12 @@
     "title": "Fale Conosco",
     "subtitle": "Estamos prontos para tirar suas dúvidas e ajudar na sua carreira.",
     "whatsapp_direct": "+5521965554180",
-    "address": "Av. Brasil, Rio de Janeiro, RJ, Brasil"
+    "direct_title": "Atendimento Direto",
+    "direct_desc": "Nossa equipe técnica está pronta para ajudar com sua escolha.",
+    "direct_phone": "+55 21 96555-4180",
+    "address_title": "Matriz Rio de Janeiro",
+    "address": "Rua Carlos Anselmo de Brito, 19, Santa Cruz - RJ",
+    "address_badge": "Presencial + EAD"
   },
   "complaint_page": {
     "title": "Canal de Ouvidoria",
@@ -73,53 +89,94 @@
     "courses": [
       {
         "id": 1,
-        "title": "Inspetor Dimensional de Caldeiraria e Tubulação (CD-CL)",
-        "description": "Capacitação completa para profissionais de controle de qualidade, focada em normas técnicas e medições de precisão em estruturas metálicas.",
+        "slug": "cd-cl",
+        "title": "Inspetor Dimensional Caldeiraria e Tubulação (CD-CL)",
+        "description": "Formação de elite para profissionais que buscam o domínio no controle de qualidade. Nosso programa é estruturado para garantir precisão absoluta e conformidade rigorosa. Visando o controle dimensional de montagens de Vasos de Pressão, Tubulações, estruturas e equipamentos.",
         "duration": "100 Horas",
         "type": "Presencial + Híbrido",
         "category": "MAIS PROCURADO",
-        "image": "https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=2000&auto=format&fit=crop"
+        "image": "https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/ExemploCaldeiraria"
       },
       {
         "id": 2,
+        "slug": "cd-et",
         "title": "Estação Total Aplicado a Caldeiraria",
         "description": "Treinamento avançado em medições tridimensionais e locação industrial utilizando equipamentos de topografia de alta precisão.",
         "duration": "80 Horas",
         "type": "Equipamento Incluso",
         "category": "ESPECIALIZAÇÃO",
-        "image": "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=2000&auto=format&fit=crop"
+        "image": "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/ExemploEstacaoTotal"
       },
       {
         "id": 3,
-        "title": "Controle Dimensional - CD-CM",
-        "description": "Especialização em controle dimensional com foco em Máquinas de Medir por Coordenadas (MMC), garantindo precisão milimétrica.",
+        "slug": "cd-mc",
+        "title": "Inspetor Dimensional de Mecânica (CD-MC)",
+        "description": "Formação de elite projetada para formar especialistas em controle Dimensional de peças com alta precisão, principalmente os usinados. Foco na integridade de componentes mecânicos e conjuntos rotativos.",
         "duration": "60 Horas",
         "type": "Tecnologia MMC",
         "category": "ESPECIALIZAÇÃO",
-        "image": "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=2000&auto=format&fit=crop"
+        "image": "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/ExemploMecanica"
       },
       {
         "id": 4,
-        "title": "Controle Dimensional - CD-TO",
-        "description": "Domine técnicas de alinhamento e nivelamento industrial utilizando Teodolito e Optical Tooling para grandes montagens.",
+        "slug": "cd-to",
+        "title": "Inspetor Dimensional de Topografia (CD-TO)",
+        "description": "Formação de elite que capacita o profissional para atuar na interface entre a engenharia civil e a mecânica, garantindo que grandes estruturas sejam montadas exatamente onde o projeto prevê.",
         "duration": "90 Horas",
         "type": "Alinhamento Óptico",
         "category": "ESPECIALIZAÇÃO",
-        "image": "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=2000&auto=format&fit=crop"
+        "image": "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/ExemploTopografia"
+      },
+      {
+        "id": 5,
+        "slug": "laser-tracker-caldeiraria",
+        "title": "Laser Tracker aplicado a Caldeiraria e Tubulação",
+        "description": "Capacitação avançada na operação de sistemas de medição portátil industrial Laser Tracker para controle dimensional de extrema precisão.",
+        "duration": "60 Horas",
+        "type": "Alta Precisão",
+        "category": "AVANÇADO",
+        "image": "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/LaserTrackerCaldeiraria"
+      },
+      {
+        "id": 6,
+        "slug": "retreinamento-teorico-cd-cl",
+        "title": "Retreinamento Teórico CD-CL Abendi",
+        "description": "Preparatório teórico intensivo focado no conteúdo programático exigido pelas provas teóricas da Abendi para certificação CD-CL.",
+        "duration": "40 Horas",
+        "type": "Foco na Prova",
+        "category": "PREPARATÓRIO",
+        "image": "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/RetreinamentoTeorico"
+      },
+      {
+        "id": 7,
+        "slug": "retreinamento-pratico-cd-cl",
+        "title": "Retreinamento Prático CD-CL Abendi",
+        "description": "Treinamento prático de alta intensidade focado nas dinâmicas, instrumentação e tolerâncias exigidas pela prova prática de certificação CD-CL Abendi.",
+        "duration": "48 Horas",
+        "type": "Laboratório Prático",
+        "category": "IMERSÃO PRÁTICA",
+        "image": "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=2000&auto=format&fit=crop",
+        "whatsapp_link": "https://chat.whatsapp.com/RetreinamentoPratico"
       }
     ]
   },
   "stats": {
     "grid": [
-      {"label": "ANOS DE MERCADO", "value": "15+"},
-      {"label": "ALUNOS FORMADOS", "value": "2k+"},
-      {"label": "APROVAÇÃO", "value": "98%"},
-      {"label": "FOCO PRÁTICO", "value": "100%"}
+      {"label": "ANOS DE MERCADO", "value": "6+"},
+      {"label": "DOS INSPETORES DE TODO O BRASIL TREINARAM NA CEC", "value": "60%+"},
+      {"label": "APROVAÇÃO NOS EXAMES PRÁTICOS DA ABENDI", "value": "97%"},
+      {"label": "FOCADO NAS PROVAS DA ABENDI", "value": "100%"}
     ],
     "title": "Excelência Técnica que Abre Portas",
     "description": "Na CEC Engenharia, não entregamos apenas certificados. Preparamos o profissional para os desafios reais do canteiro de obras e da indústria pesada.",
     "benefits": [
-      "Instrutores Experientes: Atuantes nos maiores projetos petrolíferos e indústrias do país.",
+      "Instrutores Experientes: Atuantes nos maiores projetos petrolíferos, nucleares, industriais do país.",
       "Material Didático Exclusivo: Conteúdo atualizado com as últimas normas ABNT e internacionais."
     ]
   },
@@ -148,5 +205,264 @@
     "copyright": "© 2026 CEC Engenharia e Capacitação. Todos os direitos reservados.",
     "cnpj": "CNPJ: 00.000.000/0001-00",
     "address": "Rio de Janeiro, RJ"
+  },
+  "course_details": {
+    "cd-cl": {
+      "title": "CONTROLE DIMENSIONAL – CALDEIRARIA (CD-CL)",
+      "badge": "MAIS PROCURADO",
+      "target": "Dominar a Precisão que a Indústria Exige",
+      "intro": "A diferença entre um equipamento funcional e um fracasso está em milímetros. Na caldeiraria, onde a complexidade dos componentes cresce a cada projeto, as medições precisas não são um diferencial — são uma exigência inegociável.\n\nSe você trabalha com fabricação de equipamentos ou montagem, sabe que um pequeno erro de medição pode comprometer toda a estrutura, aumentar custos de retrabalho e destruir a reputação da sua empresa.",
+      "why_title": "Por que este curso?",
+      "why_text": "Este programa foi desenvolvido para profissionais que precisam dominar completamente as técnicas de inspeção dimensional — desde o recebimento de materiais até a montagem final. Você vai aprender a utilizar com precisão os instrumentos essenciais (paquímetro, micrômetro, clinômetro, nível, esquadro) em cenários reais de trabalho.\n\nResultado? Você se torna um profissional indispensável, capaz de garantir qualidade em cada fase do projeto.",
+      "details": {
+        "workload": "136 horas de aprendizado intensivo",
+        "format": "Aulas teóricas online + práticas presenciais",
+        "schedule": "Segunda a sexta, 19h às 21h (compatível com sua rotina)",
+        "cert": "Reconhecida na indústria",
+        "theory": "Online e ao vivo na nossa plataforma",
+        "practice": "Um fim de semana combinado com a turma (hands-on com equipamentos reais)"
+      },
+      "investment": {
+        "credit": "R$ 3.800 em até 10x sem juros",
+        "pix": "R$ 3.300 à vista (economia de R$ 500)",
+        "boleto": "3x de R$ 1.260 parcelado",
+        "tip": "Pague no PIX e economize R$ 500 — um valor que praticamente paga sua primeira semana de aulas!"
+      },
+      "outcomes": [
+        "Domínio completo de instrumentos de medição",
+        "Capacidade de identificar erros antes do retrabalho",
+        "Certificado reconhecido para sua carreira",
+        "Networking com profissionais da indústria",
+        "Suporte contínuo após conclusão"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=800",
+        "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=800",
+        "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800"
+      ]
+    },
+    "cd-et": {
+      "title": "ESTAÇÃO TOTAL APLICADO A CALDEIRARIA",
+      "badge": "TECNOLOGIA DE PONTA",
+      "target": "A Evolução da Precisão no Canteiro de Obras",
+      "intro": "A Estação Total revolucionou a forma como montagens industriais são realizadas. Onde antes levávamos horas com trenas e níveis, hoje garantimos precisão milimétrica em minutos. Dominar esta tecnologia não é mais o futuro, é o presente da caldeiraria pesada.\n\nSe você busca se destacar como um profissional de elite, capaz de operar equipamentos de alta precisão e reduzir drasticamente o retrabalho, este curso foi feito para você.",
+      "why_title": "Por que dominar a Estação Total?",
+      "why_text": "Este curso foca na aplicação prática do equipamento dentro da caldeiraria e montagem industrial. Você aprenderá desde a configuração inicial e nivelamento até a locação de pontos complexos e conferência de verticalidade em grandes estruturas.\n\nResultado? Você se torna o profissional que a engenharia confia para as tarefas mais críticas do projeto.",
+      "details": {
+        "workload": "80 horas de treinamento prático",
+        "format": "Híbrido (Teoria Online + Prática Intensiva)",
+        "schedule": "Sábados e Domingos (Imersão Total)",
+        "cert": "Especialista em Metrologia Óptica",
+        "theory": "Videoaulas e Mentorias ao Vivo",
+        "practice": "Campo de treinamento com equipamentos Leica/Topcon"
+      },
+      "investment": {
+        "credit": "R$ 5.200 em até 10x sem juros",
+        "pix": "R$ 4.800 à vista (Melhor Opção)",
+        "boleto": "Entrada + 2x no boleto",
+        "tip": "Vagas limitadas a 10 alunos por turma para garantir que todos operem o equipamento individualmente."
+      },
+      "outcomes": [
+        "Operação completa de Estação Total e Nível Laser",
+        "Cálculos de coordenadas aplicados à montagem",
+        "Locação de grandes estruturas e vasos de pressão",
+        "Emissão de relatórios técnicos de conferência",
+        "Diferencial competitivo único no mercado"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=800",
+        "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=800",
+        "https://images.unsplash.com/photo-1521737711867-e3b97375f902?q=80&w=800"
+      ]
+    },
+    "cd-mc": {
+      "title": "CONTROLE DIMENSIONAL – MECÂNICA (CD-MC)",
+      "badge": "ESPECIALIZAÇÃO",
+      "target": "Torne-se o Especialista que as Fábricas Procuram",
+      "intro": "Na mecânica moderna, a margem de erro é zero. Equipamentos cada vez mais complexos demandam profissionais que entendam profundamente como garantir a precisão dimensional em todas as etapas — recebimento, fabricação e montagem.\n\nSe você busca uma carreira sólida e bem remunerada, precisa dominar essas competências. Porque fabricantes sérias sabem: um bom inspetor dimensional é ouro puro.",
+      "why_title": "Por que este curso?",
+      "why_text": "Este programa foi desenhado para você se especializar na inspeção dimensional aplicada à mecânica industrial. Você vai aprender a usar instrumentos com precisão profissional, técnicas de medição em diferentes materiais e resolução de problemas práticos.\n\nResultado? Você deixa de ser um operário e vira um especialista valorizado, procurado por empresas de ponta.",
+      "details": {
+        "workload": "146 horas — a mais completa da nossa linha",
+        "format": "Aulas teóricas online + práticas presenciais",
+        "schedule": "Segunda a sexta, 19h às 21h",
+        "cert": "Válida em todo o Brasil",
+        "theory": "Online e ao vivo via Google Meet (qualidade HD)",
+        "practice": "Um fim de semana prático com instrumentos industriais"
+      },
+      "investment": {
+        "credit": "R$ 4.700 em até 10x sem juros",
+        "pix": "R$ 4.400 à vista (economia de R$ 300)",
+        "boleto": "3x de R$ 1.567 parcelado",
+        "tip": "Promoção por Tempo Limitado: Pague no PIX e receba acesso imediato + material complementar de brinde!"
+      },
+      "outcomes": [
+        "Instrutor com 15+ anos de experiência em fábrica",
+        "Turmas pequenas (máx. 15 alunos) para atenção personalizada",
+        "Certificado que abre portas em grandes indústrias",
+        "Acesso à comunidade de egressos (networking profissional)",
+        "Suporte e mentorado após conclusão"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=800",
+        "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=800",
+        "https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=800"
+      ]
+    },
+    "cd-to": {
+      "title": "CONTROLE DIMENSIONAL – TOPOGRAFIA (CD-TO)",
+      "badge": "ELITE",
+      "target": "A Especialização que Constrói Carreiras",
+      "intro": "Topografia é o coração da precisão em grandes projetos. Se você trabalha em construção, infraestrutura, energia ou grandes montagens industriais, sabe: um erro de 1cm pode custar milhões.\n\nEste curso forma o profissional que garante a integridade geométrica de projetos complexos. É a especialização que te coloca na elite dos inspetores dimensionais.",
+      "why_title": "Por que este curso?",
+      "why_text": "Topografia demanda conhecimento técnico profundo e experiência prática real. Neste programa, você vai dominar clinômetro, nível, escadra e trena com precisão topográfica, além de aprender a comunicar dados técnicos de forma profissional.\n\nResultado? Você se torna um especialista raro — profissional altamente valorizado no mercado.",
+      "details": {
+        "workload": "121 horas de especialização",
+        "format": "Aulas teóricas online + práticas presenciais",
+        "schedule": "Segunda a sexta, 20h às 22h (flexível para profissionais)",
+        "cert": "Reconhecida em obras e projetos de grande escala",
+        "theory": "Online e ao vivo via Google Meet",
+        "practice": "Um fim de semana prático em ambiente real (pode incluir visita a obra)"
+      },
+      "investment": {
+        "credit": "R$ 4.700 em até 10x sem juros",
+        "pix": "R$ 4.400 à vista (economia de R$ 300)",
+        "boleto": "Não disponível",
+        "tip": "Bônus Exclusivo: Alunos inscritos em maio recebem 30 dias de acesso antecipado ao material!"
+      },
+      "outcomes": [
+        "Instrutor com experiência em grandes obras",
+        "Certificado com reconhecimento nacional",
+        "Apostila Digital Completa",
+        "Comunidade de Egressos",
+        "Certificado em PDF + Físico"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=800",
+        "https://images.unsplash.com/photo-1521737711867-e3b97375f902?q=80&w=800",
+        "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800"
+      ]
+    },
+    "laser-tracker-caldeiraria": {
+      "title": "LASER TRACKER APLICADO A CALDEIRARIA E TUBULAÇÃO",
+      "badge": "TECNOLOGIA PREMIUM",
+      "target": "Domine a Medição Tridimensional de Extrema Precisão",
+      "intro": "Na fabricação e montagem industrial moderna de grande porte, o controle dimensional tradicional não atende mais às tolerâncias exigidas pela engenharia aeroespacial, nuclear e naval.\n\nO Laser Tracker se tornou o padrão ouro da indústria pesada internacional para medição volumétrica tridimensional portátil. Dominar a operação deste equipamento de altíssimo valor agregado é o passaporte definitivo para atuar em projetos de altíssimo nível técnico no Brasil e no exterior.",
+      "why_title": "Por que dominar o Laser Tracker?",
+      "why_text": "Este treinamento avançado foi estruturado para ensinar profissionais da área de qualidade, metrologia e caldeiraria pesada a configurar, operar e extrair o máximo de precisão em sistemas de Laser Tracker.\n\nVocê vai aprender as metodologias de aquisição de pontos tridimensionais, técnicas de compensação térmica e alinhamento geométrico em equipamentos complexos de forma 100% prática.",
+      "details": {
+        "workload": "60 horas de imersão avançada",
+        "format": "Híbrido (Teoria Online + Laboratório Prático)",
+        "schedule": "Aulas teóricas semanais e práticas aos fins de semana",
+        "cert": "Operador Avançado de Laser Tracker CEC",
+        "theory": "Videoaulas e mentorias ao vivo exclusivas",
+        "practice": "Prática extensiva com o equipamento real Laser Tracker"
+      },
+      "investment": {
+        "credit": "R$ 5.900 em até 10x sem juros",
+        "pix": "R$ 5.300 à vista (Melhor Custo-Benefício)",
+        "boleto": "Entrada + 3x parcelado no boleto bancário",
+        "tip": "Turmas exclusivas com vagas estritamente limitadas para garantir tempo de operação individual com o equipamento."
+      },
+      "outcomes": [
+        "Configuração e calibração inicial do sistema Laser Tracker",
+        "Medição tridimensional de alta tolerância geométrica",
+        "Geração de relatórios de inspeção e desvio dimensional",
+        "Técnicas de alinhamento estrutural e de montagem naval/nuclear",
+        "Diferencial profissional extremamente requisitado pelas grandes indústrias"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=800",
+        "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=800",
+        "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800"
+      ]
+    },
+    "retreinamento-teorico-cd-cl": {
+      "title": "RETREINAMENTO PREPARATÓRIO TEÓRICO CD-CL ABENDI",
+      "badge": "PREPARATÓRIO DE ELITE",
+      "target": "A Sua Aprovação Teórica na Abendi Garantida",
+      "intro": "As provas de certificação da Abendi para Inspetor de Controle Dimensional de Caldeiraria e Tubulação (CD-CL) são conhecidas por sua complexidade e alto índice de reprovação por falta de preparo específico.\n\nEste retreinamento teórico intensivo é um mapeamento estratégico de todo o conteúdo cobrado no exame nacional, desenhado sob medida para zerar suas dúvidas e lapidar seus conhecimentos antes do dia oficial da prova.",
+      "why_title": "O Método Focado em Resultados",
+      "why_text": "Nós destrinchamos as normas, os cálculos trigonométricos de caldeiraria e a interpretação de desenhos técnicos nos moldes exatos em que a banca da Abendi exige. Você vai aprender a otimizar seu tempo de prova e fixar as respostas das questões mais frequentes da prova teórica.",
+      "details": {
+        "workload": "40 horas de revisão teórica intensiva",
+        "format": "100% Online e ao Vivo (Google Meet HD)",
+        "schedule": "Aulas noturnas com gravações disponíveis para revisão",
+        "cert": "Preparatório Abendi CD-CL Teórico CEC",
+        "theory": "Simulados cronometrados e resolução de provas anteriores",
+        "practice": "Não aplicável (Foco exclusivo em teoria, trigonometria e normas)"
+      },
+      "investment": {
+        "credit": "R$ 1.800 em até 10x sem juros",
+        "pix": "R$ 1.550 à vista (Desconto Especial para Ex-Alunos)",
+        "boleto": "A combinar diretamente com a secretaria",
+        "tip": "Inclui material didático digital completo atualizado com as normas Abendi vigentes para 2026."
+      },
+      "outcomes": [
+        "Domínio absoluto dos conceitos de trigonometria aplicada",
+        "Interpretação rápida de desenhos técnicos de tubulação e caldeiraria",
+        "Resolução de mais de 300 questões modelo anteriores da Abendi",
+        "Técnicas de eliminação rápida de alternativas capciosas de prova",
+        "Confiança técnica absoluta para realizar a avaliação teórica oficial"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=800",
+        "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=800",
+        "https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=800"
+      ]
+    },
+    "retreinamento-pratico-cd-cl": {
+      "title": "RETREINAMENTO PRÁTICO CD-CL ABENDI",
+      "badge": "IMERSÃO INTENSIVA",
+      "target": "Aperfeiçoe sua Técnica e Elimine os Erros de Prova",
+      "intro": "Na prova prática da Abendi, qualquer desvio de alinhamento ou erro no preenchimento de relatórios significa reprovação imediata. A pressão do tempo e os rigores dos inspetores exigem que seus movimentos sejam automáticos e extremamente precisos.\n\nEste programa é uma simulação de prova prática real, no mesmo padrão de bancada, equipamentos e corpo de prova exigido pela certificação nacional, para que você execute cada medição com maestria.",
+      "why_title": "O Treinamento hands-on Mais Rigoroso do Brasil",
+      "why_text": "Você terá acesso aos exatos corpos de prova simulados semelhantes aos da Abendi, onde praticará a utilização de clinômetros, níveis mecânicos, paquímetros e trenas de alta precisão. Nossos instrutores certificados Abendi vão auditar suas técnicas individualmente durante o processo.",
+      "details": {
+        "workload": "48 horas de treinamento de bancada prático",
+        "format": "100% Presencial no Laboratório da CEC",
+        "schedule": "Fins de semana de imersão total (Sábado e Domingo das 8h às 18h)",
+        "cert": "Preparatório Abendi CD-CL Prático CEC",
+        "theory": "Revisão e checagem de erros frequentes no preenchimento de relatórios",
+        "practice": "Simulados práticos cronometrados e auditados individualmente"
+      },
+      "investment": {
+        "credit": "R$ 2.400 em até 10x sem juros",
+        "pix": "R$ 2.100 à vista (Desconto Especial)",
+        "boleto": "Sob consulta com nossa secretaria",
+        "tip": "Laboratórios equipados individualmente, garantindo 100% do tempo focado em prática real."
+      },
+      "outcomes": [
+        "Agilidade e precisão total no manuseio de clinômetros e esquadros",
+        "Preenchimento perfeito e sem rasuras dos relatórios de prova da Abendi",
+        "Identificação e correção instantânea de erros geométricos clássicos",
+        "Redução do tempo de execução do ensaio prático pela metade",
+        "Preparação psicológica para enfrentar a auditoria dos inspetores oficiais"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=800",
+        "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=800",
+        "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800"
+      ]
+    },
+    "faq": [
+      {
+        "q": "Posso fazer 100% online?",
+        "a": "Não. A parte prática é essencial. Mas agendamos fins de semana, facilitando sua participação."
+      },
+      {
+        "q": "Qual é a diferença entre CD-CL, CD-MC e CD-TO?",
+        "a": "CD-CL é para caldeiraria, CD-MC para mecânica industrial, CD-TO para topografia e grandes estruturas. Escolha conforme sua área."
+      },
+      {
+        "q": "Qual é a taxa de aprovação?",
+        "a": "98%. Nossos alunos levam a sério porque sabem que a carreira deles depende disso."
+      }
+    ]
+  },
+  "manual_do_aluno": {
+    "title": "Manual do Aluno e Termos de Uso",
+    "version": "1.0.2026",
+    "content": "### 1. INTRODUÇÃO\nEste manual visa orientar o aluno sobre o funcionamento dos cursos da CEC Engenharia...\n\n### 2. FREQUÊNCIA E AVALIAÇÃO\nA frequência mínima para aprovação é de 75%...\n\n### 3. PAGAMENTOS E CANCELAMENTOS\nO cancelamento pode ser solicitado em até 7 dias após a matrícula...\n\n### 4. ACESSO AO PORTAL\nO acesso é pessoal e intransferível...\n\n(Este texto pode ser editado livremente pelo administrador)"
   }
 }

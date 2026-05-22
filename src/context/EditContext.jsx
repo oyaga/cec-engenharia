@@ -1,34 +1,73 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabase';
 import initialContent from '../data/content.json';
+import { useAuth } from '../contexts/AuthContext';
 
 const EditContext = createContext();
 
 export const useEdit = () => useContext(EditContext);
 
 export const EditProvider = ({ children }) => {
-  const [isEditing, setIsEditing] = useState(false);
+  const { userProfile } = useAuth();
+  const [isEditing, setIsEditing] = useState(() => {
+    try {
+      return sessionStorage.getItem('cec_editing') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState(initialContent);
+  const [content, setContent] = useState(initialContent || {});
 
-  // 1. Carregar Sessão e Dados Iniciais
+  // 1. Carregar Sessão e Dados Iniciais de forma sincronizada
   useEffect(() => {
+    const initApp = async () => {
+      try {
+        // Carregamento inicial da sessão
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+        
+        // Buscar Conteúdo do Banco de Dados ANTES de liberar a tela
+        await fetchSiteContent();
+      } catch (err) {
+        console.error("Erro na inicialização do app:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initApp();
+
     // Monitorar Mudanças de Autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setLoading(false);
     });
-
-    // Buscar Conteúdo do Banco de Dados
-    fetchSiteContent();
 
     return () => subscription.unsubscribe();
   }, []);
 
   // Deep merge: preserva defaults locais para chaves ausentes no banco
   const deepMerge = (base, override) => {
-    if (!override) return base;
+    if (Array.isArray(base) && Array.isArray(override)) {
+      const merged = [...override];
+      base.forEach(baseItem => {
+        if (baseItem && typeof baseItem === 'object' && baseItem.slug) {
+          const exists = override.some(overItem => overItem && overItem.slug === baseItem.slug);
+          if (!exists) {
+            merged.push(baseItem);
+          }
+        } else if (baseItem && typeof baseItem === 'object' && baseItem.id) {
+          const exists = override.some(overItem => overItem && overItem.id === baseItem.id);
+          if (!exists) {
+            merged.push(baseItem);
+          }
+        }
+      });
+      return merged;
+    }
+
+    if (!override || typeof override !== 'object' || Array.isArray(override)) return override || base;
     const result = { ...base };
     for (const key of Object.keys(override)) {
       if (
@@ -67,48 +106,63 @@ export const EditProvider = ({ children }) => {
   };
 
   const updateContent = (path, value) => {
-    setContent(prev => {
-      const newContent = JSON.parse(JSON.stringify(prev));
+    console.log(`[EditContext] Solicitando atualização de "${path}"...`);
+    
+    setContent(prevContent => {
+      const newContent = JSON.parse(JSON.stringify(prevContent));
       const keys = path.split('.');
       let current = newContent;
+      
       for (let i = 0; i < keys.length - 1; i++) {
+        // Se for um índice numérico e o pai for array, mantém como array
+        if (!current[keys[i]]) {
+          current[keys[i]] = (i < keys.length - 1 && !isNaN(keys[i+1])) ? [] : {};
+        }
         current = current[keys[i]];
       }
+      
       current[keys[keys.length - 1]] = value;
+      console.log(`[EditContext] "${path}" atualizado com sucesso no estado global.`);
       return newContent;
     });
   };
 
   const addItemToList = (path, newItem) => {
-    setContent(prev => {
-      const newContent = JSON.parse(JSON.stringify(prev));
-      const keys = path.split('.');
-      let current = newContent;
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]];
-      }
-      const list = current[keys[keys.length - 1]];
-      if (Array.isArray(list)) {
-        list.push({ ...newItem, id: Date.now() });
-      }
-      return newContent;
-    });
+    const keys = path.split('.');
+    const newContent = JSON.parse(JSON.stringify(content));
+    let current = newContent;
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) current[keys[i]] = {};
+      current = current[keys[i]];
+    }
+    const lastKey = keys[keys.length - 1];
+    const list = Array.isArray(current[lastKey]) ? current[lastKey] : [];
+    current[lastKey] = [...list, { ...newItem, id: Date.now() }];
+    setContent(newContent);
   };
 
   const removeItemFromList = (path, index) => {
-    setContent(prev => {
-      const newContent = JSON.parse(JSON.stringify(prev));
-      const keys = path.split('.');
-      let current = newContent;
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]];
-      }
-      const list = current[keys[keys.length - 1]];
-      if (Array.isArray(list)) {
-        list.splice(index, 1);
-      }
-      return newContent;
-    });
+    const keys = path.split('.');
+    const newContent = JSON.parse(JSON.stringify(content));
+    let current = newContent;
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) return; // Nada para remover se o caminho não existe
+      current = current[keys[i]];
+    }
+    const lastKey = keys[keys.length - 1];
+    const list = Array.isArray(current[lastKey]) ? current[lastKey] : [];
+    current[lastKey] = list.filter((_, i) => i !== index);
+    setContent(newContent);
+  };
+
+  const toggleEditing = () => {
+    if (!user) {
+      window.location.href = '/login';
+      return;
+    }
+    const next = !isEditing;
+    setIsEditing(next);
+    sessionStorage.setItem('cec_editing', next ? 'true' : 'false');
   };
 
   const saveChanges = async () => {
@@ -116,20 +170,16 @@ export const EditProvider = ({ children }) => {
       alert('Você precisa estar logado para salvar as alterações.');
       return;
     }
-
     try {
-      // Salvar no Supabase (tabela site_content)
       const { error } = await supabase
         .from('site_content')
         .upsert({ id: 'main-content', data: content });
-
       if (error) throw error;
-
       setIsEditing(false);
+      sessionStorage.setItem('cec_editing', 'false');
       alert('Site atualizado com sucesso no banco de dados!');
     } catch (err) {
       console.error('Erro ao salvar no banco:', err);
-      // Fallback para localStorage se o banco falhar
       localStorage.setItem('cec_content_backup', JSON.stringify(content));
       alert('Erro ao salvar no servidor. Uma cópia de emergência foi salva no seu navegador.');
     }
@@ -138,33 +188,52 @@ export const EditProvider = ({ children }) => {
   const discardChanges = () => {
     fetchSiteContent();
     setIsEditing(false);
+    sessionStorage.setItem('cec_editing', 'false');
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
     setIsEditing(false);
+    sessionStorage.removeItem('cec_editing');
     window.location.href = '/';
   };
 
-  const toggleEditing = () => {
-    if (!user) {
-      window.location.href = '/login';
-      return;
+  // Função central para verificar permissões
+  const hasPermission = (permissionKey) => {
+    if (!user) return false;
+    
+    // Fallback de emergência para e-mails mestres/webdesigner
+    const masterEmails = [
+      'webdesigner@cec.com.br',
+      'secretaria@cursocec.com.br',
+      'piticalyn@cec.com.br'
+    ];
+    if (masterEmails.includes(user.email?.toLowerCase())) {
+      return true;
     }
-    setIsEditing(!isEditing);
+
+    // Admin Master sempre tem permissão via role
+    if (userProfile?.role === 'admin') return true;
+    
+    // Verifica permissão específica no JSONB
+    return userProfile?.permissions?.[permissionKey] === true;
   };
 
-  // Verificação de Master User (Webdesigner ou Admin Geral)
-  const isMaster = user?.email === 'webdesigner@cec.com.br' || user?.email === 'admin@cec.com.br';
+  // Verificação de Master User (Acesso a configurações do sistema)
+  const isMaster = userProfile?.role === 'admin' || hasPermission('manage_team');
 
   return (
     <EditContext.Provider value={{ 
       user,
+      userProfile,
       isAdmin: !!user,
       isMaster,
+      hasPermission,
       isEditing, 
       content, 
       updateContent, 
+      addItemToList,
+      removeItemFromList,
       saveChanges, 
       discardChanges,
       toggleEditing,
