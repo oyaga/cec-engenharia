@@ -101,7 +101,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     margin: '0 auto'
   };
 
-  const renderMedia = (url, style) => {
+  const renderMedia = (url, style, customSettings) => {
     if (!url) return null;
     
     // Só adiciona timestamp se NÃO for um link temporário (blob:)
@@ -110,15 +110,23 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     
     console.log(`[renderMedia] Renderizando SRC:`, finalUrl);
 
+    const settings = customSettings || savedSettings;
+
     if (isVideo(url)) {
+      const showControls = settings.controls ?? false;
+      const isMuted = settings.muted ?? true;
+      const shouldLoop = settings.loop ?? true;
+      const shouldAutoplay = settings.autoplay ?? true;
+
       return (
         <video 
           src={finalUrl} 
           style={style} 
-          autoPlay 
-          muted 
-          loop 
+          autoPlay={shouldAutoplay} 
+          muted={isMuted} 
+          loop={shouldLoop} 
           playsInline 
+          controls={showControls}
         />
       );
     }
@@ -212,12 +220,12 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
                    width:'100%', height:'100%', objectFit:'cover',
                    transform: `scale(${tempSettings.scale})`,
                    objectPosition: `center ${tempSettings.y}%`
-               })}
+               }, tempSettings)}
                <div style={{ position:'absolute', top:10, left:10, background:'rgba(0,0,0,0.5)', color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'10px' }}>PRÉVIA</div>
             </div>
 
             {/* Sliders */}
-            <div style={{ display:'flex', flexDirection:'column', gap:'1rem', background:'#0f172a', padding:'1.25rem', borderRadius:'12px' }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem', background:'#0f172a', padding:'1.25rem', borderRadius:'12px' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>LARGURA</span>
                 <input type="range" min="100" max="1600" step="10" value={tempSettings.width || 800} onChange={e => setTempSettings({...tempSettings, width: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
@@ -231,6 +239,60 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>POS. Y</span>
                 <input type="range" min="0" max="100" step="1" value={tempSettings.y} onChange={e => setTempSettings({...tempSettings, y: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
               </div>
+
+              {isVideo(preview || tempUrl) && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem', borderTop:'1px solid #334155', paddingTop:'0.75rem', marginTop:'0.25rem' }}>
+                  <span style={{ color:'#10b981', fontSize:'0.75rem', fontWeight:'700', letterSpacing:'0.05em' }}>CONFIGURAÇÕES DO VÍDEO</span>
+                  
+                  <div style={{ display:'flex', gap:'1rem', flexWrap:'wrap' }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', color:'#e2e8f0', fontSize:'0.8rem', cursor:'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={tempSettings.muted ?? true} 
+                        onChange={e => setTempSettings({...tempSettings, muted: e.target.checked})}
+                        style={{ accentColor:'#10b981', cursor:'pointer' }}
+                      />
+                      Mudo (Sem Som)
+                    </label>
+
+                    <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', color:'#e2e8f0', fontSize:'0.8rem', cursor:'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={tempSettings.controls ?? false} 
+                        onChange={e => setTempSettings({...tempSettings, controls: e.target.checked})}
+                        style={{ accentColor:'#10b981', cursor:'pointer' }}
+                      />
+                      Exibir Controles (Play/Volume)
+                    </label>
+
+                    <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', color:'#e2e8f0', fontSize:'0.8rem', cursor:'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={tempSettings.loop ?? true} 
+                        onChange={e => setTempSettings({...tempSettings, loop: e.target.checked})}
+                        style={{ accentColor:'#10b981', cursor:'pointer' }}
+                      />
+                      Repetir (Loop)
+                    </label>
+
+                    <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', color:'#e2e8f0', fontSize:'0.8rem', cursor:'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={tempSettings.autoplay ?? true} 
+                        onChange={e => setTempSettings({...tempSettings, autoplay: e.target.checked})}
+                        style={{ accentColor:'#10b981', cursor:'pointer' }}
+                      />
+                      Auto-reproduzir
+                    </label>
+                  </div>
+                  
+                  {!(tempSettings.muted ?? true) && (tempSettings.autoplay ?? true) && (
+                    <span style={{ color:'#f59e0b', fontSize:'0.7rem', display:'block', lineHeight:'1.2' }}>
+                      ⚠️ <strong>Atenção:</strong> Navegadores bloqueiam o início automático de vídeos com som. Para reprodução automática, mantenha "Mudo" ativado ou desative "Auto-reproduzir".
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div style={{ display:'flex', gap:'1rem' }}>
