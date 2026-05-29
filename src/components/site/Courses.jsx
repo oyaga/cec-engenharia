@@ -53,49 +53,52 @@ const Courses = () => {
     }
     return null;
   };
-
   const handleAddCourse = () => {
+    const uniqueId = Date.now();
+    const newSlug = `novo-curso-${uniqueId}`;
+
     const newCourse = {
-      slug: "novo-curso",
+      slug: newSlug,
       title: "Novo Treinamento",
-      description: "Descrição do novo treinamento teórico ou prático.",
-      duration: "00 Horas",
-      type: "Presencial/Híbrido",
-      category: "NOVO",
-      image: "https://images.unsplash.com/photo-1504384308090-c89eececbf8e?q=80&w=2000&auto=format&fit=crop"
+      description: "Descrição do novo treinamento teórico ou prático de Controle Dimensional.",
+      duration: "100 Horas",
+      type: "Presencial + Híbrido",
+      category: "MAIS PROCURADO",
+      image: "https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=2000&auto=format&fit=crop",
+      whatsapp_link: "https://chat.whatsapp.com/ExemploGrupo"
     };
     
     // 1. Adiciona o curso na lista da Home
     addItemToList('courses_section.courses', newCourse);
     
-    // 2. Inicializa os detalhes padrão na página dinâmica
+    // 2. Inicializa os detalhes padrão na página dinâmica seguindo o modelo rico do cd-cl
     const defaultDetails = {
       title: 'CONTROLE DIMENSIONAL – NOVO CURSO',
-      badge: 'NOVIDADE',
-      target: 'Objetivo do novo curso técnico aqui',
-      intro: 'A diferença entre um equipamento funcional e um fracasso está em milímetros. Este novo treinamento é focado em trazer precisão técnica para sua carreira profissional.\n\nClique para editar este texto e customizar a introdução conforme o conteúdo programático do curso.',
+      badge: 'MAIS PROCURADO',
+      target: 'Dominar a Precisão que a Indústria Exige',
+      intro: 'A diferença entre um equipamento funcional e um fracasso está em milímetros. Este novo treinamento é focado em trazer precisão técnica e capacitação profissional de alta performance para a sua carreira.\n\nClique para editar este texto e customizar a introdução de forma a alinhar com o conteúdo programático real do seu curso.',
       why_title: 'Por que este curso?',
-      why_text: 'Este programa foi desenvolvido para profissionais que precisam dominar completamente as técnicas de inspeção do novo curso. Clique aqui para alterar e explicar por que o profissional deve se matricular.',
+      why_text: 'Este programa foi desenvolvido sob medida para profissionais que precisam dominar completamente as técnicas de inspeção e metrologia industrial em cenários de trabalho reais.\n\nResultado? Você se torna um especialista altamente qualificado e requisitado pelas maiores indústrias do setor.',
       details: {
-        workload: '40 horas de aprendizado intensivo',
+        workload: '100 horas de aprendizado intensivo',
         format: 'Aulas teóricas online + práticas presenciais',
-        schedule: 'Horários flexíveis a combinar com a turma',
+        schedule: 'Segunda a sexta, 19h às 21h (compatível com sua rotina)',
         cert: 'Certificação CEC reconhecida nacionalmente',
         theory: 'Online e ao vivo na nossa plataforma educacional',
-        practice: 'Prática de campo hands-on com equipamentos reais'
+        practice: 'Prática de campo hands-on com equipamentos e instrumentação reais'
       },
       investment: {
-        credit: 'R$ 2.500 em até 10x sem juros',
-        pix: 'R$ 2.200 à vista (Melhor Opção)',
-        boleto: 'Entrada + parcelamento direto no boleto',
-        tip: 'Facilitamos o pagamento de forma a caber no orçamento de sua empresa ou carreira.'
+        credit: 'R$ 3.800 em até 10x sem juros',
+        pix: 'R$ 3.300 à vista (economia de R$ 500)',
+        boleto: '3x de R$ 1.260 parcelado',
+        tip: 'Facilitamos o pagamento no boleto ou dê preferência ao PIX com super desconto exclusivo!'
       },
       outcomes: [
-        "Domínio das principais competências técnicas",
-        "Diferencial competitivo expressivo no currículo",
-        "Networking de alto nível com profissionais do setor",
-        "Certificação profissional emitida logo após a conclusão",
-        "Acesso à plataforma de alunos CEC com suporte contínuo"
+        "Domínio completo dos principais instrumentos de medição",
+        "Capacidade de identificar desvios antes do retrabalho",
+        "Certificado CEC reconhecido nacionalmente com peso industrial",
+        "Networking de alta performance com inspetores do setor",
+        "Acesso contínuo com suporte pós-conclusão da turma"
       ],
       images: [
         "https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=800",
@@ -103,8 +106,7 @@ const Courses = () => {
         "https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800"
       ]
     };
-    
-    updateContent('course_details.novo-curso', defaultDetails);
+    updateContent(`course_details.${newSlug}`, defaultDetails);
   };
 
   return (
