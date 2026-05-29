@@ -9,14 +9,16 @@ import EditableText from './EditableText';
  */
 const MapWidget = () => {
   const { content, isEditing } = useEdit();
-  const address = content?.contact_page?.address || 'Av. Brasil, Rio de Janeiro, RJ';
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-  const wazeUrl  = `https://waze.com/ul?q=${encodeURIComponent(address)}`;
+  const address = content?.contact_page?.address || 'CeC Engenharia e Capacitação - Santa Cruz, Rio de Janeiro - RJ';
+  
+  // Link exato do Google Maps e Waze da empresa para localização perfeita
+  const mapsUrl = "https://www.google.com/maps/place/CeC+Engenharia+e+Capacita%C3%A7%C3%A3o/@-22.9247058,-43.7026416,17z/";
+  const wazeUrl  = "https://waze.com/ul?ll=-22.9247058,-43.7026416&navigate=yes";
 
   const [showModal, setShowModal] = useState(false);
 
-  // Embed do Google Maps (sem chave de API, usa a modalidade /maps/embed)
-  const embedSrc = `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed&z=15`;
+  // Embed oficial buscando pelo nome exato do local no Google Maps
+  const embedSrc = "https://maps.google.com/maps?q=CeC%20Engenharia%20e%20Capacita%C3%A7%C3%A3o%20Santa%20Cruz%20RJ&output=embed&z=16";
 
   return (
     <>
