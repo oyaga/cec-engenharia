@@ -15,7 +15,7 @@ const WhatsAppButton = () => {
   const whatsappUrl = `https://wa.me/${whatsapp.number.replace(/\D/g, '')}?text=${encodeURIComponent(whatsapp.message)}`;
 
   return (
-    <div className="whatsapp-floating">
+    <div className="whatsapp-floating" style={isEditing ? { bottom: '12rem', transition: 'bottom 0.4s ease' } : { transition: 'bottom 0.4s ease' }}>
       <div className="whatsapp-wrapper">
         <motion.a 
           href={isEditing ? "#" : whatsappUrl}
