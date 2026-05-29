@@ -12,26 +12,50 @@ export default function TestimonialsAdmin() {
   const fetchAll = async () => {
     setLoading(true)
     let query = supabase.from('testimonials').select('*').order('created_at', { ascending: false })
-    if (filter !== 'all') query = query.eq('approved', filter === 'approved')
-    const { data } = await query
+    
+    if (filter === 'pending') {
+      query = query.is('approved', null)
+    } else if (filter === 'approved') {
+      query = query.eq('approved', true)
+    }
+    
+    const { data, error } = await query
+    if (error) {
+      console.error('Erro ao buscar depoimentos:', error)
+    }
     setTestimonials(data || [])
     setLoading(false)
   }
 
   const approve = async (id) => {
-    await supabase.from('testimonials').update({ approved: true }).eq('id', id)
-    fetchAll()
+    const { error } = await supabase.from('testimonials').update({ approved: true }).eq('id', id)
+    if (error) {
+      console.error('Erro ao aprovar depoimento:', error)
+      alert('Erro ao aprovar o depoimento: ' + error.message)
+    } else {
+      fetchAll()
+    }
   }
 
   const reject = async (id) => {
-    await supabase.from('testimonials').update({ approved: false }).eq('id', id)
-    fetchAll()
+    const { error } = await supabase.from('testimonials').update({ approved: false }).eq('id', id)
+    if (error) {
+      console.error('Erro ao rejeitar depoimento:', error)
+      alert('Erro ao rejeitar o depoimento: ' + error.message)
+    } else {
+      fetchAll()
+    }
   }
 
   const remove = async (id) => {
     if (!confirm('Excluir este depoimento?')) return
-    await supabase.from('testimonials').delete().eq('id', id)
-    fetchAll()
+    const { error } = await supabase.from('testimonials').delete().eq('id', id)
+    if (error) {
+      console.error('Erro ao excluir depoimento:', error)
+      alert('Erro ao excluir o depoimento: ' + error.message)
+    } else {
+      fetchAll()
+    }
   }
 
   const filterCounts = async () => {
