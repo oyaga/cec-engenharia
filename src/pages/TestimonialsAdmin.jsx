@@ -14,9 +14,11 @@ export default function TestimonialsAdmin() {
     let query = supabase.from('testimonials').select('*').order('created_at', { ascending: false })
     
     if (filter === 'pending') {
-      query = query.is('approved', null)
+      query = query.eq('status', 'pending')
     } else if (filter === 'approved') {
-      query = query.eq('approved', true)
+      query = query.eq('status', 'approved')
+    } else if (filter === 'rejected') {
+      query = query.eq('status', 'rejected')
     }
     
     const { data, error } = await query
@@ -28,7 +30,7 @@ export default function TestimonialsAdmin() {
   }
 
   const approve = async (id) => {
-    const { error } = await supabase.from('testimonials').update({ approved: true }).eq('id', id)
+    const { error } = await supabase.from('testimonials').update({ status: 'approved' }).eq('id', id)
     if (error) {
       console.error('Erro ao aprovar depoimento:', error)
       alert('Erro ao aprovar o depoimento: ' + error.message)
@@ -38,7 +40,7 @@ export default function TestimonialsAdmin() {
   }
 
   const reject = async (id) => {
-    const { error } = await supabase.from('testimonials').update({ approved: false }).eq('id', id)
+    const { error } = await supabase.from('testimonials').update({ status: 'rejected' }).eq('id', id)
     if (error) {
       console.error('Erro ao rejeitar depoimento:', error)
       alert('Erro ao rejeitar o depoimento: ' + error.message)
@@ -59,7 +61,7 @@ export default function TestimonialsAdmin() {
   }
 
   const filterCounts = async () => {
-    const { data: pending } = await supabase.from('testimonials').select('id', { count: 'exact' }).is('approved', null)
+    const { data: pending } = await supabase.from('testimonials').select('id', { count: 'exact' }).eq('status', 'pending')
     return pending?.length || 0
   }
 
@@ -82,6 +84,7 @@ export default function TestimonialsAdmin() {
         {[
           { key: 'pending', label: '⏳ Pendentes', color: '#f59e0b' },
           { key: 'approved', label: '✅ Aprovados', color: '#10b981' },
+          { key: 'rejected', label: '❌ Rejeitados', color: '#ef4444' },
           { key: 'all', label: '📋 Todos', color: 'var(--primary)' },
         ].map(f => (
           <button
@@ -116,7 +119,7 @@ export default function TestimonialsAdmin() {
           {testimonials.map(t => (
             <div key={t.id} className="card" style={{
               padding: '1.25rem',
-              borderLeft: `4px solid ${t.approved === true ? '#10b981' : t.approved === false ? '#ef4444' : '#f59e0b'}`
+              borderLeft: `4px solid ${t.status === 'approved' ? '#10b981' : t.status === 'rejected' ? '#ef4444' : '#f59e0b'}`
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
@@ -126,10 +129,10 @@ export default function TestimonialsAdmin() {
                       background: 'var(--primary)', display: 'flex', alignItems: 'center',
                       justifyContent: 'center', color: 'white', fontSize: '0.9rem', fontWeight: '700'
                     }}>
-                      {(t.author || 'A')[0].toUpperCase()}
+                      {(t.name || t.author || 'A')[0].toUpperCase()}
                     </div>
                     <div>
-                      <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-color)' }}>{t.author || 'Anônimo'}</p>
+                      <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-color)' }}>{t.name || t.author || 'Anônimo'}</p>
                       <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.course || ''} · {new Date(t.created_at).toLocaleDateString('pt-BR')}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}>
@@ -139,12 +142,12 @@ export default function TestimonialsAdmin() {
                     </div>
                   </div>
                   <p style={{ margin: 0, color: 'var(--text-color)', lineHeight: '1.6', fontStyle: 'italic' }}>
-                    "{t.text || t.content || t.message}"
+                    "{t.content || t.text || t.message}"
                   </p>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '120px' }}>
-                  {t.approved !== true && (
+                  {t.status !== 'approved' && (
                     <button onClick={() => approve(t.id)} style={{
                       display: 'flex', alignItems: 'center', gap: '0.4rem',
                       padding: '0.4rem 0.75rem', borderRadius: '8px',
@@ -153,7 +156,7 @@ export default function TestimonialsAdmin() {
                       <CheckCircle size={14} /> Aprovar
                     </button>
                   )}
-                  {t.approved !== false && (
+                  {t.status !== 'rejected' && (
                     <button onClick={() => reject(t.id)} style={{
                       display: 'flex', alignItems: 'center', gap: '0.4rem',
                       padding: '0.4rem 0.75rem', borderRadius: '8px',
@@ -173,9 +176,9 @@ export default function TestimonialsAdmin() {
               </div>
 
               <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {t.approved === true && <span style={{ fontSize: '0.75rem', background: '#10b98122', color: '#10b981', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>✅ Aprovado</span>}
-                {t.approved === false && <span style={{ fontSize: '0.75rem', background: '#ef444422', color: '#ef4444', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>❌ Rejeitado</span>}
-                {t.approved === null && <span style={{ fontSize: '0.75rem', background: '#f59e0b22', color: '#f59e0b', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>⏳ Pendente</span>}
+                {t.status === 'approved' && <span style={{ fontSize: '0.75rem', background: '#10b98122', color: '#10b981', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>✅ Aprovado</span>}
+                {t.status === 'rejected' && <span style={{ fontSize: '0.75rem', background: '#ef444422', color: '#ef4444', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>❌ Rejeitado</span>}
+                {t.status === 'pending' && <span style={{ fontSize: '0.75rem', background: '#f59e0b22', color: '#f59e0b', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>⏳ Pendente</span>}
               </div>
             </div>
           ))}
