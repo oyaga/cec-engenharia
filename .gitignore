@@ -27,3 +27,6 @@ dist-ssr
 *.dmg
 maria antonia/
 
+
+.env
+.env.local
