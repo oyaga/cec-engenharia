@@ -123,40 +123,46 @@ const Hero = () => {
 
             <div className="floating-cards-container">
               {(hero.certifications || []).map((cert, index) => (
-                <div key={index} className="floating-card" style={{ position: 'relative', marginBottom: '10px' }}>
-                  <div className="success-icon-container" style={{ position: 'relative' }}>
-                    <EditableImage 
-                      path={`hero.certifications.${index}.icon`} 
-                      initialValue={cert.icon} 
-                      className="icon-editable-mini-hero"
-                    />
+                <DraggableInEdit
+                  key={index}
+                  path={`hero.certifications.${index}.pos`}
+                  initialPos={cert.pos || { top: `${45 + index * 25}%`, left: '-5%' }}
+                >
+                  <div className="floating-card" style={{ position: 'relative', bottom: 'auto', left: 'auto', margin: 0 }}>
+                    <div className="success-icon-container" style={{ position: 'relative' }}>
+                      <EditableImage 
+                        path={`hero.certifications.${index}.icon`} 
+                        initialValue={cert.icon} 
+                        className="icon-editable-mini-hero"
+                      />
+                    </div>
+                    <div>
+                      <EditableText 
+                        path={`hero.certifications.${index}.title`} 
+                        initialValue={cert.title} 
+                        tagName="h4" 
+                      />
+                      <EditableText 
+                        path={`hero.certifications.${index}.text`} 
+                        initialValue={cert.text} 
+                        tagName="p" 
+                      />
+                    </div>
+                    {isEditing && (
+                      <button 
+                        className="btn-remove-tiny" 
+                        onClick={() => removeItemFromList('hero.certifications', index)}
+                        style={{ top: '-10px', right: '-10px' }}
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
-                  <div>
-                    <EditableText 
-                      path={`hero.certifications.${index}.title`} 
-                      initialValue={cert.title} 
-                      tagName="h4" 
-                    />
-                    <EditableText 
-                      path={`hero.certifications.${index}.text`} 
-                      initialValue={cert.text} 
-                      tagName="p" 
-                    />
-                  </div>
-                  {isEditing && (
-                    <button 
-                      className="btn-remove-tiny" 
-                      onClick={() => removeItemFromList('hero.certifications', index)}
-                      style={{ top: '-10px', right: '-10px' }}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
+                </DraggableInEdit>
               ))}
               
               {isEditing && (
-                <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '1rem', position: 'relative', zIndex: 30 }}>
                   <button 
                     className="btn-add-circle"
                     onClick={() => addItemToList('hero.certifications', { title: 'NOVA CERTIFICAÇÃO', text: 'Descrição aqui...', icon: '' })}

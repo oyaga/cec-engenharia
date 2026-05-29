@@ -338,6 +338,8 @@ const Testimonials = () => {
           border-radius: 2rem;
           padding: 2.5rem;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          max-height: 90vh;
+          overflow-y: auto;
         }
         .form-group { margin-bottom: 1.5rem; }
         .form-group label { display: block; font-weight: 700; margin-bottom: 0.5rem; font-size: 0.9rem; }

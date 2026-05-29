@@ -148,7 +148,7 @@ const Complaint = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style>{`
         .complaint-main { background: #fafafa; }
         .complaint-header { 
           background: #1e293b; 

@@ -19,6 +19,7 @@ import ResetPassword from './pages/ResetPassword'
 import OuvidoriaAdmin from './pages/OuvidoriaAdmin'
 import TestimonialsAdmin from './pages/TestimonialsAdmin'
 import LeadsAdmin from './pages/LeadsAdmin'
+import ScrollToTop from './components/ScrollToTop'
 
 // Public Site Pages
 import Home from './pages/site/Home'
@@ -76,6 +77,7 @@ function App() {
     <AuthProvider>
       <EditProvider>
         <Router>
+          <ScrollToTop />
           <Routes>
             {/* ROTAS DE ACESSO - PRIORIDADE MÁXIMA */}
             <Route path="/webdesigner" element={<Login title="Acesso Webdesigner - Editor do Site" isWebdesigner={true} redirectTo="/" />} />

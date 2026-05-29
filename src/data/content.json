@@ -189,7 +189,7 @@
     "brand_desc": "Referência em capacitação técnica e soluções de engenharia para o setor industrial.",
     "links_rapidos": [
       { "label": "Início", "url": "/" },
-      { "label": "Treinamentos", "url": "/cursos" },
+      { "label": "Treinamentos", "url": "/#cursos" },
       { "label": "Sobre Nós", "url": "/sobre-nos" },
       { "label": "Fale Conosco", "url": "/contato" }
     ],
