@@ -113,8 +113,8 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     const settings = customSettings || savedSettings;
 
     if (isVideo(url)) {
-      const showControls = settings.controls ?? false;
-      const isMuted = settings.muted ?? true;
+      const showControls = settings.controls ?? true;
+      const isMuted = settings.muted ?? false;
       const shouldLoop = settings.loop ?? true;
       const shouldAutoplay = settings.autoplay ?? true;
 
