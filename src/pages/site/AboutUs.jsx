@@ -9,9 +9,11 @@ import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
 
 const AboutUs = () => {
-  const { content, isEditing, addItemToList, removeItemFromList } = useEdit();
+  const { content, isEditing, addItemToList, removeItemFromList, updateContent } = useEdit();
   const about_page = content.about_page || {};
   const valuesList = about_page.values?.list || [];
+  const tableSection = about_page.table_section || {};
+  const showTable = tableSection.show_table ?? true;
 
   if (!content.about_page) return null;
 
@@ -177,74 +179,130 @@ const AboutUs = () => {
         </section>
  
         {/* TABELA DINÂMICA (NOVO) */}
-        <section className="dynamic-table-section section-padding bg-soft">
-          <div className="container">
-            <h2 className="section-title text-center">
-              <EditableText 
-                path="about_page.table_section.title" 
-                initialValue={about_page.table_section?.title || "Informações Adicionais"} 
-              />
-            </h2>
-            
-            <div className="table-responsive">
-              <table className="custom-editable-table">
-                <thead>
-                  <tr>
-                    {(about_page.table_section?.headers || ["Coluna 1", "Coluna 2"]).map((header, hIndex) => (
-                      <th key={hIndex}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <EditableText 
-                            path={`about_page.table_section.headers.${hIndex}`} 
-                            initialValue={header} 
-                          />
-                          {isEditing && (
-                            <button className="btn-remove-tiny-table" onClick={() => removeItemFromList('about_page.table_section.headers', hIndex)}>×</button>
-                          )}
-                        </div>
-                      </th>
-                    ))}
-                    {isEditing && (
-                      <th>
-                        <button className="btn-add-circle tiny" onClick={() => addItemToList('about_page.table_section.headers', 'Nova Coluna')}>+</button>
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(about_page.table_section?.rows || [["Dado 1", "Dado 2"]]).map((row, rIndex) => (
-                    <tr key={rIndex}>
-                      {row.map((cell, cIndex) => (
-                        <td key={cIndex}>
-                          <div style={{ position: 'relative' }}>
-                            <EditableText 
-                              path={`about_page.table_section.rows.${rIndex}.${cIndex}`} 
-                              initialValue={cell} 
-                            />
-                          </div>
-                        </td>
-                      ))}
-                      {isEditing && (
-                        <td>
-                          <button className="btn-remove-tiny-table" onClick={() => removeItemFromList('about_page.table_section.rows', rIndex)}>×</button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {(!showTable && !isEditing) ? null : (
+          <section className="dynamic-table-section section-padding bg-soft" style={{ 
+            opacity: showTable ? 1 : 0.55, 
+            transition: 'all 0.3s ease',
+            border: showTable ? 'none' : '2px dashed #f59e0b',
+            background: showTable ? 'var(--bg-soft)' : '#fffbeb',
+            borderRadius: showTable ? '0' : '1.5rem',
+            margin: showTable ? '0' : '2rem auto',
+            maxWidth: showTable ? '100%' : '1100px'
+          }}>
+            <div className="container">
               {isEditing && (
-                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                  <button className="btn-site-primary" onClick={() => {
-                    const colCount = about_page.table_section?.headers?.length || 2;
-                    addItemToList('about_page.table_section.rows', Array(colCount).fill("Novo Dado"));
-                  }}>
-                    <Plus size={16} /> Adicionar Linha
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  gap: '0.5rem', 
+                  marginBottom: '2rem', 
+                  background: 'white', 
+                  padding: '1.25rem', 
+                  borderRadius: '16px', 
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.05)',
+                  border: '1px solid #e2e8f0' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '800', color: showTable ? '#10b981' : '#f59e0b' }}>
+                      {showTable ? '👁️ TABELA VISÍVEL PARA O PÚBLICO' : '👁️ TABELA OCULTADA PARA O PÚBLICO'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => updateContent('about_page.table_section.show_table', !showTable)}
+                    style={{
+                      background: showTable ? '#ef4444' : '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.55rem 1.25rem',
+                      borderRadius: '30px',
+                      fontWeight: '800',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                  >
+                    {showTable ? 'Ocultar esta Seção' : 'Tornar Seção Visível'}
                   </button>
+                  {!showTable && (
+                    <span style={{ fontSize: '0.7rem', color: '#b45309', fontWeight: '600', marginTop: '4px', textAlign: 'center' }}>
+                      Esta tabela de Informações Adicionais NÃO aparecerá na página pública para os visitantes comuns do site.
+                    </span>
+                  )}
                 </div>
               )}
+
+              <h2 className="section-title text-center">
+                <EditableText 
+                  path="about_page.table_section.title" 
+                  initialValue={about_page.table_section?.title || "Informações Adicionais"} 
+                />
+              </h2>
+              
+              <div className="table-responsive">
+                <table className="custom-editable-table">
+                  <thead>
+                    <tr>
+                      {(about_page.table_section?.headers || ["Coluna 1", "Coluna 2"]).map((header, hIndex) => (
+                        <th key={hIndex}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <EditableText 
+                              path={`about_page.table_section.headers.${hIndex}`} 
+                              initialValue={header} 
+                            />
+                            {isEditing && (
+                              <button className="btn-remove-tiny-table" onClick={() => removeItemFromList('about_page.table_section.headers', hIndex)}>×</button>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                      {isEditing && (
+                        <th>
+                          <button className="btn-add-circle tiny" onClick={() => addItemToList('about_page.table_section.headers', 'Nova Coluna')}>+</button>
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(about_page.table_section?.rows || [["Dado 1", "Dado 2"]]).map((row, rIndex) => (
+                      <tr key={rIndex}>
+                        {row.map((cell, cIndex) => (
+                          <td key={cIndex}>
+                            <div style={{ position: 'relative' }}>
+                              <EditableText 
+                                path={`about_page.table_section.rows.${rIndex}.${cIndex}`} 
+                                initialValue={cell} 
+                              />
+                            </div>
+                          </td>
+                        ))}
+                        {isEditing && (
+                          <td>
+                            <button className="btn-remove-tiny-table" onClick={() => removeItemFromList('about_page.table_section.rows', rIndex)}>×</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {isEditing && (
+                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                    <button className="btn-site-primary" onClick={() => {
+                      const colCount = about_page.table_section?.headers?.length || 2;
+                      addItemToList('about_page.table_section.rows', Array(colCount).fill("Novo Dado"));
+                    }}>
+                      <Plus size={16} /> Adicionar Linha
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </main>
 
       <Footer />

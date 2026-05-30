@@ -165,6 +165,20 @@
       "text": "Nossa missão é capacitar profissionais com o conhecimento e as habilidades necessárias para desempenhar suas funções com precisão e segurança, contribuindo para o sucesso de projetos industriais em todo o Brasil.",
       "image": "https://images.unsplash.com/photo-1521737711867-e3b97375f902?q=80&w=800",
       "title": "Missão"
+    },
+    "table_section": {
+      "show_table": true,
+      "title": "Informações Adicionais",
+      "headers": [
+        "Coluna 1",
+        "Coluna 2"
+      ],
+      "rows": [
+        [
+          "Dado 1",
+          "Dado 2"
+        ]
+      ]
     }
   },
   "terms_page": {
