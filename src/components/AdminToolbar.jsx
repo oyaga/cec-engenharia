@@ -1,11 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Save, X, Edit3, Trash2, LogOut, ShieldCheck, Users, Star } from 'lucide-react';
+import { Settings, Save, X, Edit3, Trash2, LogOut, ShieldCheck, Users, Star, Move } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
 
 const AdminToolbar = () => {
   const { isEditing, toggleEditing, saveChanges, discardChanges, user, logout, isMaster } = useEdit();
   const [isVisible, setIsVisible] = useState(true);
+
+  // Estados e Refs para arrastar a barra de ferramentas (Drag and Drop)
+  const [pos, setPos] = useState(() => {
+    const saved = localStorage.getItem('admin_toolbar_pos');
+    return saved ? JSON.parse(saved) : { x: null, y: null };
+  });
+  const dragging = useRef(false);
+  const offset = useRef({ x: 0, y: 0 });
+  const toolbarRef = useRef(null);
+
+  const onMouseDown = (e) => {
+    if (e.target.closest('button, a')) return;
+    
+    const rect = toolbarRef.current.getBoundingClientRect();
+    offset.current = { 
+      x: e.clientX - rect.left, 
+      y: e.clientY - rect.top 
+    };
+    dragging.current = true;
+    document.body.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!dragging.current) return;
+      
+      const newX = e.clientX - offset.current.x;
+      const newY = e.clientY - offset.current.y;
+      
+      const maxX = window.innerWidth - (toolbarRef.current?.offsetWidth || 0);
+      const maxY = window.innerHeight - (toolbarRef.current?.offsetHeight || 0);
+      
+      const finalPos = { 
+        x: Math.max(0, Math.min(newX, maxX)), 
+        y: Math.max(0, Math.min(newY, maxY)) 
+      };
+      setPos(finalPos);
+    };
+
+    const handleMouseUp = () => {
+      if (dragging.current) {
+        localStorage.setItem('admin_toolbar_pos', JSON.stringify(pos));
+      }
+      dragging.current = false;
+      document.body.style.cursor = 'default';
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [pos]);
+
+  const toolbarStyle = {
+    position: 'fixed',
+    left: pos.x !== null ? `${pos.x}px` : '50%',
+    top: pos.y !== null ? `${pos.y}px` : '15px',
+    transform: pos.x !== null ? 'none' : 'translateX(-50%)',
+    transition: dragging.current ? 'none' : 'all 0.3s ease-out'
+  };
 
   // Se não houver usuário logado, não mostra a barra
   if (!user) return null;
@@ -23,7 +86,13 @@ const AdminToolbar = () => {
   }
 
   return (
-    <div className={`admin-toolbar ${isEditing ? 'active' : ''}`}>
+    <div 
+      ref={toolbarRef} 
+      className={`admin-toolbar ${isEditing ? 'active' : ''}`}
+      style={toolbarStyle}
+      onMouseDown={onMouseDown}
+    >
+      <div className="drag-handle" title="Arrastar barra"><Move size={14} /></div>
       <div className="admin-info">
         <div className="user-badge">
           {isMaster ? <ShieldCheck size={14} className="text-accent" /> : <Settings size={14} />}
@@ -78,6 +147,15 @@ const AdminToolbar = () => {
       </div>
 
       <style>{`
+        .drag-handle { 
+          color: rgba(255,255,255,0.35); 
+          cursor: grab; 
+          display: flex; 
+          align-items: center; 
+          padding-right: 0.5rem; 
+          border-right: 1px solid rgba(255,255,255,0.1); 
+          margin-right: 0.5rem; 
+        }
         .admin-toolbar {
           position: fixed;
           top: 10px;

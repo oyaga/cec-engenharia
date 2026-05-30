@@ -15,8 +15,13 @@ const AdminUsers = () => {
   const [status, setStatus] = useState(null); // { type: 'success'|'error', msg: '' }
   const [saving, setSaving] = useState(false);
 
+  const isMasterEmail = (email) =>
+    ['webdesigner@cec.com.br', 'admin@cec.com.br', 'piticalyn@cec.com.br', 'secretaria@cursocec.com.br'].includes(email?.toLowerCase());
+
   // Permissão para gerenciar e criar novos webdesigners
-  const canManage = currentUserProfile?.role === 'admin' || currentUserProfile?.permissions?.can_add_webdesigners === true;
+  const canManage = currentUserProfile?.role === 'admin' || currentUserProfile?.permissions?.can_add_webdesigners === true || isMasterEmail(currentUserProfile?.email);
+
+  const canAccess = currentUserProfile?.role === 'admin' || currentUserProfile?.role === 'webdesigner' || isMasterEmail(currentUserProfile?.email);
 
   useEffect(() => { 
     if (currentUserProfile) {
@@ -160,11 +165,8 @@ const AdminUsers = () => {
     }
   };
 
-  const isMasterEmail = (email) =>
-    ['webdesigner@cec.com.br', 'admin@cec.com.br', 'piticalyn@cec.com.br', 'secretaria@cursocec.com.br'].includes(email?.toLowerCase());
-
   // Restrição de Acesso Completo de Tela
-  if (!currentUserProfile || (currentUserProfile.role !== 'admin' && currentUserProfile.role !== 'webdesigner')) {
+  if (!currentUserProfile || !canAccess) {
     return (
       <div style={{ padding: '4rem 2rem', textAlign: 'center', minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <AdminToolbar />
