@@ -197,23 +197,23 @@ const Complaint = () => {
         .input-group input:focus, .input-group textarea:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 4px rgba(0, 75, 73, 0.05); }
         
         .btn-danger-dark { 
-          background: #1e293b; 
+          background: #1e293b !important; 
           color: white !important; 
           width: 100%; 
           padding: 1.25rem; 
           font-size: 1.1rem; 
-          display: flex; 
+          display: flex !important; 
           align-items: center; 
           justify-content: center; 
           gap: 0.5rem; 
           border-radius: 0.75rem; 
-          border: none; 
+          border: none !important; 
           cursor: pointer; 
           font-weight: 700; 
           transition: all 0.3s; 
         }
         .btn-danger-dark:hover { 
-          background: #0f172a; 
+          background: #0f172a !important; 
           transform: translateY(-3px); 
           box-shadow: 0 10px 20px rgba(0,0,0,0.15); 
         }
