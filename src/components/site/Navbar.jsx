@@ -53,8 +53,12 @@ const Navbar = () => {
                           e.preventDefault();
                           return;
                         }
+                        // Se for a Home ou a mesma página atual
+                        if (href === '/' || href === '#') {
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
                         // Se for um link de âncora na mesma página
-                        if (href.startsWith('/#') || href.startsWith('#')) {
+                        else if (href.startsWith('/#') || href.startsWith('#')) {
                           const targetId = href.split('#')[1];
                           const el = document.getElementById(targetId);
                           if (el) {
@@ -63,6 +67,10 @@ const Navbar = () => {
                             // Atualiza a URL sem recarregar
                             window.history.pushState(null, '', href);
                           }
+                        }
+                        // Se for exatamente o mesmo caminho da página atual
+                        else if (href === window.location.pathname) {
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
                         }
                       }}
                       onDoubleClick={() => { 
