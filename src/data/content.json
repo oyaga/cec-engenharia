@@ -134,22 +134,22 @@
       "list": [
         {
           "text": "Garantimos que todos os nossos cursos atendam aos os mais altos padrões de ensino e prática industrial.",
-          "image": "/assets/quality.png",
+          "image": "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=300&auto=format&fit=crop",
           "title": "Compromisso com a Qualidade"
         },
         {
           "text": "Agimos com transparência e respeito em todas as nossas relações, tanto com nossos clientes quanto com nossos colaboradores.",
-          "image": "/assets/ethics.png",
+          "image": "https://images.unsplash.com/photo-1521791136064-7986c2959213?q=80&w=300&auto=format&fit=crop",
           "title": "Ética e Integridade"
         },
         {
           "text": "Buscamos constantemente novas metodologias e tecnologias para aprimorar nossos treinamentos e oferecer as melhores soluções aos nossos alunos.",
-          "image": "/assets/innovation.png",
+          "image": "https://images.unsplash.com/photo-1507668077129-56e32842fceb?q=80&w=300&auto=format&fit=crop",
           "title": "Inovação Contínua"
         },
         {
           "text": "O sucesso dos nossos alunos é o nosso principal objetivo. Estamos comprometidos em oferecer um ambiente de aprendizado que estimule o desenvolvimento profissional e pessoal.",
-          "image": "/assets/student-focus.png",
+          "image": "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=300&auto=format&fit=crop",
           "title": "Foco no Aluno"
         }
       ],

@@ -161,7 +161,11 @@ const AboutUs = () => {
                 <div className="add-value-placeholder">
                   <button 
                     className="btn-add-circle large"
-                    onClick={() => addItemToList('about_page.values.list', { title: 'Novo Valor', text: 'Descrição do valor...', image: '' })}
+                    onClick={() => addItemToList('about_page.values.list', { 
+                      title: 'Novo Valor', 
+                      text: 'Descrição do valor...', 
+                      image: 'https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=300&auto=format&fit=crop' 
+                    })}
                   >
                     <Plus size={32} />
                   </button>
