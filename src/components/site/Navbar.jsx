@@ -281,6 +281,7 @@ const Navbar = () => {
           margin-right: 1rem;
           padding-right: 1.5rem;
           border-right: 1px solid rgba(0, 0, 0, 0.1);
+          margin-left: 0.5rem;
         }
         .social-btn {
           width: 34px;
@@ -353,6 +354,7 @@ const Navbar = () => {
           justify-content: space-between;
           align-items: center;
           width: 100%;
+          gap: 2rem;
         }
         
         .logo-container-liquid {
@@ -403,6 +405,11 @@ const Navbar = () => {
           font-weight: 500;
           color: var(--text-main);
           font-size: 0.95rem;
+          white-space: nowrap !important;
+          transition: color 0.2s ease;
+        }
+        .nav-links a:hover {
+          color: var(--primary);
         }
         .nav-actions {
           display: flex;
@@ -540,6 +547,50 @@ const Navbar = () => {
           padding: 1rem;
           text-align: center;
           border-radius: 12px;
+        }
+
+        @media (min-width: 969px) and (max-width: 1280px) {
+          .nav-links {
+            gap: 1.25rem;
+          }
+          .nav-links a {
+            font-size: 0.9rem;
+          }
+          .nav-actions {
+            gap: 0.75rem;
+          }
+          .social-links-nav {
+            gap: 0.5rem;
+            margin-right: 0.5rem;
+            padding-right: 0.75rem;
+            margin-left: 0;
+          }
+          .btn-login span {
+            display: none;
+          }
+          .btn-login {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(0, 75, 73, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: all 0.3s ease;
+          }
+          .btn-login:hover {
+            background: var(--primary);
+            color: white !important;
+            transform: translateY(-2px);
+          }
+          .btn-login.instructor-variant {
+            background: rgba(20, 184, 166, 0.08);
+          }
+          .btn-login.instructor-variant:hover {
+            background: var(--accent);
+            color: white !important;
+          }
         }
 
         @media (max-width: 968px) {
