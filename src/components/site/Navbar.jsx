@@ -44,7 +44,7 @@ const Navbar = () => {
               const href = content.navbar?.link_urls?.[index] || defaultHref;
               
               return (
-                <li key={index} style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <li key={index} style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <Link 
                       to={href}
@@ -89,7 +89,21 @@ const Navbar = () => {
                         newUrls[index] = e.target.value;
                         updateContent('navbar.link_urls', newUrls);
                       }}
-                      style={{ fontSize:'0.6rem', padding:'2px 4px', borderRadius:'4px', border:'1px solid #10b981', width:'80px', textAlign:'center', background:'#0f172a', color:'#10b981', marginTop:'2px' }}
+                      style={{ 
+                        position: 'absolute', 
+                        top: '115%', 
+                        left: '50%', 
+                        transform: 'translateX(-50%)', 
+                        fontSize:'0.6rem', 
+                        padding:'2px 4px', 
+                        borderRadius:'4px', 
+                        border:'1px solid #10b981', 
+                        width:'80px', 
+                        textAlign:'center', 
+                        background:'#0f172a', 
+                        color:'#10b981', 
+                        zIndex: 100 
+                      }}
                     />
                   )}
                 </li>
@@ -379,7 +393,11 @@ const Navbar = () => {
         
         .nav-links {
           display: flex;
+          align-items: center;
           gap: 2rem;
+          list-style: none;
+          margin: 0;
+          padding: 0;
         }
         .nav-links a {
           font-weight: 500;

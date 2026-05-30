@@ -129,8 +129,16 @@ const Footer = () => {
               </li>
             ))}
           </ul>
+          {isEditing && (
+            <button 
+              className="btn-add-link-premium" 
+              onClick={() => handleAddLink('links_rapidos')}
+            >
+              <Plus size={14} />
+              <span>Adicionar Link Rápido</span>
+            </button>
+          )}
         </div>
-
         {/* Institucional */}
         <div className="footer-legal">
           <div className="footer-col-header">
@@ -168,7 +176,15 @@ const Footer = () => {
               </li>
             ))}
           </ul>
-
+          {isEditing && (
+            <button 
+              className="btn-add-link-premium" 
+              onClick={() => handleAddLink('links_institucional')}
+            >
+              <Plus size={14} />
+              <span>Adicionar Link Institucional</span>
+            </button>
+          )}
         </div>
 
         {/* Newsletter + Mapa */}
@@ -275,6 +291,30 @@ const Footer = () => {
           background: #fef2f2; border: none; color: #ef4444;
           width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
           display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+
+        .btn-add-link-premium {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: rgba(0, 75, 73, 0.08) !important;
+          color: var(--primary) !important;
+          border: 1px dashed var(--primary) !important;
+          padding: 0.5rem 0.75rem !important;
+          border-radius: 8px;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s;
+          margin-top: 0.75rem;
+          width: 100%;
+          justify-content: center;
+        }
+        .btn-add-link-premium:hover {
+          background: var(--primary) !important;
+          color: white !important;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 10px rgba(0, 75, 73, 0.15);
         }
 
         .newsletter-input { display: flex; gap: 0.5rem; margin-top: 1rem; }

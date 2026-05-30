@@ -57,10 +57,10 @@ const WhatsAppButton = () => {
         />
       </motion.div>
 
-      <style jsx>{`
+      <style>{`
         .whatsapp-floating {
           position: fixed;
-          bottom: 2rem;
+          bottom: 5.5rem;
           right: 2rem;
           z-index: 9999;
           display: flex;
@@ -128,7 +128,7 @@ const WhatsAppButton = () => {
         }
 
         @media (max-width: 768px) {
-          .whatsapp-floating { bottom: 1.5rem; right: 1.5rem; }
+          .whatsapp-floating { bottom: 5rem; right: 1.5rem; }
           .whatsapp-btn { width: 60px; height: 60px; }
           .whatsapp-tooltip-container { display: none; }
         }
