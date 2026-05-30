@@ -124,7 +124,25 @@ const Footer = () => {
                     </button>
                   </div>
                 ) : (
-                  <Link to={item.url}>{item.label}</Link>
+                  <Link 
+                    to={item.url}
+                    onClick={(e) => {
+                      if (item.url === '/' || item.url === '#') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = item.url.split('#')[1];
+                        const el = document.getElementById(targetId);
+                        if (el) {
+                          e.preventDefault();
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      } else if (item.url === window.location.pathname) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                  >
+                    {item.label}
+                  </Link>
                 )}
               </li>
             ))}
@@ -171,7 +189,25 @@ const Footer = () => {
                     </button>
                   </div>
                 ) : (
-                  <Link to={item.url}>{item.label}</Link>
+                  <Link 
+                    to={item.url}
+                    onClick={(e) => {
+                      if (item.url === '/' || item.url === '#') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = item.url.split('#')[1];
+                        const el = document.getElementById(targetId);
+                        if (el) {
+                          e.preventDefault();
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      } else if (item.url === window.location.pathname) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                  >
+                    {item.label}
+                  </Link>
                 )}
               </li>
             ))}
