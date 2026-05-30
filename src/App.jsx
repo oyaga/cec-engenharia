@@ -20,6 +20,7 @@ import OuvidoriaAdmin from './pages/OuvidoriaAdmin'
 import TestimonialsAdmin from './pages/TestimonialsAdmin'
 import LeadsAdmin from './pages/LeadsAdmin'
 import ScrollToTop from './components/ScrollToTop'
+import AdminUsers from './pages/AdminUsers'
 
 // Public Site Pages
 import Home from './pages/site/Home'
@@ -117,6 +118,7 @@ function App() {
               <Route path="/auditoria" element={<RoleGuard allowedRoles={['admin', 'coordenador']}><Auditoria /></RoleGuard>} />
               <Route path="/ouvidoria-admin" element={<RoleGuard allowedRoles={['admin']}><OuvidoriaAdmin /></RoleGuard>} />
               <Route path="/admin/testimonials" element={<RoleGuard allowedRoles={['admin']}><TestimonialsAdmin /></RoleGuard>} />
+              <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
               <Route path="/leads-admin" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']}><LeadsAdmin /></RoleGuard>} />
               <Route path="/equipe" element={<RoleGuard allowedRoles={['admin']}><Equipe /></RoleGuard>} />
               <Route path="/lms" element={<RoleGuard allowedRoles={['admin', 'coordenador']}><LMSAdmin /></RoleGuard>} />

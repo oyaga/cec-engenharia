@@ -1,41 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Plus, Trash2, RefreshCw, ShieldCheck, User, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, ShieldCheck, User, Eye, EyeOff, AlertCircle, CheckCircle, Award } from 'lucide-react';
 import AdminToolbar from '../components/AdminToolbar';
+import { useEdit } from '../context/EditContext';
 
 const AdminUsers = () => {
+  const { userProfile: currentUserProfile, hasPermission } = useEdit();
+  
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', role: 'student' });
+  const [form, setForm] = useState({ email: '', password: '', canAddWebdesigners: false });
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState(null); // { type: 'success'|'error', msg: '' }
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { fetchUsers(); }, []);
+  // Permissão para gerenciar e criar novos webdesigners
+  const canManage = currentUserProfile?.role === 'admin' || currentUserProfile?.permissions?.can_add_webdesigners === true;
+
+  useEffect(() => { 
+    if (currentUserProfile) {
+      fetchUsers(); 
+    }
+  }, [currentUserProfile]);
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // Lista usuários da tabela auth (via Supabase — só funciona com service_role em produção)
-      // Como usamos anon key, buscamos da tabela pública de usuários se existir
-      // Fallback: mostramos os usuários que criamos via script
+      // Filtrar apenas usuários que possuem cargos administrativos/editor (admin e webdesigner)
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .in('role', ['admin', 'webdesigner'])
         .order('created_at', { ascending: false });
 
       if (error) {
-        // Tabela users pública não existe, tentamos a view auth.users exposta
-        // Fallback: mostrar dados estáticos dos usuários conhecidos
+        // Fallback robusto se a tabela users estiver indisponível ou vazia
         setUsers([
-          { id: '1', email: 'webdesigner@cec.com.br', role: 'admin', created_at: new Date().toISOString() },
-          { id: '2', email: 'admin@cec.com.br', role: 'admin', created_at: new Date().toISOString() },
+          { id: '1', email: 'webdesigner@cec.com.br', role: 'webdesigner', created_at: new Date().toISOString(), permissions: { can_add_webdesigners: true } },
+          { id: '2', email: 'admin@cec.com.br', role: 'admin', created_at: new Date().toISOString(), permissions: { can_add_webdesigners: true } },
         ]);
       } else {
         setUsers(data || []);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao buscar usuários:', err);
     } finally {
       setLoading(false);
     }
@@ -43,46 +52,128 @@ const AdminUsers = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!canManage) {
+      alert('Você não tem permissão para adicionar novos webdesigners.');
+      return;
+    }
+    
     setStatus(null);
+    setSaving(true);
     try {
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
-        options: { data: { role: form.role } }
+        options: { data: { role: 'webdesigner' } }
       });
 
       if (error) throw error;
 
-      // Tenta salvar na tabela users pública também
-      await supabase.from('users').upsert({
-        email: form.email,
-        role: form.role,
-        created_at: new Date().toISOString()
-      }).select();
+      if (!data?.user) {
+        throw new Error('Não foi possível obter os dados do usuário criado no Auth.');
+      }
 
-      setStatus({ type: 'success', msg: `Usuário ${form.email} criado com sucesso!` });
-      setForm({ email: '', password: '', role: 'student' });
+      // Salva na tabela users pública
+      const { error: dbError } = await supabase.from('users').upsert({
+        id: data.user.id,
+        email: form.email,
+        role: 'webdesigner',
+        permissions: { can_add_webdesigners: form.canAddWebdesigners },
+        created_at: new Date().toISOString()
+      });
+
+      if (dbError) throw dbError;
+
+      setStatus({ type: 'success', msg: `Usuário ${form.email} criado como Webdesigner com sucesso!` });
+      setForm({ email: '', password: '', canAddWebdesigners: false });
       setShowForm(false);
       fetchUsers();
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (userItem) => {
+    if (!canManage) {
+      alert('Você não tem permissão para excluir usuários.');
+      return;
+    }
+    if (isMasterEmail(userItem.email)) {
+      alert('Usuários Master são protegidos e não podem ser excluídos.');
+      return;
+    }
+    if (!window.confirm(`Excluir o usuário ${userItem.email}?`)) return;
+    
+    try {
+      // Remove da tabela pública
+      const { error } = await supabase.from('users').delete().eq('email', userItem.email);
+      if (error) throw error;
+
+      setUsers(prev => prev.filter(u => u.email !== userItem.email));
+      setStatus({ type: 'success', msg: `Usuário ${userItem.email} removido do sistema.` });
     } catch (err) {
       setStatus({ type: 'error', msg: err.message });
     }
   };
 
-  const handleDelete = async (user) => {
-    if (!window.confirm(`Excluir o usuário ${user.email}?`)) return;
+  const toggleCanAddPermission = async (userItem) => {
+    if (!canManage) return;
+    if (isMasterEmail(userItem.email)) return;
+
     try {
-      // Remove da tabela local
-      await supabase.from('users').delete().eq('email', user.email);
-      setUsers(prev => prev.filter(u => u.email !== user.email));
-      setStatus({ type: 'success', msg: `Usuário ${user.email} removido da lista.` });
+      const currentPerms = userItem.permissions || {};
+      const newPermission = !currentPerms.can_add_webdesigners;
+      
+      const { error } = await supabase
+        .from('users')
+        .update({
+          permissions: {
+            ...currentPerms,
+            can_add_webdesigners: newPermission
+          }
+        })
+        .eq('email', userItem.email);
+
+      if (error) throw error;
+
+      // Atualiza localmente
+      setUsers(prev => prev.map(u => {
+        if (u.email === userItem.email) {
+          return {
+            ...u,
+            permissions: {
+              ...(u.permissions || {}),
+              can_add_webdesigners: newPermission
+            }
+          };
+        }
+        return u;
+      }));
+
+      setStatus({ 
+        type: 'success', 
+        msg: `Permissão de ${userItem.email} atualizada com sucesso!` 
+      });
     } catch (err) {
       setStatus({ type: 'error', msg: err.message });
     }
   };
 
   const isMasterEmail = (email) =>
-    ['webdesigner@cec.com.br', 'admin@cec.com.br'].includes(email);
+    ['webdesigner@cec.com.br', 'admin@cec.com.br', 'piticalyn@cec.com.br', 'secretaria@cursocec.com.br'].includes(email?.toLowerCase());
+
+  // Restrição de Acesso Completo de Tela
+  if (!currentUserProfile || (currentUserProfile.role !== 'admin' && currentUserProfile.role !== 'webdesigner')) {
+    return (
+      <div style={{ padding: '4rem 2rem', textAlign: 'center', minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <AdminToolbar />
+        <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+        <h2 style={{ color: 'var(--primary-dark)', margin: '0 0 0.5rem' }}>Acesso Restrito</h2>
+        <p style={{ color: 'var(--text-muted)', maxWidth: '400px', margin: 0 }}>Você precisa estar logado como Webdesigner ou Administrador para gerenciar permissões do site.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-users-page">
@@ -91,16 +182,18 @@ const AdminUsers = () => {
       <div className="container">
         <div className="page-header">
           <div>
-            <h1>Gerenciamento de Usuários</h1>
-            <p>Crie, visualize e remova usuários do sistema.</p>
+            <h1>Gerenciamento de Webdesigners</h1>
+            <p>Gerencie a equipe e permissões de edição do site institucional.</p>
           </div>
           <div className="header-actions">
             <button className="btn-refresh" onClick={fetchUsers} title="Atualizar lista">
               <RefreshCw size={18} />
             </button>
-            <button className="btn-new-user" onClick={() => setShowForm(!showForm)}>
-              <Plus size={20} /> Novo Usuário
-            </button>
+            {canManage && (
+              <button className="btn-new-user" onClick={() => setShowForm(!showForm)}>
+                <Plus size={20} /> Novo Webdesigner
+              </button>
+            )}
           </div>
         </div>
 
@@ -114,9 +207,9 @@ const AdminUsers = () => {
         )}
 
         {/* Formulário de criação */}
-        {showForm && (
+        {showForm && canManage && (
           <div className="create-form-card">
-            <h3>Criar Novo Usuário</h3>
+            <h3>Criar Novo Webdesigner</h3>
             <form onSubmit={handleCreate} className="create-form">
               <div className="form-row">
                 <div className="form-group">
@@ -129,15 +222,18 @@ const AdminUsers = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Perfil</label>
-                  <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                    <option value="student">Aluno</option>
-                    <option value="admin">Administrador</option>
-                  </select>
+                  <label>Perfil de Acesso</label>
+                  <input
+                    type="text"
+                    disabled
+                    value="Webdesigner (Editor do Site)"
+                    style={{ background: '#f1f5f9', color: '#64748b', fontWeight: '600' }}
+                  />
                 </div>
               </div>
+              
               <div className="form-group pass-group">
-                <label>Senha</label>
+                <label>Senha de Acesso</label>
                 <div className="pass-input-wrap">
                   <input
                     type={showPassword ? 'text' : 'password'} required
@@ -151,10 +247,25 @@ const AdminUsers = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Botão de permissão de criador */}
+              <div className="form-group checkbox-group" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', marginTop: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  id="canAddWebdesigners"
+                  checked={form.canAddWebdesigners}
+                  onChange={e => setForm({ ...form, canAddWebdesigners: e.target.checked })}
+                  style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                />
+                <label htmlFor="canAddWebdesigners" style={{ fontSize: '0.88rem', fontWeight: '700', cursor: 'pointer', color: 'var(--primary-dark)', userSelect: 'none', margin: 0 }}>
+                  Permitir que este login adicione novos webdesigners (Permissão de Criador)
+                </label>
+              </div>
+
               <div className="form-actions">
                 <button type="button" className="btn-cancel" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-save">
-                  <Plus size={16} /> Criar Usuário
+                <button type="submit" className="btn-save" disabled={saving}>
+                  <Plus size={16} /> {saving ? 'Salvando...' : 'Criar Webdesigner'}
                 </button>
               </div>
             </form>
@@ -166,65 +277,127 @@ const AdminUsers = () => {
           {loading ? (
             <div className="loading-state">
               <RefreshCw size={24} className="spin" />
-              <p>Carregando usuários...</p>
+              <p>Carregando equipe...</p>
             </div>
           ) : users.length === 0 ? (
             <div className="empty-state">
               <User size={48} />
-              <p>Nenhum usuário encontrado.</p>
-              <button className="btn-new-user" onClick={() => setShowForm(true)}>
-                <Plus size={16} /> Criar primeiro usuário
-              </button>
+              <p>Nenhum webdesigner cadastrado.</p>
+              {canManage && (
+                <button className="btn-new-user" onClick={() => setShowForm(true)}>
+                  <Plus size={16} /> Criar primeiro webdesigner
+                </button>
+              )}
             </div>
           ) : (
             <table className="users-table">
               <thead>
                 <tr>
                   <th>E-mail</th>
-                  <th>Perfil</th>
+                  <th>Cargo</th>
+                  <th>Permissão de Criador</th>
                   <th>Criado em</th>
-                  <th>Ações</th>
+                  {canManage && <th>Ações</th>}
                 </tr>
               </thead>
               <tbody>
-                {users.map((user, i) => (
-                  <tr key={user.id || i}>
-                    <td>
-                      <div className="email-cell">
-                        {isMasterEmail(user.email)
-                          ? <ShieldCheck size={16} className="icon-admin" />
-                          : <User size={16} className="icon-user" />
+                {users.map((userItem, i) => {
+                  const isMaster = isMasterEmail(userItem.email);
+                  const canCreateOthers = isMaster || userItem.role === 'admin' || userItem.permissions?.can_add_webdesigners === true;
+                  
+                  return (
+                    <tr key={userItem.id || i}>
+                      <td>
+                        <div className="email-cell">
+                          {isMaster
+                            ? <ShieldCheck size={16} className="icon-admin" />
+                            : <User size={16} className="icon-user" />
+                          }
+                          <span style={{ fontWeight: isMaster ? '600' : 'normal' }}>{userItem.email}</span>
+                          {isMaster && <span className="badge-master">MASTER</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`role-pill ${userItem.role === 'admin' ? 'admin' : 'webdesigner'}`}>
+                          {userItem.role === 'admin' ? 'Admin' : 'Webdesigner'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          {canManage && !isMaster && userItem.role !== 'admin' ? (
+                            <button
+                              onClick={() => toggleCanAddPermission(userItem)}
+                              className={`btn-toggle-perm ${canCreateOthers ? 'active' : ''}`}
+                              title={canCreateOthers ? "Desativar permissão de criar outros webdesigners" : "Permitir criar outros webdesigners"}
+                              style={{
+                                border: 'none',
+                                padding: '6px 14px',
+                                borderRadius: '30px',
+                                fontSize: '0.75rem',
+                                fontWeight: '800',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                                background: canCreateOthers ? 'var(--primary)' : 'rgba(0, 0, 0, 0.05)',
+                                color: canCreateOthers ? 'white' : 'var(--text-muted)'
+                              }}
+                            >
+                              {canCreateOthers ? (
+                                <>
+                                  <Award size={12} />
+                                  <span>Sim (Criador)</span>
+                                </>
+                              ) : (
+                                <span>Não</span>
+                              )}
+                            </button>
+                          ) : (
+                            <span style={{ 
+                              fontSize: '0.8rem', 
+                              fontWeight: '700', 
+                              color: canCreateOthers ? 'var(--primary)' : 'var(--text-muted)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              {canCreateOthers ? (
+                                <>
+                                  <Award size={12} />
+                                  <span>Sim (Criador)</span>
+                                </>
+                              ) : (
+                                <span>Não</span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="date-cell">
+                        {userItem.created_at
+                          ? new Date(userItem.created_at).toLocaleDateString('pt-BR')
+                          : '—'
                         }
-                        <span>{user.email}</span>
-                        {isMasterEmail(user.email) && <span className="badge-master">MASTER</span>}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`role-pill ${user.role === 'admin' ? 'admin' : 'student'}`}>
-                        {user.role === 'admin' ? 'Admin' : 'Aluno'}
-                      </span>
-                    </td>
-                    <td className="date-cell">
-                      {user.created_at
-                        ? new Date(user.created_at).toLocaleDateString('pt-BR')
-                        : '—'
-                      }
-                    </td>
-                    <td>
-                      {!isMasterEmail(user.email) ? (
-                        <button
-                          className="btn-delete"
-                          onClick={() => handleDelete(user)}
-                          title="Excluir usuário"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      ) : (
-                        <span className="protected-label">Protegido</span>
+                      </td>
+                      {canManage && (
+                        <td>
+                          {!isMaster && userItem.role !== 'admin' ? (
+                            <button
+                              className="btn-delete"
+                              onClick={() => handleDelete(userItem)}
+                              title="Excluir usuário"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          ) : (
+                            <span className="protected-label">Protegido</span>
+                          )}
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -232,7 +405,7 @@ const AdminUsers = () => {
 
         <div className="info-note">
           <AlertCircle size={14} />
-          <span>Usuários Master ({['webdesigner@cec.com.br', 'admin@cec.com.br'].join(', ')}) são protegidos e não podem ser excluídos.</span>
+          <span>Usuários master ou administradores possuem proteção de exclusão automática e permissões totais no sistema.</span>
         </div>
       </div>
 
@@ -322,8 +495,8 @@ const AdminUsers = () => {
         .badge-master { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 800; padding: 1px 6px; border-radius: 4px; }
 
         .role-pill { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
-        .role-pill.admin   { background: #e0f2fe; color: #0369a1; }
-        .role-pill.student { background: #f0fdf4; color: #166534; }
+        .role-pill.admin   { background: #fee2e2; color: #b91c1c; }
+        .role-pill.webdesigner { background: #e0f2fe; color: #0369a1; }
 
         .date-cell { color: var(--text-muted); }
 
@@ -346,9 +519,17 @@ const AdminUsers = () => {
           margin-top: 1rem; font-size: 0.78rem; color: #94a3b8;
         }
 
-        @media (max-width: 640px) {
+        .btn-toggle-perm:hover {
+          transform: scale(1.05);
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+        .btn-toggle-perm.active:hover {
+          box-shadow: 0 4px 12px rgba(0, 75, 73, 0.2);
+        }
+
+        @media (max-width: 768px) {
           .form-row { grid-template-columns: 1fr; }
-          .users-table th:nth-child(3), .users-table td:nth-child(3) { display: none; }
+          .users-table th:nth-child(4), .users-table td:nth-child(4) { display: none; }
         }
       `}</style>
     </div>

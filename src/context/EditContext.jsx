@@ -220,7 +220,7 @@ export const EditProvider = ({ children }) => {
   };
 
   // Verificação de Master User (Acesso a configurações do sistema)
-  const isMaster = userProfile?.role === 'admin' || hasPermission('manage_team');
+  const isMaster = userProfile?.role === 'admin' || hasPermission('manage_team') || hasPermission('can_add_webdesigners');
 
   return (
     <EditContext.Provider value={{ 
