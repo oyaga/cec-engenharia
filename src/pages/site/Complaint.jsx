@@ -157,8 +157,19 @@ const Complaint = () => {
           padding-bottom: 6rem;
         }
         .icon-warning-top { color: #f87171; margin-bottom: 1.5rem; }
-        .complaint-title { font-size: 3rem; font-weight: 800; margin-bottom: 1rem; }
-        .complaint-subtitle { font-size: 1.15rem; color: #94a3b8; max-width: 600px; margin-inline: auto; opacity: 0.8; }
+        .complaint-title { 
+          font-size: 3rem; 
+          font-weight: 800; 
+          margin-bottom: 1rem; 
+          color: #ffffff !important; 
+        }
+        .complaint-subtitle { 
+          font-size: 1.15rem; 
+          color: #cbd5e1 !important; 
+          max-width: 600px; 
+          margin-inline: auto; 
+          opacity: 0.9; 
+        }
         
         .container.narrow-form { max-width: 750px; margin-inline: auto; }
         .complaint-card {
