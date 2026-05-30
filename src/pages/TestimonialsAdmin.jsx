@@ -1,13 +1,54 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, XCircle, Clock, Star, User, Trash2, RefreshCw } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Star, User, Trash2, RefreshCw, Plus } from 'lucide-react'
 
 export default function TestimonialsAdmin() {
   const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
 
+  // Estados para depoimento manual (Zap / E-mail)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formCourse, setFormCourse] = useState('')
+  const [formRating, setFormRating] = useState(5)
+  const [formContent, setFormContent] = useState('')
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => { fetchAll() }, [filter])
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('testimonials')
+        .insert([{
+          name: formName,
+          course: formCourse,
+          rating: parseInt(formRating),
+          content: formContent,
+          status: 'approved', // Depoimentos manuais já entram aprovados
+          type: 'text',
+          evaluation_date: new Date().toISOString().split('T')[0]
+        }])
+
+      if (error) throw error
+
+      setFormName('')
+      setFormCourse('')
+      setFormRating(5)
+      setFormContent('')
+      setShowAddForm(false)
+      fetchAll()
+      alert('Depoimento cadastrado e publicado com sucesso!')
+    } catch (err) {
+      console.error('Erro ao cadastrar depoimento:', err)
+      alert('Erro ao cadastrar o depoimento: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const fetchAll = async () => {
     setLoading(true)
@@ -67,17 +108,146 @@ export default function TestimonialsAdmin() {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: 'var(--text-color)', margin: 0 }}>
             ⭐ Moderação de Depoimentos
           </h1>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>Aprove ou rejeite os depoimentos enviados pelos alunos</p>
         </div>
-        <button onClick={fetchAll} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <RefreshCw size={16} /> Atualizar
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button 
+            onClick={() => setShowAddForm(!showAddForm)} 
+            className="btn" 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              background: 'var(--primary)', 
+              color: 'white', 
+              border: 'none', 
+              padding: '0.6rem 1.25rem', 
+              borderRadius: '10px', 
+              fontWeight: '700', 
+              cursor: 'pointer' 
+            }}
+          >
+            <Plus size={16} /> Novo Depoimento
+          </button>
+          <button 
+            onClick={fetchAll} 
+            className="btn btn-secondary" 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              padding: '0.6rem 1.25rem',
+              borderRadius: '10px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              border: '1px solid var(--border)',
+              background: 'white',
+              color: 'var(--text-color)'
+            }}
+          >
+            <RefreshCw size={16} /> Atualizar
+          </button>
+        </div>
       </div>
+
+      {/* Formulário de Depoimento Manual */}
+      {showAddForm && (
+        <div className="card" style={{
+          background: 'var(--card-bg, white)',
+          padding: '1.5rem',
+          borderRadius: '16px',
+          border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)',
+          marginBottom: '2rem'
+        }}>
+          <h3 style={{ margin: '0 0 1.25rem 0', color: 'var(--text-color)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            ✍️ Inserir Depoimento Recebido (WhatsApp / E-mail)
+          </h3>
+          <form onSubmit={handleAddSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)' }}>Nome do Aluno</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Ex: João Silva"
+                  style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.9rem', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)' }}>Curso / Legenda</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={formCourse}
+                  onChange={(e) => setFormCourse(e.target.value)}
+                  placeholder="Ex: Aluno de Engenharia / WhatsApp"
+                  style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.9rem', outline: 'none' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)' }}>Avaliação (Estrelas)</label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      type="button"
+                      key={star}
+                      onClick={() => setFormRating(star)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
+                    >
+                      <Star 
+                        size={24} 
+                        fill={star <= formRating ? '#f59e0b' : 'none'} 
+                        color="#f59e0b" 
+                      />
+                    </button>
+                  ))}
+                  <span style={{ fontSize: '0.9rem', fontWeight: '700', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>{formRating} de 5 estrelas</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)' }}>Texto do Depoimento</label>
+                <textarea 
+                  required 
+                  rows={4}
+                  value={formContent}
+                  onChange={(e) => setFormContent(e.target.value)}
+                  placeholder="Cole aqui o depoimento que você recebeu por WhatsApp, E-mail ou redes sociais..."
+                  style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.9rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                onClick={() => setShowAddForm(false)} 
+                style={{ padding: '0.6rem 1.25rem', borderRadius: '10px', border: '1px solid #e2e8f0', background: 'white', color: 'var(--text-muted)', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', borderRadius: '10px', border: 'none', background: 'var(--primary)', color: 'white', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                {saving ? 'Salvando...' : 'Salvar e Publicar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
