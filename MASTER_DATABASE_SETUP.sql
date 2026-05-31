@@ -3,7 +3,7 @@
 -- ==========================================
 
 -- 1. TABELA DE USUÁRIOS (Funcionários)
-CREATE TABLE public.users (
+CREATE TABLE IF NOT EXISTS public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE public.users (
 );
 
 -- 2. TABELA DE TURMAS (Classes)
-CREATE TABLE public.classes (
+CREATE TABLE IF NOT EXISTS public.classes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   course_name TEXT NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE public.classes (
 );
 
 -- 3. TABELA DE ALUNOS (Students)
-CREATE TABLE public.students (
+CREATE TABLE IF NOT EXISTS public.students (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   matricula_numero SERIAL,
   turma_id UUID REFERENCES public.classes(id),
@@ -44,7 +44,7 @@ CREATE TABLE public.students (
 );
 
 -- 4. UPLOADS NO CADASTRO (Documentos)
-CREATE TABLE public.student_documents (
+CREATE TABLE IF NOT EXISTS public.student_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES public.students(id) ON DELETE CASCADE,
   doc_type TEXT NOT NULL CHECK (doc_type IN ('RG', 'CPF', 'Residencia', 'Escolaridade')),
@@ -53,7 +53,7 @@ CREATE TABLE public.student_documents (
 );
 
 -- 5. HISTÓRICO ACADÊMICO E NOTAS
-CREATE TABLE public.academic_records (
+CREATE TABLE IF NOT EXISTS public.academic_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES public.students(id) ON DELETE CASCADE,
   status TEXT DEFAULT 'Ativo',
@@ -63,7 +63,7 @@ CREATE TABLE public.academic_records (
 );
 
 -- 6. PRESENÇA DIÁRIA E FICHÁRIO (Portal do Professor)
-CREATE TABLE public.attendance_records (
+CREATE TABLE IF NOT EXISTS public.attendance_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   class_id UUID REFERENCES public.classes(id) ON DELETE CASCADE,
   student_id UUID REFERENCES public.students(id) ON DELETE CASCADE,
@@ -72,7 +72,7 @@ CREATE TABLE public.attendance_records (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE public.class_logs (
+CREATE TABLE IF NOT EXISTS public.class_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   class_id UUID REFERENCES public.classes(id) ON DELETE CASCADE,
   instructor_id UUID REFERENCES public.users(id),
@@ -82,7 +82,7 @@ CREATE TABLE public.class_logs (
 );
 
 -- 7. FINANCEIRO E CUSTOS (Contas e Rateio)
-CREATE TABLE public.financial_records (
+CREATE TABLE IF NOT EXISTS public.financial_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES public.students(id) ON DELETE CASCADE,
   total_value NUMERIC NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE public.financial_records (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE public.financial_costs (
+CREATE TABLE IF NOT EXISTS public.financial_costs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   class_id UUID REFERENCES public.classes(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE public.financial_costs (
 );
 
 -- 8. CONTROLE DE NOTAS FISCAIS
-CREATE TABLE public.invoices_tracking (
+CREATE TABLE IF NOT EXISTS public.invoices_tracking (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES public.students(id) ON DELETE CASCADE,
   financial_record_id UUID REFERENCES public.financial_records(id),
@@ -115,7 +115,7 @@ CREATE TABLE public.invoices_tracking (
 );
 
 -- 9. LOGS DE AUDITORIA (Inalteráveis)
-CREATE TABLE public.audit_logs (
+CREATE TABLE IF NOT EXISTS public.audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id),
   action TEXT NOT NULL,
