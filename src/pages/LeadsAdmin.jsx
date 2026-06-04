@@ -219,12 +219,40 @@ const LeadsAdmin = () => {
                   
                   <div className="flex gap-2">
                     {lead.status === 'novo' && (
-                      <button onClick={() => updateStatus(lead.id, 'em_atendimento')} className="btn btn-secondary flex-1">Iniciado</button>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          updateStatus(lead.id, 'em_atendimento');
+                        }} 
+                        className="btn btn-secondary flex-1"
+                      >
+                        Iniciado
+                      </button>
                     )}
                     {lead.status !== 'concluido' && (
-                      <button onClick={() => updateStatus(lead.id, 'concluido')} className="btn btn-primary flex-1">Concluir</button>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          updateStatus(lead.id, 'concluido');
+                        }} 
+                        className="btn btn-primary flex-1"
+                      >
+                        Concluir
+                      </button>
                     )}
-                    <button onClick={() => deleteLead(lead.id)} className="btn bg-red-50 text-red-600 border-red-100 hover:bg-red-100">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteLead(lead.id);
+                      }} 
+                      className="btn bg-red-50 text-red-600 border-red-100 hover:bg-red-100"
+                    >
                       <Trash2 size={16} />
                     </button>
                   </div>
