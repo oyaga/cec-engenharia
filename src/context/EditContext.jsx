@@ -98,7 +98,35 @@ export const EditProvider = ({ children }) => {
         console.warn('Usando conteúdo local (tabela site_content não encontrada ou vazia).');
       } else if (data && data.data) {
         // Deep merge: mantém defaults locais para chaves que não existem no banco
-        setContent(prev => deepMerge(prev, data.data));
+        const mergedContent = deepMerge(initialContent, data.data);
+        setContent(mergedContent);
+      }
+
+      // Buscar imagens configuradas no CMS (system_settings)
+      try {
+        const { data: settings } = await supabase.from('system_settings').select('key, value').in('key', ['site_logo_url', 'site_banner_url']);
+        if (settings) {
+          const logo = settings.find(s => s.key === 'site_logo_url');
+          const banner = settings.find(s => s.key === 'site_banner_url');
+          
+          setContent(prev => {
+            const newContent = { ...prev };
+            
+            if (logo?.value) {
+              if (!newContent.navbar) newContent.navbar = {};
+              newContent.navbar.logo_img = logo.value;
+            }
+            
+            if (banner?.value) {
+              if (!newContent.hero) newContent.hero = {};
+              newContent.hero.image = banner.value;
+            }
+            
+            return newContent;
+          });
+        }
+      } catch (err) {
+        console.warn('Falha ao buscar assets do system_settings', err);
       }
     } catch (err) {
       console.error('Erro ao buscar conteúdo:', err);

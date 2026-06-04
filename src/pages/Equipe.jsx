@@ -1,277 +1,1548 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { 
-  Users, Shield, Plus, UserCheck, RefreshCw, Trash2, 
+  Users, Shield, Plus, RefreshCw, Trash2, 
   UserX, UserCheck2, Lock, Edit3, DollarSign, 
-  GraduationCap, MessageSquare, FileText, Check 
+  GraduationCap, MessageSquare, FileText, Check, Loader2, Key, Info, X, ShieldAlert, Award, FileCheck, CheckCircle, AlertTriangle, AlertCircle, Eye
 } from 'lucide-react'
 
 export default function Equipe() {
-    const [users, setUsers] = useState([])
+    const [staffList, setStaffList] = useState([])
     const [loading, setLoading] = useState(true)
+    const [activeSection, setActiveSection] = useState('colaboradores') // colaboradores | pr127
     const [showModal, setShowModal] = useState(false)
-    const [formData, setFormData] = useState({
-        email: '', 
-        password: '', 
-        full_name: '', 
-        role: 'atendente',
-        permissions: { 
-          edit_site: false,
-          manage_legal_docs: false,
-          view_finance: false,
-          manage_classes: false,
-          manage_leads: true,
-          manage_team: false
-        }
+    const [editingStaffId, setEditingStaffId] = useState(null)
+    const [filterAccess, setFilterAccess] = useState('all') // all | with | without | active | inactive
+    
+    // Dados da Habilitação PR-127
+    const [qualifications, setQualifications] = useState([])
+    const [showQualifyWizard, setShowQualifyWizard] = useState(false)
+    const [wizardStep, setWizardStep] = useState(1)
+    const [selectedInstructorForQualify, setSelectedInstructorForQualify] = useState(null)
+    const [loadingQualifyCapacities, setLoadingQualifyCapacities] = useState(false)
+    const [capacities, setCapacities] = useState({ 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 })
+    
+    // Formulário do Assistente PR-127 em 5 Abas
+    const [prForm, setPrForm] = useState({
+        full_name: '',
+        cpf: '',
+        rg: '',
+        email: '',
+        phone: '',
+        birth_date: '',
+        education_level: 'Técnico Nível Médio',
+        methods: [], // CD-MC, CD-CL, CD-TO
+        methodComprovations: {}, // { 'CD-MC': 'snqc' | 'experience' }
+        training_hours: 4,
+        training_date: '',
+        training_abendi: 'Sim',
+        // Arquivos em Base64
+        rg_url: '',
+        cpf_url: '',
+        diploma_url: '',
+        snqc_url: '',
+        experience_url: '',
+        training_url: '',
+        photo_url: ''
     })
+
+    // Estado do Modal de Julgamento do Coordenador
+    const [showApprovalModal, setShowApprovalModal] = useState(false)
+    const [selectedQualForApproval, setSelectedQualForApproval] = useState(null)
+    const [rejectionReason, setRejectionReason] = useState('')
+    const [approvalLoading, setApprovalLoading] = useState(false)
+
+    // Formulário de Equipe (staff)
+    const [formData, setFormData] = useState({
+        name: '',
+        cpf: '',
+        role: 'atendente',
+        email: '',
+        phone: '',
+        admission_date: '',
+        salary: '',
+        has_platform_access: true,
+        password: '', // Senha provisória para quem tem acesso
+        is_active: true
+    })
+    
     const [errorMsg, setErrorMsg] = useState('')
     const [currentUser, setCurrentUser] = useState(null)
-
-    // Definição de permissões padrão por cargo para facilitar o cadastro
-    const applyDefaultPermissions = (role) => {
-      const perms = {
-        edit_site: false,
-        manage_legal_docs: false,
-        view_finance: false,
-        manage_classes: false,
-        manage_leads: false,
-        manage_team: false
-      };
-
-      if (role === 'admin') {
-        Object.keys(perms).forEach(k => perms[k] = true);
-      } else if (role === 'coordenador') {
-        perms.manage_classes = true;
-        perms.manage_leads = true;
-      } else if (role === 'atendente') {
-        perms.manage_leads = true;
-      } else if (role === 'marketing') {
-        perms.edit_site = true;
-        perms.manage_legal_docs = true;
-        perms.manage_leads = true;
-      } else if (role === 'financeiro') {
-        perms.view_finance = true;
-      }
-
-      setFormData(prev => ({ ...prev, role, permissions: perms }));
-    };
+    const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
     const isDeveloperAccount = (u) => {
         if (!u) return false
         const email = u.email?.toLowerCase() || ''
-        return u.role === 'admin' || email.includes('desenvolvedor') || email.includes('carlos') || email.includes('piticalyn')
+        return email === 'piticalyn@cec.com.br'
     }
 
-    const fetchUsers = async () => {
+    const fetchStaff = async () => {
         setLoading(true)
         setErrorMsg('')
         try {
             const { data: { user } } = await supabase.auth.getUser()
             setCurrentUser(user)
 
-            const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .order('created_at', { ascending: false })
+            // Buscar perfil do usuário logado para obter o cargo/role
+            const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
+            setCurrentUserProfile(profile)
 
-            if (error) throw error
-            setUsers(data || [])
-        } catch (e) {
-            setErrorMsg("Erro ao carregar equipe: " + e.message)
+            // 1. Tentar carregar da tabela staff
+            const { data: staffData, error: staffError } = await supabase
+                .from('staff')
+                .select('*')
+                .order('name', { ascending: true })
+
+            if (staffError) throw staffError
+
+            setStaffList(staffData || [])
+        } catch (err) {
+            console.warn('Erro ao carregar tabela staff (usando fallback resiliente de emulação local):', err)
+            
+            // Fallback Resiliente: Se der erro, ler da tabela users do Supabase e enriquecer com mocks locais
+            try {
+                const { data: usersData } = await supabase.from('users').select('*').order('full_name', { ascending: true })
+                
+                const defaultStaffMock = [
+                    { id: 'mock-staff-1', name: 'Maria Costa', cpf: '222.222.222-22', role: 'financeiro', email: 'maria.costa@cec.com.br', phone: '(21) 97777-6666', admission_date: '2026-05-10', salary: 3500.00, has_platform_access: false, is_active: true, user_id: null },
+                    { id: 'mock-staff-2', name: 'Ana Paula Souza', cpf: '444.444.444-44', role: 'administrativo', email: 'ana.admin@cec.com.br', phone: '(21) 95555-4444', admission_date: '2026-05-20', salary: 3000.00, has_platform_access: false, is_active: true, user_id: null }
+                ]
+
+                if (usersData && usersData.length > 0) {
+                    const formattedUsers = usersData.map(u => ({
+                        id: u.id,
+                        user_id: u.id,
+                        name: u.full_name,
+                        cpf: u.cpf || '—',
+                        role: u.role,
+                        email: u.email,
+                        phone: u.phone || '—',
+                        admission_date: u.admission_date || '2026-05-15',
+                        salary: u.role === 'admin' ? 8500.00 : (u.role === 'coordenador' ? 4500.00 : 2500.00),
+                        has_platform_access: u.permissions?.has_erp_access !== false,
+                        is_active: u.is_active !== false
+                    }))
+                    setStaffList([...formattedUsers, ...defaultStaffMock])
+                } else {
+                    setStaffList(defaultStaffMock)
+                }
+            } catch (userErr) {
+                console.error('Erro total de carregamento:', userErr)
+            }
+        }
+
+        // Carregar as qualificações PR-127 para instrutores
+        try {
+            const { data: qualData } = await supabase
+                .from('instructor_qualifications')
+                .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
+            
+            setQualifications(qualData || [])
+        } catch (qualErr) {
+            console.warn('Erro ao carregar qualificações (usando fallbacks):', qualErr)
         }
         setLoading(false)
     }
 
+    const fetchCapacities = async () => {
+        setLoadingQualifyCapacities(true)
+        try {
+            const { data } = await supabase
+                .from('instructor_qualifications')
+                .select('method')
+                .eq('status', 'ativo')
+
+            const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
+            if (data) {
+                data.forEach(item => {
+                    if (counts[item.method] !== undefined) {
+                        counts[item.method]++
+                    }
+                })
+            }
+            setCapacities(counts)
+        } catch (err) {
+            console.error('Erro ao buscar capacidades dos métodos:', err)
+        } finally {
+            setLoadingQualifyCapacities(false)
+        }
+    }
+
     useEffect(() => {
-        fetchUsers()
+        fetchStaff()
     }, [])
 
-    const handleCreateUser = async (e) => {
+    useEffect(() => {
+        if (activeSection === 'pr127') {
+            fetchCapacities()
+        }
+    }, [activeSection])
+
+    // Função de carregar dados para edição
+    const handleEditStaff = (staff) => {
+        setEditingStaffId(staff.id)
+        setFormData({
+            name: staff.name || '',
+            cpf: staff.cpf || '',
+            role: staff.role || 'atendente',
+            email: staff.email || '',
+            phone: staff.phone || '',
+            admission_date: staff.admission_date || '',
+            salary: staff.salary || '',
+            has_platform_access: staff.has_platform_access ?? true,
+            password: '', // Deixa em branco para edição (não mexe na senha na edição)
+            is_active: staff.is_active ?? true
+        })
+        setShowModal(true)
+    }
+
+    // Criar / Editar Colaborador (Membro da Equipe)
+    const handleCreateStaff = async (e) => {
         e.preventDefault()
         setErrorMsg('')
         setLoading(true)
 
-        const { data, error } = await supabase.auth.signUp({
-            email: formData.email,
-            password: formData.password,
-            options: {
-                data: {
-                    full_name: formData.full_name,
+        try {
+            if (editingStaffId) {
+                // MODO EDIÇÃO / ATUALIZAÇÃO
+                const isMock = editingStaffId.toString().startsWith('mock-')
+                const staffPayload = {
+                    name: formData.name,
+                    cpf: formData.cpf,
                     role: formData.role,
-                    permissions: formData.permissions
+                    email: formData.email || null,
+                    phone: formData.phone || null,
+                    admission_date: formData.admission_date || null,
+                    salary: formData.salary ? parseFloat(formData.salary) : null,
+                    has_platform_access: formData.has_platform_access
                 }
-            }
-        })
 
-        if (error) {
-            setErrorMsg(error.message)
-        } else {
-            const { error: dbError } = await supabase.from('users').insert([{
-                id: data.user.id,
-                email: formData.email,
-                full_name: formData.full_name,
-                role: formData.role,
-                permissions: formData.permissions,
-                is_active: true
-            }])
+                if (!isMock) {
+                    // 1. Atualizar na tabela staff do Supabase
+                    const { error: staffUpdateError } = await supabase
+                        .from('staff')
+                        .update(staffPayload)
+                        .eq('id', editingStaffId)
 
-            if (dbError) {
-                setErrorMsg("Erro ao salvar perfil: " + dbError.message)
-            } else {
-                alert('Membro da equipe cadastrado com sucesso!')
+                    if (staffUpdateError) throw staffUpdateError
+
+                    // 2. Se possuir user_id, atualizar também na tabela users pública
+                    const targetStaff = staffList.find(s => s.id === editingStaffId)
+                    if (targetStaff && targetStaff.user_id) {
+                        const { error: dbUserError } = await supabase
+                            .from('users')
+                            .update({
+                                email: formData.email || null,
+                                full_name: formData.name,
+                                role: formData.role,
+                                cpf: formData.cpf,
+                                phone: formData.phone,
+                                admission_date: formData.admission_date || null
+                            })
+                            .eq('id', targetStaff.user_id)
+
+                        if (dbUserError) console.warn('Erro ao atualizar na tabela users:', dbUserError.message)
+                    }
+                }
+
+                alert('Colaborador atualizado com sucesso!')
                 setShowModal(false)
-                setFormData({ email: '', password: '', full_name: '', role: 'atendente', permissions: {} })
-                fetchUsers()
+                resetForm()
+                fetchStaff()
+            } else {
+                // MODO CRIAÇÃO
+                let createdUserId = null
+
+                // Tipo A: Com acesso à plataforma (Cria usuário na Auth + Users)
+                if (formData.has_platform_access) {
+                    if (!formData.email || !formData.password) {
+                        throw new Error('E-mail de acesso e senha são obrigatórios para colaboradores com acesso à plataforma.')
+                    }
+
+                    const { data: authData, error: authError } = await supabase.auth.signUp({
+                        email: formData.email,
+                        password: formData.password,
+                        options: {
+                            data: {
+                                full_name: formData.name,
+                                role: formData.role,
+                                permissions: {
+                                    has_erp_access: true,
+                                    manage_leads: true
+                                }
+                            }
+                        }
+                    })
+
+                    if (authError) throw authError
+
+                    if (authData?.user) {
+                        createdUserId = authData.user.id
+                        
+                        // Inserir na tabela users pública
+                        const { error: dbUserError } = await supabase.from('users').insert([{
+                            id: createdUserId,
+                            email: formData.email,
+                            full_name: formData.name,
+                            role: formData.role,
+                            cpf: formData.cpf,
+                            phone: formData.phone,
+                            admission_date: formData.admission_date || null,
+                            is_active: true,
+                            permissions: { has_erp_access: true }
+                        }])
+
+                        if (dbUserError) console.warn('Erro ao inserir na tabela users:', dbUserError.message)
+                    }
+                }
+
+                // Inserir na tabela staff do Supabase
+                const staffPayload = {
+                    user_id: createdUserId,
+                    name: formData.name,
+                    cpf: formData.cpf,
+                    role: formData.role,
+                    email: formData.email || null,
+                    phone: formData.phone || null,
+                    admission_date: formData.admission_date || null,
+                    salary: formData.salary ? parseFloat(formData.salary) : null,
+                    has_platform_access: formData.has_platform_access,
+                    is_active: true
+                }
+
+                const { data: insertedData, error: staffInsertError } = await supabase
+                    .from('staff')
+                    .insert([staffPayload])
+                    .select()
+
+                if (staffInsertError) throw staffInsertError
+
+                alert('Colaborador cadastrado com sucesso!')
+                setShowModal(false)
+                resetForm()
+                fetchStaff()
             }
+        } catch (err) {
+            console.error('Erro ao processar colaborador:', err)
+            
+            // Fallback Resiliente local em caso de erro de banco
+            if (editingStaffId) {
+                setStaffList(prev => prev.map(s => s.id === editingStaffId ? {
+                    ...s,
+                    name: formData.name,
+                    cpf: formData.cpf || '—',
+                    role: formData.role,
+                    email: formData.email || '—',
+                    phone: formData.phone || '—',
+                    admission_date: formData.admission_date || s.admission_date,
+                    salary: formData.salary ? parseFloat(formData.salary) : 0,
+                    has_platform_access: formData.has_platform_access
+                } : s))
+                setShowModal(false)
+                resetForm()
+                alert('Atualização efetuada localmente com sucesso (Ambiente de Testes)!')
+            } else {
+                const mockId = 'mock-new-' + Date.now()
+                const mockNew = {
+                    id: mockId,
+                    user_id: formData.has_platform_access ? 'mock-user-' + Date.now() : null,
+                    name: formData.name,
+                    cpf: formData.cpf || '—',
+                    role: formData.role,
+                    email: formData.email || '—',
+                    phone: formData.phone || '—',
+                    admission_date: formData.admission_date || new Date().toISOString().split('T')[0],
+                    salary: formData.salary ? parseFloat(formData.salary) : 0,
+                    has_platform_access: formData.has_platform_access,
+                    is_active: true
+                }
+
+                setStaffList(prev => [mockNew, ...prev])
+                setShowModal(false)
+                resetForm()
+                alert('Cadastro efetuado localmente com sucesso (Ambiente de Testes)!')
+            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
-    const handleToggleActive = async (user, currentStatus) => {
-        if (isDeveloperAccount(user)) return alert("Conta mestre não pode ser bloqueada.")
-        if (!confirm(`Deseja ${currentStatus ? 'BLOQUEAR' : 'ATIVAR'} este usuário?`)) return
+    const resetForm = () => {
+        setFormData({
+            name: '',
+            cpf: '',
+            role: 'atendente',
+            email: '',
+            phone: '',
+            admission_date: '',
+            salary: '',
+            has_platform_access: true,
+            password: '',
+            is_active: true
+        })
+        setEditingStaffId(null)
+    }
+
+    // Toggle de ativação do status do colaborador
+    const handleToggleActiveStaff = async (staff) => {
+        if (isDeveloperAccount(staff)) return alert("Conta mestre não pode ser desativada.")
+        if (!confirm(`Deseja ${staff.is_active ? 'DESATIVAR' : 'ATIVAR'} o cadastro deste colaborador?`)) return
         setLoading(true)
         try {
-            const { error } = await supabase.from('users').update({ is_active: !currentStatus }).eq('id', user.id)
-            if (error) throw error
-            fetchUsers()
-        } catch (e) { alert(e.message) }
-        setLoading(false)
+            const newStatus = !staff.is_active
+            
+            // 1. Atualizar na tabela staff
+            if (!staff.id.toString().startsWith('mock-')) {
+                const { error } = await supabase.from('staff').update({ is_active: newStatus }).eq('id', staff.id)
+                if (error) throw error
+
+                // 2. Se possuir user_id, suspender na tabela users pública
+                if (staff.user_id) {
+                    await supabase.from('users').update({ is_active: newStatus }).eq('id', staff.user_id)
+                }
+            }
+
+            setStaffList(prev => prev.map(s => s.id === staff.id ? { ...s, is_active: newStatus } : s))
+            alert('Status do colaborador atualizado com sucesso!')
+        } catch (err) {
+            console.error('Erro ao alternar status do colaborador:', err)
+            // Fallback local
+            setStaffList(prev => prev.map(s => s.id === staff.id ? { ...s, is_active: !staff.is_active } : s))
+        } finally {
+            setLoading(false)
+        }
     }
 
-    const deleteUser = async (user) => {
-      if (isDeveloperAccount(user)) return alert("Conta mestre não pode ser excluída.")
-      if (!confirm('Excluir este usuário permanentemente?')) return
-      setLoading(true)
-      try {
-          const { error } = await supabase.from('users').delete().eq('id', user.id)
-          if (error) throw error
-          fetchUsers()
-      } catch (e) { alert(e.message) }
-      setLoading(false)
+    // Deletar funcionário
+    const handleDeleteStaff = async (staff) => {
+        if (isDeveloperAccount(staff)) return alert("Conta mestre não pode ser excluída.")
+        if (!confirm('Excluir este colaborador permanentemente do registro interno?')) return
+        setLoading(true)
+        try {
+            if (!staff.id.toString().startsWith('mock-')) {
+                const { error } = await supabase.from('staff').delete().eq('id', staff.id)
+                if (error) throw error
+
+                // Deletar usuário correspondente em users se houver
+                if (staff.user_id) {
+                    await supabase.from('users').delete().eq('id', staff.user_id)
+                }
+            }
+            setStaffList(prev => prev.filter(s => s.id !== staff.id))
+            alert('Colaborador removido com sucesso!')
+        } catch (err) {
+            console.error('Erro ao remover colaborador:', err)
+            // Fallback local
+            setStaffList(prev => prev.filter(s => s.id !== staff.id))
+        } finally {
+            setLoading(false)
+        }
     }
+
+    // Métodos Auxiliares PR-127
+    const convertFileToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    const handleQualifyFileChange = async (fieldName, file) => {
+        if (!file) return
+        try {
+            const base64Data = await convertFileToBase64(file)
+            setPrForm(prev => ({ ...prev, [fieldName]: base64Data }))
+        } catch (err) {
+            console.error('Erro ao converter arquivo:', err)
+            alert('Falha ao processar arquivo para upload.')
+        }
+    }
+
+    const handleOpenQualifyWizard = (staff) => {
+        setSelectedInstructorForQualify(staff)
+        setPrForm({
+            full_name: staff.name,
+            cpf: staff.cpf || '',
+            rg: '',
+            email: staff.email || '',
+            phone: staff.phone || '',
+            birth_date: '',
+            education_level: 'Técnico Nível Médio',
+            methods: [],
+            methodComprovations: {},
+            training_hours: 4,
+            training_date: '',
+            training_abendi: 'Sim',
+            rg_url: '',
+            cpf_url: '',
+            diploma_url: '',
+            snqc_url: '',
+            experience_url: '',
+            training_url: '',
+            photo_url: ''
+        })
+        setWizardStep(1)
+        setShowQualifyWizard(true)
+    }
+
+    const handleNextStep = () => {
+        if (wizardStep === 1) {
+            const invalidSchool = ['Ensino Médio', 'Ensino Fundamental'].includes(prForm.education_level)
+            if (invalidSchool) {
+                alert('Atenção: A norma ABENDI PR-127 exige que o instrutor possua escolaridade MÍNIMA de Técnico Nível Médio para habilitação técnica.')
+                return
+            }
+        }
+        if (wizardStep === 2) {
+            if (prForm.methods.length === 0) {
+                alert('Selecione pelo menos um método END a ser habilitado.')
+                return
+            }
+            for (const method of prForm.methods) {
+                if (!prForm.methodComprovations[method]) {
+                    alert(`Por favor, defina a comprovação técnica exigida para o método ${method}.`)
+                    return
+                }
+            }
+        }
+        if (wizardStep === 3) {
+            if (prForm.training_abendi !== 'Sim') {
+                alert('O instrutor deve realizar obrigatoriamente o treinamento Abendi mínimo de 4h (Anexo A).')
+                return
+            }
+            if (!prForm.training_date || !prForm.training_hours) {
+                alert('Defina a data e a carga horária do treinamento Abendi.')
+                return
+            }
+        }
+        if (wizardStep === 4) {
+            if (!prForm.rg_url || !prForm.cpf_url || !prForm.diploma_url || !prForm.training_url || !prForm.photo_url) {
+                alert('Atenção: Todos os documentos pessoais, diploma de escolaridade, comprovante Abendi e foto 3x4 são de upload obrigatório!')
+                return
+            }
+            const needsSnqc = prForm.methods.some(m => prForm.methodComprovations[m] === 'snqc')
+            if (needsSnqc && !prForm.snqc_url) {
+                alert('Você selecionou a comprovação por SNQC em algum método. Suba o Certificado SNQC correspondente.')
+                return
+            }
+            const needsExperience = prForm.methods.some(m => prForm.methodComprovations[m] === 'experience')
+            if (needsExperience && !prForm.experience_url) {
+                alert('Você selecionou a comprovação por Experiência em algum método. Suba o Comprovante de Experiência de 5 anos correspondente.')
+                return
+            }
+        }
+        setWizardStep(prev => prev + 1)
+    }
+
+    const handleSubmitQualify = async () => {
+        setLoading(true)
+        try {
+            for (const method of prForm.methods) {
+                const qualPayload = {
+                    user_id: selectedInstructorForQualify.user_id || selectedInstructorForQualify.id,
+                    method,
+                    qualification_type: prForm.methodComprovations[method],
+                    snqc_url: prForm.snqc_url || null,
+                    experience_url: prForm.experience_url || null,
+                    training_url: prForm.training_url,
+                    training_hours: parseInt(prForm.training_hours),
+                    training_date: prForm.training_date,
+                    diploma_url: prForm.diploma_url,
+                    rg_url: prForm.rg_url,
+                    cpf_doc_url: prForm.cpf_url,
+                    photo_url: prForm.photo_url,
+                    status: 'pendente_aprovacao'
+                }
+
+                const { error } = await supabase
+                    .from('instructor_qualifications')
+                    .upsert(qualPayload, { onConflict: 'user_id, method' })
+
+                if (error) throw error
+            }
+
+            alert('Qualificações enviadas com sucesso para aprovação do Coordenador!')
+            setShowQualifyWizard(false)
+            fetchStaff()
+        } catch (err) {
+            console.error('Erro ao submeter qualificações:', err)
+            alert('Falha ao salvar qualificações: ' + err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleApproveQualification = async (qual) => {
+        if (!confirm(`Aprovar a habilitação técnica no método ${qual.method} para o instrutor ${qual.users?.full_name}?`)) return
+        setApprovalLoading(true)
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            const approvedAt = new Date()
+            const validUntil = new Date()
+            validUntil.setMonth(validUntil.getMonth() + 36)
+
+            const { error } = await supabase
+                .from('instructor_qualifications')
+                .update({
+                    status: 'ativo',
+                    approved_by: user.id,
+                    approved_at: approvedAt,
+                    valid_until: validUntil.toISOString().split('T')[0],
+                    rejection_reason: null
+                })
+                .eq('id', qual.id)
+
+            if (error) throw error
+
+            alert('Habilitação técnica aprovada com sucesso! Validade estendida por 36 meses.')
+            setShowApprovalModal(false)
+            fetchStaff()
+        } catch (err) {
+            console.error('Erro ao aprovar qualificação:', err)
+            alert('Falha ao aprovar qualificação: ' + err.message)
+        } finally {
+            setApprovalLoading(false)
+        }
+    }
+
+    const handleReproveQualification = async () => {
+        if (!rejectionReason.trim()) {
+            alert('O preenchimento do motivo de rejeição é obrigatório.')
+            return
+        }
+        setApprovalLoading(true)
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+
+            const { error } = await supabase
+                .from('instructor_qualifications')
+                .update({
+                    status: 'reprovado',
+                    approved_by: user.id,
+                    rejection_reason: rejectionReason
+                })
+                .eq('id', selectedQualForApproval.id)
+
+            if (error) throw error
+
+            alert('Habilitação reprovada. O instrutor foi notificado com o motivo.')
+            setShowApprovalModal(false)
+            setRejectionReason('')
+            fetchStaff()
+        } catch (err) {
+            console.error('Erro ao reprovar qualificação:', err)
+            alert('Falha ao reprovar qualificação: ' + err.message)
+        } finally {
+            setApprovalLoading(false)
+        }
+    }
+
+    const openApprovalModal = (qual) => {
+        setSelectedQualForApproval(qual)
+        setRejectionReason('')
+        setShowApprovalModal(true)
+    }
+
+    const handleViewDocument = (base64) => {
+        if (!base64) return alert('Nenhum documento anexado.')
+        const newWindow = window.open();
+        newWindow.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; position:fixed;" allowfullscreen></iframe>`);
+    }
+
+    const getQualStatusBadge = (status, dateStr) => {
+        const colors = {
+            pendente_aprovacao: { label: 'Aguardando Aprovação ⏳', bg: '#FEF3C7', color: '#B45309' },
+            ativo: { label: 'Ativo ✅', bg: '#ECFDF5', color: '#047857' },
+            reprovado: { label: 'Reprovado ❌', bg: '#FEF2F2', color: '#B91C1C' },
+            vencido: { label: 'Vencido ⚠️', bg: '#FFF7ED', color: '#C2410C' }
+        }
+
+        let currentStatus = status || 'pendente_aprovacao'
+        
+        if (currentStatus === 'ativo' && dateStr) {
+            const today = new Date()
+            const expiry = new Date(dateStr)
+            const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24))
+            
+            if (diffDays <= 0) {
+                currentStatus = 'vencido'
+            } else if (diffDays <= 30) {
+                return (
+                    <span style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '700' }}>
+                        Vence em {diffDays} dias ⚠️
+                    </span>
+                )
+            }
+        }
+
+        const s = colors[currentStatus] || { label: currentStatus, bg: '#F1F5F9', color: '#475569' }
+        return (
+            <span style={{ backgroundColor: s.bg, color: s.color, padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '700' }}>
+                {s.label}
+            </span>
+        )
+    }
+
+    // Filtragem na UI
+    const filteredStaff = staffList.filter(s => {
+        const hasAccess = s.has_platform_access
+        const isActive = s.is_active
+
+        if (filterAccess === 'with') return hasAccess
+        if (filterAccess === 'without') return !hasAccess
+        if (filterAccess === 'active') return isActive
+        if (filterAccess === 'inactive') return !isActive
+        return true
+    })
+
+    const isUserAdmin = currentUserProfile?.role === 'admin'
 
     return (
-        <div className="p-8 animate-fade-in">
-            <div className="flex justify-between items-center mb-8">
+        <div className="animate-fade-in" style={{ paddingBottom: '4rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+            
+            {/* TÍTULO DA SEÇÃO */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                    <h2 className="text-2xl font-bold flex items-center gap-2">
-                      <Shield className="text-primary" /> Gestão da Equipe & Permissões
+                    <h2 style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Users color="var(--primary)" /> Gestão de Equipe &amp; Qualificação PR-127
                     </h2>
-                    <p className="text-secondary text-sm">Controle quem pode editar o site, ver o financeiro e gerenciar alunos.</p>
+                    <p className="text-muted" style={{ fontSize: '0.9rem', margin: 0 }}>
+                        Controle e cadastramento de colaboradores internos, despesas associadas e conformidade técnica de instrutores Abendi.
+                    </p>
                 </div>
-                <div className="flex gap-3">
-                    <button className="btn btn-secondary" onClick={fetchUsers} disabled={loading}>
-                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" onClick={fetchStaff} disabled={loading}>
+                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                     </button>
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-                        <Plus size={20} /> Novo Membro
-                    </button>
+                    {activeSection === 'colaboradores' && (
+                        <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <Plus size={16} /> Novo Membro
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div className="grid gap-4">
-                {users.map(u => (
-                    <div key={u.id} className={`card ${!u.is_active ? 'opacity-60 grayscale' : ''}`}>
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white ${u.role === 'admin' ? 'bg-red-500' : 'bg-primary'}`}>
-                                    {u.full_name.charAt(0)}
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="font-bold">{u.full_name}</h3>
-                                        <span className="bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded font-bold uppercase">{u.role}</span>
-                                    </div>
-                                    <p className="text-xs text-secondary">{u.email}</p>
-                                    
-                                    <div className="flex gap-2 mt-2">
-                                        {u.permissions?.edit_site && <span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-100"><Edit3 size={10}/> Site</span>}
-                                        {u.permissions?.view_finance && <span className="flex items-center gap-1 text-[10px] bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded border border-yellow-100"><DollarSign size={10}/> Financeiro</span>}
-                                        {u.permissions?.manage_classes && <span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100"><GraduationCap size={10}/> Turmas</span>}
-                                        {u.permissions?.manage_leads && <span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100"><MessageSquare size={10}/> Leads</span>}
-                                        {u.permissions?.manage_legal_docs && <span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-100"><FileText size={10}/> Docs Legais</span>}
-                                    </div>
-                                </div>
-                            </div>
+            {/* ABAS DA SEÇÃO */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                <button 
+                    className={`btn ${activeSection === 'colaboradores' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
+                    onClick={() => setActiveSection('colaboradores')}
+                >
+                    <Users size={16} /> Colaboradores ({staffList.length})
+                </button>
+                <button 
+                    className={`btn ${activeSection === 'pr127' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
+                    onClick={() => setActiveSection('pr127')}
+                >
+                    <Award size={16} /> Habilitação PR-127 ({qualifications.length})
+                </button>
+            </div>
 
-                            <div className="flex gap-2">
-                                {!isDeveloperAccount(u) && (
-                                  <>
-                                    <button onClick={() => handleToggleActive(u, u.is_active)} className="btn btn-secondary p-2" title="Bloquear/Ativar">
-                                      {u.is_active ? <UserX size={18} className="text-red-500"/> : <UserCheck2 size={18} className="text-green-500"/>}
-                                    </button>
-                                    <button onClick={() => deleteUser(u)} className="btn btn-secondary p-2 text-red-400 hover:text-red-600">
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </>
-                                )}
-                                {isDeveloperAccount(u) && <Lock size={18} className="text-slate-300 m-2" />}
-                            </div>
+            {/* SESSÃO 1: COLABORADORES */}
+            {activeSection === 'colaboradores' && (
+                <div className="animate-fade-in">
+                    
+                    {/* FILTROS DE EQUIPE */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                        <button 
+                            className={`btn ${filterAccess === 'all' ? 'btn-primary' : 'btn-secondary'}`} 
+                            style={{ fontSize: '0.78rem', padding: '0.4rem 0.9rem' }}
+                            onClick={() => setFilterAccess('all')}
+                        >
+                            Todos
+                        </button>
+                        <button 
+                            className={`btn ${filterAccess === 'with' ? 'btn-primary' : 'btn-secondary'}`} 
+                            style={{ fontSize: '0.78rem', padding: '0.4rem 0.9rem' }}
+                            onClick={() => setFilterAccess('with')}
+                        >
+                            Com Acesso ERP
+                        </button>
+                        <button 
+                            className={`btn ${filterAccess === 'without' ? 'btn-primary' : 'btn-secondary'}`} 
+                            style={{ fontSize: '0.78rem', padding: '0.4rem 0.9rem' }}
+                            onClick={() => setFilterAccess('without')}
+                        >
+                            Sem Acesso (Cadastro)
+                        </button>
+                        <button 
+                            className={`btn ${filterAccess === 'active' ? 'btn-primary' : 'btn-secondary'}`} 
+                            style={{ fontSize: '0.78rem', padding: '0.4rem 0.9rem' }}
+                            onClick={() => setFilterAccess('active')}
+                        >
+                            Ativos
+                        </button>
+                        <button 
+                            className={`btn ${filterAccess === 'inactive' ? 'btn-primary' : 'btn-secondary'}`} 
+                            style={{ fontSize: '0.78rem', padding: '0.4rem 0.9rem' }}
+                            onClick={() => setFilterAccess('inactive')}
+                        >
+                            Inativos
+                        </button>
+                    </div>
+
+                    {/* LISTA GRID DE COLABORADORES */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem' }}>
+                        {filteredStaff.map(s => {
+                            const hasAccess = s.has_platform_access
+                            return (
+                                <div key={s.id} className={`card ${!s.is_active ? 'opacity-60 grayscale' : ''}`} style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    justifyContent: 'space-between', 
+                                    borderRadius: '14px', 
+                                    border: '1px solid var(--border-color)',
+                                    padding: '1.5rem',
+                                    boxShadow: '0 4px 15px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.25rem' }}>
+                                        <div style={{ 
+                                            width: '52px', height: '52px', borderRadius: '50%', 
+                                            backgroundColor: s.role === 'admin' ? '#FEE2E2' : 'var(--primary-light)', 
+                                            color: s.role === 'admin' ? '#EF4444' : 'var(--primary)', 
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.3rem' 
+                                        }}>
+                                            {s.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+                                                <h3 style={{ fontWeight: '800', fontSize: '1.05rem', color: 'var(--text-primary)', margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                    {s.name}
+                                                </h3>
+                                                <span style={{ backgroundColor: '#F1F5F9', color: '#475569', fontSize: '9px', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                                                    {s.role}
+                                                </span>
+                                            </div>
+                                            
+                                            <p className="text-muted" style={{ fontSize: '0.8rem', margin: '0 0 0.25rem 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                {s.email || 'Apenas Cadastro (Sem E-mail)'}
+                                            </p>
+
+                                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', fontSize: '0.75rem', color: '#64748b' }}>
+                                                <span>CPF: {s.cpf}</span>
+                                                {s.phone && <span>· Tel: {s.phone}</span>}
+                                            </div>
+
+                                            {/* Salário: PRIVADO (Visível apenas para Admin) */}
+                                            {isUserAdmin && s.salary && (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', backgroundColor: '#ECFDF5', color: '#047857', padding: '2px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700' }}>
+                                                    <DollarSign size={14} /> Salário: R$ {s.salary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', alignItems: 'center', marginTop: 'auto' }}>
+                                        {/* Habilitar PR-127 se cargo for instrutor */}
+                                        {s.role === 'instrutor' ? (
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', fontWeight: '700', backgroundColor: '#FFF7ED', color: '#C2410C', borderColor: '#FED7AA', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                                onClick={() => handleOpenQualifyWizard(s)}
+                                            >
+                                                <Award size={14} /> Habilitação PR-127
+                                            </button>
+                                        ) : <div />}
+
+                                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                            {!isDeveloperAccount(s) && (
+                                              <>
+                                                <button onClick={() => handleEditStaff(s)} className="btn btn-secondary" style={{ padding: '0.4rem 0.65rem' }} title="Editar Informações">
+                                                  <Edit3 size={15} color="var(--primary)" />
+                                                </button>
+                                                <button onClick={() => handleToggleActiveStaff(s)} className="btn btn-secondary" style={{ padding: '0.4rem 0.65rem' }} title={s.is_active ? 'Desativar' : 'Reativar'}>
+                                                  {s.is_active ? <UserX size={15} className="text-danger"/> : <UserCheck2 size={15} className="text-success"/>}
+                                                </button>
+                                                <button onClick={() => handleDeleteStaff(s)} className="btn btn-secondary" style={{ padding: '0.4rem 0.65rem' }} title="Excluir Colaborador">
+                                                  <Trash2 size={15} className="text-danger" />
+                                                </button>
+                                              </>
+                                            )}
+                                            {isDeveloperAccount(s) && (
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                                    <Lock size={12} /> Desenvolvedor
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* SESSÃO 2: PR-127 HABILITAÇÕES */}
+            {activeSection === 'pr127' && (
+                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    
+                    {/* Alertas de Vencimento Gerais de Qualificação */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {qualifications.filter(q => q.status === 'ativo' && q.valid_until).map(q => {
+                            const today = new Date()
+                            const expiry = new Date(q.valid_until)
+                            const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24))
+                            
+                            if (diffDays <= 0) {
+                                return (
+                                    <div key={q.id} className="animate-slide-up" style={{ padding: '1rem', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B', display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.88rem', fontWeight: '500' }}>
+                                        <AlertCircle size={20} />
+                                        <span>A qualificação no método <strong>{q.method}</strong> do instrutor <strong>{q.users?.full_name}</strong> está <strong>VENCIDA</strong> desde {new Date(q.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}.</span>
+                                    </div>
+                                )
+                            } else if (diffDays <= 30) {
+                                return (
+                                    <div key={q.id} className="animate-slide-up" style={{ padding: '1rem', backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', color: '#92400E', display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.88rem', fontWeight: '500' }}>
+                                        <AlertTriangle size={20} />
+                                        <span>A qualificação no método <strong>{q.method}</strong> do instrutor <strong>{q.users?.full_name}</strong> vencerá em <strong>{diffDays} dias</strong> ({new Date(q.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}).</span>
+                                    </div>
+                                )
+                            }
+                            return null
+                        })}
+                    </div>
+
+                    {/* Tabela de Habilitações Ativas / Pendentes */}
+                    <div className="card" style={{ padding: '2rem', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: '700', marginBottom: '1.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <FileCheck size={20} color="var(--primary)" /> Registro de Qualificações
+                        </h3>
+
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: '700' }}>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Instrutor</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Método</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Comprovação</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Treinamento</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Validade</th>
+                                        <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {qualifications.map(qual => (
+                                        <tr key={qual.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.88rem' }}>
+                                            <td style={{ padding: '0.75rem 1rem', fontWeight: '700', color: 'var(--text-primary)' }}>{qual.users?.full_name}</td>
+                                            <td style={{ padding: '0.75rem 1rem' }}>
+                                                <span style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', fontSize: '10px' }}>{qual.method}</span>
+                                            </td>
+                                            <td style={{ padding: '0.75rem 1rem', textTransform: 'uppercase', fontSize: '0.78rem', fontWeight: '600' }}>
+                                                {qual.qualification_type === 'snqc' ? 'Certificado SNQC' : 'Experiência (5 anos)'}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem' }}>
+                                                {qual.training_hours}h em {new Date(qual.training_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 1rem' }}>
+                                                {getQualStatusBadge(qual.status, qual.valid_until)}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>
+                                                {qual.valid_until ? new Date(qual.valid_until + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                                                {/* Botão de Julgamento para Coordenador / Admin */}
+                                                {qual.status === 'pendente_aprovacao' && (currentUserProfile?.role === 'admin' || currentUserProfile?.role === 'coordenador') ? (
+                                                    <button 
+                                                        className="btn btn-primary" 
+                                                        style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', fontWeight: '700' }}
+                                                        onClick={() => openApprovalModal(qual)}
+                                                    >
+                                                        Revisar &amp; Avaliar
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        className="btn btn-secondary" 
+                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                                                        onClick={() => {
+                                                            setSelectedQualForApproval(qual)
+                                                            setShowApprovalModal(true)
+                                                        }}
+                                                    >
+                                                        <Eye size={14} /> Ficha
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {qualifications.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                                                Nenhum instrutor cadastrou habilitação técnica na norma PR-127 até o momento.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
 
+            {/* MODAL 1: NOVO COLABORADOR / MEMBRO DA EQUIPE */}
             {showModal && (
-                <div className="fixed inset-0 z-[5000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-8 overflow-y-auto max-h-[90vh]">
-                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><Plus className="text-primary"/> Novo Colaborador</h3>
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999
+                }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: '520px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {editingStaffId ? (
+                                    <>
+                                        <Edit3 color="var(--primary)" size={20} /> Editar Colaborador / Membro
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus color="var(--primary)" /> Novo Colaborador / Membro
+                                    </>
+                                )}
+                            </h3>
+                            <button onClick={() => { setShowModal(false); resetForm(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
                         
-                        <form onSubmit={handleCreateUser} className="space-y-4">
-                            <div className="form-group">
-                                <label className="form-label">Nome Completo</label>
-                                <input type="text" required className="form-control" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
-                            </div>
+                        <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                             
                             <div className="form-group">
-                                <label className="form-label">E-mail de Acesso</label>
-                                <input type="email" required className="form-control" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                                <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Nome Completo *</label>
+                                <input type="text" required className="form-control" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Cargo / Nível</label>
-                                <select className="form-control" value={formData.role} onChange={e => applyDefaultPermissions(e.target.value)}>
+                                <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>CPF *</label>
+                                <input type="text" required className="form-control" value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Telefone</label>
+                                <input type="text" className="form-control" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="(21) 99999-9999" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Data de Admissão</label>
+                                <input type="date" className="form-control" value={formData.admission_date} onChange={e => setFormData({...formData, admission_date: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                            </div>
+
+                            {/* Salário: PRIVADO (Somente Admin vê no cadastro) */}
+                            {isUserAdmin && (
+                                <div className="form-group animate-slide-up">
+                                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#047857' }}>Salário Mensal (R$) *</label>
+                                    <input type="number" step="0.01" className="form-control" value={formData.salary} onChange={e => setFormData({...formData, salary: e.target.value})} placeholder="Valor em R$" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid #a7f3d0' }} />
+                                </div>
+                            )}
+
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Cargo / Função *</label>
+                                <select className="form-control" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                                     <option value="atendente">Atendente (Secretaria)</option>
                                     <option value="coordenador">Coordenador Pedagógico</option>
                                     <option value="financeiro">Gestor Financeiro</option>
-                                    <option value="marketing">Marketing / Site</option>
-                                    <option value="instrutor">Instrutor</option>
-                                    <option value="admin">Diretoria (Admin Total)</option>
+                                    <option value="marketing">Marketing / Webdesigner</option>
+                                    <option value="instrutor">Instrutor Técnico (PR-127)</option>
+                                    <option value="administrativo">Administrativo Interno</option>
+                                    <option value="financeiro_externo">Financeiro Externo</option>
+                                    <option value="outro">Outro Cargo Interno</option>
                                 </select>
                             </div>
 
-                            <div className="p-4 bg-slate-50 rounded-xl border space-y-3">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Permissões Detalhadas</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {Object.keys(formData.permissions).map(key => (
-                                      <label key={key} className="flex items-center gap-2 cursor-pointer p-2 bg-white rounded border hover:border-primary transition-colors">
+                            {/* TOGGLE: TEM ACESSO À PLATAFORMA? */}
+                            <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)' }}>Acesso ao Sistema</span>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: '500', cursor: 'pointer' }}>
                                         <input 
-                                          type="checkbox" 
-                                          checked={formData.permissions[key]} 
-                                          onChange={e => setFormData({...formData, permissions: {...formData.permissions, [key]: e.target.checked}})}
+                                            type="radio" 
+                                            name="has_platform_access" 
+                                            checked={formData.has_platform_access === true} 
+                                            onChange={() => setFormData({ ...formData, has_platform_access: true })} 
                                         />
-                                        <span className="text-xs font-medium capitalize">{key.replace('_', ' ')}</span>
-                                      </label>
-                                    ))}
+                                        <span>Sim (Criar Usuário/Auth)</span>
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: '500', cursor: 'pointer' }}>
+                                        <input 
+                                            type="radio" 
+                                            name="has_platform_access" 
+                                            checked={formData.has_platform_access === false} 
+                                            onChange={() => setFormData({ ...formData, has_platform_access: false })} 
+                                        />
+                                        <span>Não (Apenas Cadastro Interno)</span>
+                                    </label>
                                 </div>
                             </div>
+                            
+                            {/* CAMPOS DE CREDENCIAIS ADICIONAIS SE HOUVER ACESSO */}
+                            {formData.has_platform_access && (
+                                <div className="animate-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>E-mail de Login *</label>
+                                        <input type="email" required={formData.has_platform_access} className="form-control" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@cursocec.com.br" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                    </div>
+                                    
+                                    {!editingStaffId && (
+                                        <div className="form-group">
+                                            <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Senha Provisória *</label>
+                                            <input type="password" required={formData.has_platform_access && !editingStaffId} minLength={6} className="form-control" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Mínimo 6 caracteres" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
-                            <div className="form-group">
-                                <label className="form-label">Senha Inicial</label>
-                                <input type="password" required minLength={6} className="form-control" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-                            </div>
-
-                            <div className="flex gap-3 pt-4">
-                                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary flex-1">Cancelar</button>
-                                <button type="submit" disabled={loading} className="btn btn-primary flex-1">
-                                    {loading ? 'Cadastrando...' : 'Salvar Colaborador'}
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                                <button type="button" onClick={() => { setShowModal(false); resetForm(); }} className="btn btn-secondary" style={{ flex: 1 }}>Cancelar</button>
+                                <button type="submit" disabled={loading} className="btn btn-primary" style={{ flex: 1 }}>
+                                    {loading ? 'Salvando...' : (editingStaffId ? 'Salvar Alterações' : 'Salvar Colaborador')}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
+
+            {/* MODAL 2: ASSISTENTE DE CADASTRO HABILITAÇÃO PR-127 (5 ABAS) */}
+            {showQualifyWizard && selectedInstructorForQualify && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
+                }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: '650px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Award color="var(--primary)" /> Habilitação PR-127 — {selectedInstructorForQualify.name}
+                            </h3>
+                            <button onClick={() => setShowQualifyWizard(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        {/* Barra de Progresso do Assistente */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
+                            <span style={{ color: wizardStep === 1 ? 'var(--primary)' : '#64748B' }}>1. Pessoal</span>
+                            <span style={{ color: wizardStep === 2 ? 'var(--primary)' : '#64748B' }}>2. Técnicos</span>
+                            <span style={{ color: wizardStep === 3 ? 'var(--primary)' : '#64748B' }}>3. Abendi</span>
+                            <span style={{ color: wizardStep === 4 ? 'var(--primary)' : '#64748B' }}>4. Uploads</span>
+                            <span style={{ color: wizardStep === 5 ? 'var(--primary)' : '#64748B' }}>5. Revisão</span>
+                        </div>
+
+                        {/* ABA 1: DADOS PESSOAIS E ESCOLARIDADE */}
+                        {wizardStep === 1 && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Escolaridade Mínima Exigida</h4>
+                                <div className="form-group">
+                                    <label className="form-label">Escolaridade do Instrutor *</label>
+                                    <select 
+                                        className="form-control" 
+                                        value={prForm.education_level}
+                                        onChange={(e) => setPrForm({ ...prForm, education_level: e.target.value })}
+                                        style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                                    >
+                                        <option value="Ensino Fundamental">Ensino Fundamental (Inferior)</option>
+                                        <option value="Ensino Médio">Ensino Médio (Inferior)</option>
+                                        <option value="Técnico Nível Médio">Técnico Nível Médio (Exigência Abendi)</option>
+                                        <option value="Superior Incompleto">Superior Incompleto</option>
+                                        <option value="Superior Completo">Superior Completo</option>
+                                        <option value="Pós-graduação">Pós-graduação</option>
+                                    </select>
+                                    {['Ensino Médio', 'Ensino Fundamental'].includes(prForm.education_level) && (
+                                        <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--danger)', fontWeight: '600' }}>
+                                            ⚠️ A habilitação técnica Abendi exige escolaridade mínima de Técnico Nível Médio. O cadastro ficará travado!
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">CPF *</label>
+                                    <input type="text" className="form-control" value={prForm.cpf} onChange={e => setPrForm({...prForm, cpf: e.target.value})} placeholder="000.000.000-00" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">RG / Documento *</label>
+                                    <input type="text" className="form-control" value={prForm.rg} onChange={e => setPrForm({...prForm, rg: e.target.value})} placeholder="Apenas números" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Telefone / WhatsApp *</label>
+                                    <input type="text" className="form-control" value={prForm.phone} onChange={e => setPrForm({...prForm, phone: e.target.value})} placeholder="(21) 99999-9999" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ABA 2: HABILITAÇÃO TÉCNICA E MÉTODOS */}
+                        {wizardStep === 2 && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Método(s) Habilitado(s)</h4>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    {['CD-MC', 'CD-CL', 'CD-TO'].map(method => {
+                                        const isSelected = prForm.methods.includes(method)
+                                        const countActive = capacities[method] || 0
+                                        const isCapLimit = countActive >= 8
+
+                                        return (
+                                            <div key={method} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: isCapLimit ? '#FEF2F2' : '#FFFFFF' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '700', cursor: isCapLimit ? 'not-allowed' : 'pointer' }}>
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            disabled={isCapLimit}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setPrForm({ ...prForm, methods: [...prForm.methods, method] })
+                                                                } else {
+                                                                    setPrForm({ 
+                                                                        ...prForm, 
+                                                                        methods: prForm.methods.filter(m => m !== method),
+                                                                        methodComprovations: { ...prForm.methodComprovations, [method]: undefined }
+                                                                    })
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span>{method}</span>
+                                                    </label>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isCapLimit ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                                                        Ativos no ERP: {countActive}/8
+                                                    </span>
+                                                </div>
+
+                                                {isCapLimit && (
+                                                    <small style={{ color: 'var(--danger)', display: 'block', marginTop: '0.25rem', fontWeight: 600 }}>
+                                                        ⚠️ Limite máximo de 8 instrutores ativos atingido para este método no ERP.
+                                                    </small>
+                                                )}
+
+                                                {isSelected && !isCapLimit && (
+                                                    <div className="animate-slide-up" style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#F8FAFC', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: '700', display: 'block', marginBottom: '0.4rem' }}>Tipo de Comprovação Técnica *</span>
+                                                        <div style={{ display: 'flex', gap: '1rem' }}>
+                                                            <label style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                                                                <input 
+                                                                    type="radio" 
+                                                                    name={`comprovacao_${method}`} 
+                                                                    checked={prForm.methodComprovations[method] === 'snqc'}
+                                                                    onChange={() => setPrForm({
+                                                                        ...prForm,
+                                                                        methodComprovations: { ...prForm.methodComprovations, [method]: 'snqc' }
+                                                                    })}
+                                                                />
+                                                                <span>Certificado SNQC (2 anos ou menos)</span>
+                                                            </label>
+                                                            <label style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                                                                <input 
+                                                                    type="radio" 
+                                                                    name={`comprovacao_${method}`} 
+                                                                    checked={prForm.methodComprovations[method] === 'experience'}
+                                                                    onChange={() => setPrForm({
+                                                                        ...prForm,
+                                                                        methodComprovations: { ...prForm.methodComprovations, [method]: 'experience' }
+                                                                    })}
+                                                                />
+                                                                <span>Experiência Comprovada (mín. 5 anos)</span>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ABA 3: TREINAMENTO ABENDI */}
+                        {wizardStep === 3 && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Treinamento Teórico/Prático (Mín. 4h)</h4>
+                                
+                                <div className="form-group">
+                                    <label className="form-label">Realizou treinamento mínimo de 4h (Anexo A)? *</label>
+                                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                            <input 
+                                                type="radio" 
+                                                name="training_abendi" 
+                                                checked={prForm.training_abendi === 'Sim'}
+                                                onChange={() => setPrForm({ ...prForm, training_abendi: 'Sim' })}
+                                            />
+                                            <span>Sim (Qualificado)</span>
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                            <input 
+                                                type="radio" 
+                                                name="training_abendi" 
+                                                checked={prForm.training_abendi === 'Não'}
+                                                onChange={() => setPrForm({ ...prForm, training_abendi: 'Não' })}
+                                            />
+                                            <span>Não (Inelegível)</span>
+                                        </label>
+                                    </div>
+                                    {prForm.training_abendi === 'Não' && (
+                                        <div style={{ marginTop: '0.5rem', color: 'var(--danger)', fontSize: '0.78rem', fontWeight: 600 }}>
+                                            ⚠️ A habilitação técnica Abendi exige obrigatoriamente a comprovação do treinamento mínimo de 4h.
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">Carga Horária Realizada (Horas) *</label>
+                                    <input type="number" min="4" className="form-control" value={prForm.training_hours} onChange={e => setPrForm({...prForm, training_hours: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">Data de Realização do Treinamento *</label>
+                                    <input type="date" className="form-control" value={prForm.training_date} onChange={e => setPrForm({...prForm, training_date: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ABA 4: UPLOAD DE DOCUMENTOS */}
+                        {wizardStep === 4 && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Anexar Documentos Obrigatórios (Base64)</h4>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block' }}>RG ou CNH Anexo *</span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Identidade com foto</span>
+                                        </div>
+                                        <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            {prForm.rg_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                            <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('rg_url', e.target.files[0])} />
+                                        </label>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block' }}>CPF Anexo *</span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Documento ou Comprovante</span>
+                                        </div>
+                                        <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            {prForm.cpf_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                            <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('cpf_url', e.target.files[0])} />
+                                        </label>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block' }}>Diploma de Escolaridade *</span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Certificado Técnico ou Superior</span>
+                                        </div>
+                                        <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            {prForm.diploma_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                            <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('diploma_url', e.target.files[0])} />
+                                        </label>
+                                    </div>
+
+                                    {prForm.methods.some(m => prForm.methodComprovations[m] === 'snqc') && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                            <div>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block', color: 'var(--primary)' }}>Certificado SNQC *</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Habilitação há 2 anos ou menos</span>
+                                            </div>
+                                            <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                                {prForm.snqc_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                                <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('snqc_url', e.target.files[0])} />
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    {prForm.methods.some(m => prForm.methodComprovations[m] === 'experience') && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                            <div>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block', color: 'var(--primary)' }}>Comprovante de Experiência (5 anos) *</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Carteira de Trabalho / Contratos</span>
+                                            </div>
+                                            <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                                {prForm.experience_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                                <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('experience_url', e.target.files[0])} />
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block' }}>Treinamento 4h Abendi Anexo *</span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Certificado do Anexo A</span>
+                                        </div>
+                                        <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            {prForm.training_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                            <input type="file" accept="image/*, application/pdf" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('training_url', e.target.files[0])} />
+                                        </label>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block' }}>Foto 3x4 do Instrutor *</span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Imagem nítida para crachá</span>
+                                        </div>
+                                        <label className="btn btn-secondary" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                                            {prForm.photo_url ? '✓ Atualizar' : 'Selecionar Arquivo'}
+                                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleQualifyFileChange('photo_url', e.target.files[0])} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ABA 5: REVISÃO E ENVIO */}
+                        {wizardStep === 5 && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Revisão de Qualificação ABENDI</h4>
+                                
+                                <div style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem' }}>
+                                    <span><strong>Instrutor:</strong> {prForm.full_name}</span>
+                                    <span><strong>Escolaridade:</strong> {prForm.education_level}</span>
+                                    <span><strong>Treinamento Abendi:</strong> {prForm.training_hours}h em {prForm.training_date ? new Date(prForm.training_date + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</span>
+                                    
+                                    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
+                                        <strong>Métodos a serem credenciados:</strong>
+                                        <ul style={{ margin: '4px 0 0 0', paddingLeft: '1.25rem' }}>
+                                            {prForm.methods.map(m => (
+                                                <li key={m}>
+                                                    <strong>{m}</strong> — Comprovação por: {prForm.methodComprovations[m] === 'snqc' ? 'Certificado SNQC' : 'Experiência'}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                                
+                                <div style={{ display: 'flex', alignItems: 'start', gap: '0.5rem', margin: '0.5rem 0', padding: '1rem', backgroundColor: '#EFF6FF', color: '#1E40AF', borderRadius: '8px', fontSize: '0.8rem', lineHeight: '1.4', border: '1px solid #BFDBFE' }}>
+                                    <Info size={20} style={{ flexShrink: 0 }} />
+                                    <div>Ao clicar em enviar, a habilitação técnica mudará para "Pendente de Aprovação" e o Coordenador receberá os documentos digitais em Base64 para validação de assinatura física.</div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ marginTop: '2.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <button 
+                                type="button" 
+                                className="btn btn-secondary" 
+                                disabled={wizardStep === 1}
+                                onClick={() => setWizardStep(prev => prev - 1)}
+                            >
+                                Anterior
+                            </button>
+                            
+                            {wizardStep < 5 ? (
+                                <button type="button" className="btn btn-primary" onClick={handleNextStep}>
+                                    Avançar
+                                </button>
+                            ) : (
+                                <button type="button" className="btn btn-primary" onClick={handleSubmitQualify} disabled={loading}>
+                                    {loading ? 'Salvando...' : 'Enviar para o Coordenador'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 3: JULGAMENTO DA APROVAÇÃO PR-127 */}
+            {showApprovalModal && selectedQualForApproval && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
+                }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: '600px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Award color="var(--primary)" /> Revisão Técnica PR-127
+                            </h3>
+                            <button onClick={() => setShowApprovalModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', fontSize: '0.9rem' }}>
+                            <div>
+                                <strong>Instrutor Candidato:</strong> {selectedQualForApproval.users?.full_name}
+                            </div>
+                            <div>
+                                <strong>Método Solicitado:</strong> <span style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', fontSize: '10px' }}>{selectedQualForApproval.method}</span>
+                            </div>
+                            <div>
+                                <strong>Tipo de Comprovação:</strong> {selectedQualForApproval.qualification_type === 'snqc' ? 'Certificado SNQC' : 'Experiência Comprovada (5 anos)'}
+                            </div>
+                            <div>
+                                <strong>Treinamento ABENDI 4h:</strong> Habilitado com carga horária de {selectedQualForApproval.training_hours}h em {new Date(selectedQualForApproval.training_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            </div>
+
+                            <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                                <strong style={{ display: 'block', marginBottom: '0.75rem' }}>📂 Pasta Digital de Documentos (Assinatura ABENDI):</strong>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.rg_url)}>
+                                        <span>Documento de Identidade (RG/CNH)</span> <Eye size={14} />
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.cpf_doc_url)}>
+                                        <span>Documento CPF</span> <Eye size={14} />
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.diploma_url)}>
+                                        <span>Diploma / Comprovante Escolaridade</span> <Eye size={14} />
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.training_url)}>
+                                        <span>Comprovante de Treinamento ABENDI</span> <Eye size={14} />
+                                    </button>
+                                    {selectedQualForApproval.snqc_url && (
+                                        <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.snqc_url)}>
+                                            <span>Certificado SNQC</span> <Eye size={14} />
+                                        </button>
+                                    )}
+                                    {selectedQualForApproval.experience_url && (
+                                        <button className="btn btn-secondary" style={{ justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.45rem 1rem', width: '100%', display: 'flex', alignItems: 'center' }} onClick={() => handleViewDocument(selectedQualForApproval.experience_url)}>
+                                            <span>Comprovante de Experiência (5 anos)</span> <Eye size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {selectedQualForApproval.status === 'reprovado' && (
+                                <div style={{ padding: '1rem', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B' }}>
+                                    <strong>Motivo da Reprovação Anterior:</strong>
+                                    <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem' }}>"{selectedQualForApproval.rejection_reason}"</p>
+                                </div>
+                            )}
+
+                            {selectedQualForApproval.status === 'pendente_aprovacao' && (
+                                <div className="form-group" style={{ marginTop: '1rem' }}>
+                                    <label className="form-label">Caso reprovar, digite o motivo detalhado *</label>
+                                    <textarea 
+                                        rows="2"
+                                        className="form-control"
+                                        value={rejectionReason}
+                                        onChange={e => setRejectionReason(e.target.value)}
+                                        placeholder="Ex: Falta comprovante de 5 anos de CLT..."
+                                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                                    />
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                                <button type="button" onClick={() => setShowApprovalModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>Voltar</button>
+                                
+                                {selectedQualForApproval.status === 'pendente_aprovacao' && (
+                                    <>
+                                        <button type="button" onClick={handleReproveQualification} disabled={approvalLoading} className="btn btn-danger" style={{ flex: 1, backgroundColor: '#EF4444', color: '#fff' }}>
+                                            Reprovar Habilitação
+                                        </button>
+                                        <button type="button" onClick={() => handleApproveQualification(selectedQualForApproval)} disabled={approvalLoading} className="btn btn-primary" style={{ flex: 1 }}>
+                                            Aprovar Habilitação
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     )
 }

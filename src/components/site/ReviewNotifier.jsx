@@ -84,7 +84,7 @@ const ReviewNotifier = () => {
             </div>
           </div>
 
-          <style jsx>{`
+          <style jsx="true">{`
             .review-notifier-toast {
               position: fixed;
               bottom: 8rem;

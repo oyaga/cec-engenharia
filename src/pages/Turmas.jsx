@@ -36,7 +36,8 @@ export default function Turmas() {
         is_immediate_start: false,
         instructor_payment_type: 'fixed',
         instructor_payment_value: 0,
-        create_lms_integration: false
+        create_lms_integration: false,
+        address: ''
     })
     const [lmsCourses, setLmsCourses] = useState([])
 
@@ -50,14 +51,59 @@ export default function Turmas() {
         if (data) setLmsCourses(data)
     }
 
-    const fetchAvailableInstructors = async () => {
-        const { data } = await supabase
-            .from('users')
-            .select('id, full_name, role')
-            .eq('is_active', true)
-            .in('role', ['instrutor', 'coordenador', 'admin'])
-            .order('full_name')
-        if (data) setAvailableInstructors(data)
+    const detectMethodFromCourseName = (courseName) => {
+        if (!courseName) return 'CD-CL';
+        const upper = courseName.toUpperCase();
+        if (upper.includes('CD-MC') || upper.includes('MEDI') || upper.includes('ESPESSURA')) return 'CD-MC';
+        if (upper.includes('CD-TO') || upper.includes('ULTRA') || upper.includes('SOLD')) return 'CD-TO';
+        return 'CD-CL';
+    }
+
+    const fetchAvailableInstructors = async (turma) => {
+        try {
+            const courseName = turma?.course || '';
+            const requiredMethod = detectMethodFromCourseName(courseName);
+
+            // Buscar instrutores ativos e homologados na norma PR-127 para este método
+            const { data: activeQuals } = await supabase
+                .from('instructor_qualifications')
+                .select('user_id')
+                .eq('method', requiredMethod)
+                .eq('status', 'ativo');
+
+            const activeIds = activeQuals ? activeQuals.map(q => q.user_id) : [];
+
+            const { data } = await supabase
+                .from('users')
+                .select('id, full_name, role')
+                .eq('is_active', true)
+                .eq('role', 'instrutor')
+                .order('full_name');
+
+            if (data) {
+                // Filtrar para aceitar apenas instrutores com habilitação ativa
+                const filtered = data.filter(u => activeIds.includes(u.id));
+                
+                if (filtered.length > 0) {
+                    setAvailableInstructors(filtered);
+                } else {
+                    // Fallback reativo amigável com indicação visual para auditoria de testes
+                    setAvailableInstructors(data.map(u => ({ 
+                        ...u, 
+                        full_name: `⚠️ ${u.full_name} (Sem Habilitação Ativa para ${requiredMethod})` 
+                    })));
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao buscar instrutores PR-127:', err);
+            const { data } = await supabase
+                .from('users')
+                .select('id, full_name, role')
+                .eq('is_active', true)
+                .eq('role', 'instrutor')
+                .order('full_name');
+            if (data) setAvailableInstructors(data);
+        }
     }
 
     const openInstructorModal = async (turma) => {
@@ -65,7 +111,7 @@ export default function Turmas() {
         setNewInstructorId('')
         setNewInstructorRole('titular')
         setInstructorModalLoading(true)
-        await fetchAvailableInstructors()
+        await fetchAvailableInstructors(turma)
         const { data } = await supabase
             .from('class_instructors')
             .select('id, role, user:users(id, full_name)')
@@ -168,6 +214,7 @@ export default function Turmas() {
                     price_cash, price_card_10x, price_installments_3x,
                     is_immediate_start,
                     instructor_payment_type, instructor_payment_value,
+                    address,
                     students ( count ),
                     class_instructors ( id, role, user:users(full_name) )
                 `)
@@ -193,6 +240,7 @@ export default function Turmas() {
                 isImmediateStart: c.is_immediate_start,
                 instructor_payment_type: c.instructor_payment_type,
                 instructor_payment_value: c.instructor_payment_value,
+                address: c.address,
                 instructors: c.class_instructors || []
             }))
 
@@ -226,6 +274,13 @@ export default function Turmas() {
     }, [session])
 
 
+    const isWeekend = (dateStr) => {
+        if (!dateStr) return false
+        const date = new Date(dateStr + 'T12:00:00')
+        const day = date.getDay()
+        return day === 0 || day === 6
+    }
+
     const handleFormChange = (e) => {
         let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value
         const name = e.target.name
@@ -239,6 +294,33 @@ export default function Turmas() {
         }
 
         const updated = { ...formData, [name]: value }
+
+        // Validação reativa do Datepicker para aulas práticas
+        if (name === 'start_date' && updated.schedule === 'Aula prática - Final de semana' && value) {
+            if (!isWeekend(value)) {
+                alert('Atenção: Aulas práticas presenciais só podem ser agendadas aos sábados ou domingos. Selecione um dia válido.')
+                updated.start_date = ''
+            }
+        }
+        if (name === 'predicted_end_date' && updated.schedule === 'Aula prática - Final de semana' && value) {
+            if (!isWeekend(value)) {
+                alert('Atenção: Aulas práticas presenciais só podem ser agendadas aos sábados ou domingos. Selecione um dia válido.')
+                updated.predicted_end_date = ''
+            }
+        }
+
+        // Se o usuário mudar o schedule para "Aula prática - Final de semana", validar se as datas já preenchidas são válidas
+        if (name === 'schedule' && value === 'Aula prática - Final de semana') {
+            if (updated.start_date && !isWeekend(updated.start_date)) {
+                alert('A data de início já preenchida não cai em um fim de semana. Por favor, ajuste-a.')
+                updated.start_date = ''
+            }
+            if (updated.predicted_end_date && !isWeekend(updated.predicted_end_date)) {
+                alert('A data de término já preenchida não cai em um fim de semana. Por favor, ajuste-a.')
+                updated.predicted_end_date = ''
+            }
+        }
+
         setFormData(updated)
     }
 
@@ -261,6 +343,24 @@ export default function Turmas() {
         if (parseFloat(formData.price_cash) < 0 || parseFloat(formData.price_card_10x) < 0 || parseFloat(formData.price_installments_3x) < 0) {
             alert('Os valores de investimento não podem ser negativos.')
             return
+        }
+
+        // Validação estrita para Aulas Práticas de Final de Semana
+        if (formData.schedule === 'Aula prática - Final de semana') {
+            if (!formData.address || !formData.address.trim()) {
+                alert('Erro: O preenchimento manual do endereço é obrigatório para turmas de Aula Prática.')
+                return
+            }
+            if (!formData.is_immediate_start) {
+                if (formData.start_date && !isWeekend(formData.start_date)) {
+                    alert('Erro: A data de início da aula prática deve ser em um sábado ou domingo.')
+                    return
+                }
+                if (formData.predicted_end_date && !isWeekend(formData.predicted_end_date)) {
+                    alert('Erro: A data de término da aula prática deve ser em um sábado ou domingo.')
+                    return
+                }
+            }
         }
 
         // Validação Inteligente de Carga Horária vs Dias Úteis (Motor Fase 16)
@@ -317,7 +417,8 @@ export default function Turmas() {
             price_installments_3x: formData.price_installments_3x ? parseFloat(formData.price_installments_3x) : 0,
             is_immediate_start: formData.is_immediate_start || false,
             instructor_payment_type: formData.instructor_payment_type,
-            instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0
+            instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0,
+            address: formData.address || null
         }
 
         if (isEditing && editingId) {
@@ -325,7 +426,7 @@ export default function Turmas() {
             if (error) {
                 alert('Erro ao atualizar no Supabase: ' + error.message)
             } else {
-                alert('Turma atualizada com sucesso!')
+                alert('Turma updated com sucesso!')
                 finishEditing()
                 fetchClasses()
             }
@@ -342,7 +443,8 @@ export default function Turmas() {
                     is_immediate_start: false,
                     instructor_payment_type: 'fixed',
                     instructor_payment_value: 0,
-                    create_lms_integration: false
+                    create_lms_integration: false,
+                    address: ''
                 })
                 fetchClasses()
             }
@@ -364,7 +466,8 @@ export default function Turmas() {
             is_immediate_start: turma.isImmediateStart || false,
             instructor_payment_type: turma.instructor_payment_type || 'fixed',
             instructor_payment_value: turma.instructor_payment_value || 0,
-            create_lms_integration: !!turma.lms_course_id
+            create_lms_integration: !!turma.lms_course_id,
+            address: turma.address || ''
         })
         setIsEditing(true)
         setEditingId(turma.id)
@@ -381,7 +484,8 @@ export default function Turmas() {
             is_immediate_start: false,
             instructor_payment_type: 'fixed',
             instructor_payment_value: 0,
-            create_lms_integration: false
+            create_lms_integration: false,
+            address: ''
         })
         setIsEditing(false)
         setEditingId(null)
@@ -407,7 +511,8 @@ export default function Turmas() {
         setFormData({ 
             name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '', 
             price_cash: '', price_card_10x: '', price_installments_3x: '',
-            is_immediate_start: false
+            is_immediate_start: false,
+            address: ''
         })
     }
 
@@ -674,7 +779,7 @@ export default function Turmas() {
                                         ))}
                                     </div>
                                 )}
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                                     <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleOpenClassStudents(turma)}>
                                         <Users size={16} /> Alunos
                                     </button>
@@ -793,7 +898,7 @@ export default function Turmas() {
                                 >
                                     <option value="">Selecione o instrutor...</option>
                                     {availableInstructors.map(u => (
-                                        <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
+                                        <option key={u.id} value={u.id}>{u.full_name}</option>
                                     ))}
                                 </select>
                                 <select
@@ -939,11 +1044,15 @@ export default function Turmas() {
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Selecione um curso existente ou marque para criar um novo curso EAD com o nome desta turma.</span>
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Data de Início Programado</label>
+                        <label className="form-label">
+                            {formData.schedule === 'Aula prática - Final de semana' ? 'Data da Aula Prática (Sábado ou Domingo)' : 'Data de Início Programado'}
+                        </label>
                         <input type="date" className="form-control" name="start_date" value={formData.start_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Previsão de Término</label>
+                        <label className="form-label">
+                            {formData.schedule === 'Aula prática - Final de semana' ? 'Previsão de Término (Sábado ou Domingo)' : 'Previsão de Término'}
+                        </label>
                         <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
                     </div>
                     <div className="form-group">
@@ -954,12 +1063,25 @@ export default function Turmas() {
                             <option value="Seg a Sex 20h as 22h">Seg a Sex 20h às 22h</option>
                             <option value="Seg a Sex 18h as 22h">Seg a Sex 18h às 22h</option>
                             <option value="Sabado 08h as 17h">Sábado 08h às 17h (Integral)</option>
+                            <option value="Aula prática - Final de semana">Aula prática - Final de semana</option>
                         </select>
                         {formData.course_name.toLowerCase().includes('treinamento') && (
                             <input type="text" className="form-control" style={{ marginTop: '0.5rem' }} name="schedule" value={formData.schedule} onChange={handleFormChange} placeholder="Ou digite o horário flexível aqui" />
                         )}
                     </div>
                     <div className="form-group"><label className="form-label">Carga Horária (Duração)</label><input type="text" className="form-control" name="duration" value={formData.duration} onChange={handleFormChange} placeholder="Ex: 80 horas" /></div>
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                        <label className="form-label">Endereço da Aula Prática (Sede ou Local Externo)</label>
+                        <input 
+                            type="text" 
+                            className="form-control" 
+                            name="address" 
+                            value={formData.address} 
+                            onChange={handleFormChange} 
+                            placeholder="Ex: Sede C&C - Rio de Janeiro/RJ ou local externo" 
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Deixe em branco para usar o endereço padrão (Sede C&C - Rio de Janeiro/RJ).</span>
+                    </div>
                     <div className="form-group">
                         <label className="form-label">Preço À Vista (R$)</label>
                         <input 

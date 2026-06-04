@@ -100,6 +100,7 @@ const Enrollment = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [manualReadToEnd, setManualReadToEnd] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
   const manualScrollRef = useRef(null);
 
   const handleManualScroll = () => {
@@ -115,6 +116,15 @@ const Enrollment = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!acceptedTerms) return;
+
+    if (honeypot) {
+      console.warn('Bot detectado no formulário de matrícula.');
+      const message = `*NOVA MATRÍCULA - CEC ENGENHARIA*%0A%0A*Nome:* ${formData.name}%0A*Curso:* ${formData.course}%0A*Pagamento:* ${formData.social_name || formData.paymentMethod}`;
+      window.open(`https://api.whatsapp.com/send?phone=5521965554180&text=${message}`, '_blank');
+      setPaymentInfo({ success: true, message: "Redirecionando para o WhatsApp..." });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -212,7 +222,7 @@ const Enrollment = () => {
                 <div className="class-details-row">
                   <div className="detail-item">
                     <Calendar size={18} />
-                    <span>Início: <strong>{new Date(selectedClass.start_date + 'T00:00:00').toLocaleDateString('pt-BR')}</strong></span>
+                    <span>Início: <strong>{selectedClass.start_date && !isNaN(new Date(selectedClass.start_date.includes('T') ? selectedClass.start_date : `${selectedClass.start_date}T00:00:00`).getTime()) ? new Date(selectedClass.start_date.includes('T') ? selectedClass.start_date : `${selectedClass.start_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Imediato / A definir'}</strong></span>
                   </div>
                   <div className="detail-item">
                     <Clock size={18} />
@@ -230,6 +240,15 @@ const Enrollment = () => {
           >
             {!paymentInfo ? (
               <form onSubmit={handleSubmit} className="enroll-form">
+                <input
+                  type="text"
+                  name="website"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  style={{ display: 'none' }}
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
                 <div className="form-head">
                   <h3>Inscrição Online</h3>
                   <p>Preencha os dados abaixo para gerar seu acesso.</p>
@@ -375,7 +394,7 @@ const Enrollment = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .enroll-main { background: #fdfdfd; padding-top: 10rem; min-height: 100vh; }
         .enroll-grid { display: grid; grid-template-columns: 1fr 500px; gap: 5rem; align-items: start; }
         .enroll-title { font-size: 3.5rem; line-height: 1.1; margin-bottom: 3rem; font-weight: 800; }

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -11,6 +11,7 @@ import EditableImage from '../../components/site/EditableImage';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
+import { supabase } from '../../lib/supabase';
 
 const CourseDetails = () => {
   const { slug } = useParams();
@@ -18,13 +19,76 @@ const CourseDetails = () => {
   const { content, isEditing } = useEdit();
   const course = content.course_details?.[slug];
 
+  // Estado para preços dinâmicos vindos do Supabase
+  const [dbPricing, setDbPricing] = useState(null);
+
   useEffect(() => {
     window.scrollTo(0, 0);
     if (!course && !isEditing) {
-      // Se o curso não existir, volta para a home
       navigate('/');
     }
   }, [slug, course, navigate, isEditing]);
+
+  // Buscar preços do Supabase pelo code do curso (slug = code em lowercase)
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('lms_courses')
+          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link')
+          .or(`code.ilike.${slug},code.ilike.${slug.replace(/-/g, '_')}`)
+          .eq('is_published', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data && (data.price_pix || data.price_card)) {
+          setDbPricing(data);
+        }
+      } catch (err) {
+        console.warn('Preços dinâmicos indisponíveis, usando CMS editável');
+      }
+    };
+    if (slug) fetchPricing();
+  }, [slug]);
+
+  const handleMatricula = async (course) => {
+    try {
+      const { getAsaasSettings, createPaymentLink } = await import('../../services/asaas');
+      const settings = await getAsaasSettings();
+      
+      if (settings.api_key) {
+        if (course.asaas_payment_link) {
+          window.open(course.asaas_payment_link, '_blank');
+        } else {
+          // Criar link de pagamento
+          const link = await createPaymentLink(course);
+          
+          // Salvar link no curso para próximas vezes
+          await supabase
+            .from('lms_courses')
+            .update({ asaas_payment_link: link.url })
+            .eq('id', course.id);
+          
+          setDbPricing(prev => ({ ...prev, asaas_payment_link: link.url }));
+          window.open(link.url, '_blank');
+        }
+      } else {
+        redirectToWhatsApp(course);
+      }
+    } catch (error) {
+      console.error("Erro ao gerar link Asaas:", error);
+      redirectToWhatsApp(course);
+    }
+  };
+
+  const redirectToWhatsApp = (course) => {
+    const message = encodeURIComponent(
+      `Olá! Tenho interesse em me matricular no curso:\n\n` +
+      `📚 *${course.title || data.title}* (${course.code || ''})\n\n` +
+      `Poderia me informar sobre disponibilidade?`
+    );
+    window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
+  };
 
   if (!course && !isEditing) return null;
 
@@ -136,23 +200,108 @@ const CourseDetails = () => {
 
               <div className="investment-section">
                 <h3>💰 INVESTIMENTO</h3>
-                <div className="price-box">
-                  <div className="price-item">
-                    <span>Cartão de Crédito:</span>
-                    <strong><EditableText path={`course_details.${slug}.investment.credit`} initialValue={data.investment.credit} /></strong>
-                  </div>
-                  <div className="price-item highlighted">
-                    <span>PIX / Dinheiro (DESCONTO):</span>
-                    <strong><EditableText path={`course_details.${slug}.investment.pix`} initialValue={data.investment.pix} /></strong>
-                  </div>
-                  <div className="price-item">
-                    <span>Boleto:</span>
-                    <EditableText path={`course_details.${slug}.investment.boleto`} initialValue={data.investment.boleto} />
-                  </div>
-                </div>
-                <div className="tip-box">
-                  <EditableText path={`course_details.${slug}.investment.tip`} initialValue={data.investment.tip} />
-                </div>
+                {dbPricing ? (
+                  <>
+                    <div className="price-box">
+                      {dbPricing.price_pix && (
+                        <div className="price-item highlighted">
+                          <span>⚡ PIX / À Vista — MELHOR PREÇO</span>
+                          <strong>
+                            R$ {dbPricing.price_pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            {dbPricing.price_card && (
+                              <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', background: '#15803d', color: 'white', padding: '2px 8px', borderRadius: '12px', fontWeight: '800' }}>
+                                {Math.round((1 - dbPricing.price_pix / dbPricing.price_card) * 100)}% OFF
+                              </span>
+                            )}
+                          </strong>
+                        </div>
+                      )}
+                      {dbPricing.price_card && (
+                        <div className="price-item">
+                          <span>💳 Cartão de Crédito</span>
+                          <strong>
+                            R$ {dbPricing.price_card.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            {dbPricing.max_installments && (
+                              <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: '400', color: '#94a3b8' }}>
+                                até {dbPricing.max_installments}x de R$ {(dbPricing.price_card / dbPricing.max_installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </strong>
+                        </div>
+                      )}
+                      {dbPricing.price_boleto && (
+                        <div className="price-item">
+                          <span>📄 Boleto Bancário</span>
+                          <strong>R$ {dbPricing.price_boleto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                        </div>
+                      )}
+                      {dbPricing.price_financing && (
+                        <div className="price-item">
+                          <span>🤝 Financiamento Próprio C&C</span>
+                          <strong>
+                            R$ {dbPricing.price_financing.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            {dbPricing.financing_installments && (
+                              <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: '400', color: '#94a3b8' }}>
+                                até {dbPricing.financing_installments}x de R$ {(dbPricing.price_financing / dbPricing.financing_installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sem juros
+                              </span>
+                            )}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+                    {dbPricing.price_notes && (
+                      <div className="tip-box">
+                        ℹ️ {dbPricing.price_notes}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleMatricula(dbPricing)}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        marginTop: '1.5rem',
+                        padding: '1rem 1.5rem',
+                        background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark, #003d3b) 100%)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '1.05rem',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        boxShadow: '0 4px 15px rgba(0,75,73,0.3)',
+                        transition: 'transform 0.2s, box-shadow 0.2s'
+                      }}
+                      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,75,73,0.4)'; }}
+                      onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,75,73,0.3)'; }}
+                    >
+                      🎓 Matricular-se Agora
+                    </button>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.5rem' }}>
+                      Pagamento seguro processado via Asaas
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="price-box">
+                      <div className="price-item">
+                        <span>Cartão de Crédito:</span>
+                        <strong><EditableText path={`course_details.${slug}.investment.credit`} initialValue={data.investment.credit} /></strong>
+                      </div>
+                      <div className="price-item highlighted">
+                        <span>PIX / Dinheiro (DESCONTO):</span>
+                        <strong><EditableText path={`course_details.${slug}.investment.pix`} initialValue={data.investment.pix} /></strong>
+                      </div>
+                      <div className="price-item">
+                        <span>Boleto:</span>
+                        <EditableText path={`course_details.${slug}.investment.boleto`} initialValue={data.investment.boleto} />
+                      </div>
+                    </div>
+                    <div className="tip-box">
+                      <EditableText path={`course_details.${slug}.investment.tip`} initialValue={data.investment.tip} />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="outcomes-list">
@@ -225,7 +374,7 @@ const CourseDetails = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .course-details-page {
           background: white;
         }

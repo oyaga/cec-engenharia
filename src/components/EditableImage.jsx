@@ -21,7 +21,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Imagem Editável"
     return (
       <div className={`img-wrapper-fluid ${className}`}>
         <img src={initialValue} alt={alt} />
-        <style jsx>{`
+        <style jsx="true">{`
           .img-wrapper-fluid {
             overflow: hidden;
             display: block;
@@ -72,7 +72,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Imagem Editável"
         </div>
       )}
 
-      <style jsx>{`
+      <style jsx="true">{`
         .editable-image-container {
           position: relative;
           cursor: pointer;

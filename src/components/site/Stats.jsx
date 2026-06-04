@@ -68,7 +68,7 @@ const Stats = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style jsx="true">{`
         .stats-container {
           display: grid;
           grid-template-columns: 1fr 1fr;

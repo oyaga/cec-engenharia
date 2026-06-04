@@ -328,7 +328,7 @@ function generateClassReportPDF(doc, classData) {
         }
 
         // Soma Faltas (Mock caso nã otenham presenças ainda)
-        const faltas = st.attendance_records ? st.attendance_records.filter(a => a.status === 'ausente').length : 0
+        const faltas = st.attendance_records ? st.attendance_records.filter(a => a.status === 'ausente' || a.status === 'falta').length : 0
         doc.text(faltas.toString(), 190, yPos)
 
         // Status Manual

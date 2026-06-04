@@ -30,15 +30,15 @@ serve(async (req) => {
       throw new Error("Forbidden: insufficient permissions")
     }
 
-    const { action, email, name, cpf, phone, userId } = await req.json()
+    const { action, email, name, cpf, phone, userId, password } = await req.json()
 
     // Handle Reset Password Action
     if (action === 'reset') {
       if (!userId || !cpf) throw new Error("userId and cpf are required for reset")
       
-      const cpfPassword = cpf.replace(/\D/g, '')
+      const newPassword = password || cpf.replace(/\D/g, '')
       const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
-        password: cpfPassword
+        password: newPassword
       })
       if (updateError) throw updateError
 
@@ -54,10 +54,10 @@ serve(async (req) => {
     // Default Action: Create User
     if (!email || !cpf) throw new Error("Email and CPF are required")
 
-    const cpfPassword = cpf.replace(/\D/g, '')
+    const initialPassword = password || cpf.replace(/\D/g, '')
     const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
       email,
-      password: cpfPassword,
+      password: initialPassword,
       email_confirm: true,
       user_metadata: { name }
     })

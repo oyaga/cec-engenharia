@@ -10,12 +10,26 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false)
+    const [currentSessionUser, setCurrentSessionUser] = useState(null)
+    const [currentUserProfile, setCurrentUserProfile] = useState(null)
     const navigate = useNavigate()
 
     // Verificar se já está logado ao carregar
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) setIsAlreadyLoggedIn(true)
+            if (session?.user) {
+                setIsAlreadyLoggedIn(true)
+                setCurrentSessionUser(session.user)
+                
+                // Busca perfil correspondente ao usuário ativo
+                supabase.from('users')
+                    .select('role')
+                    .eq('id', session.user.id)
+                    .maybeSingle()
+                    .then(({ data }) => {
+                        if (data) setCurrentUserProfile(data)
+                    })
+            }
         })
     }, [])
 
@@ -23,7 +37,9 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
         await supabase.auth.signOut()
         sessionStorage.clear()
         localStorage.clear()
-        window.location.href = '/'
+        setIsAlreadyLoggedIn(false)
+        setCurrentSessionUser(null)
+        setCurrentUserProfile(null)
     }
 
     const handleLogin = async (e) => {
@@ -31,13 +47,25 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
         setLoading(true)
         setError(null)
 
+        try {
+            // Se já há um usuário ativo, desloga silenciosamente primeiro para permitir a troca limpa de conta
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session) {
+                await supabase.auth.signOut()
+                sessionStorage.clear()
+                localStorage.clear()
+            }
+        } catch (err) {
+            console.warn("Erro ao limpar sessão anterior:", err)
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
         })
 
         if (error) {
-            setError(error.message)
+            setError(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : error.message)
             setLoading(false)
         } else {
             try {
@@ -47,7 +75,7 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                 if (user) {
                     const { data: profile } = await supabase
                         .from('users')
-                        .select('must_change_password')
+                        .select('role, must_change_password')
                         .eq('id', user.id)
                         .maybeSingle()
 
@@ -56,9 +84,23 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                         setLoading(false)
                         return
                     }
+
+                    // Redirecionamento dinâmico baseado no role se nenhum redirectTo específico for definido
+                    if (!redirectTo) {
+                        if (profile?.role === 'aluno') {
+                            window.location.replace('/meus-cursos')
+                            return
+                        } else if (profile?.role === 'instrutor') {
+                            window.location.replace('/professor')
+                            return
+                        } else if (['admin', 'coordenador', 'atendente'].includes(profile?.role)) {
+                            window.location.replace('/dashboard')
+                            return
+                        }
+                    }
                 }
 
-                // Se chegou aqui, redireciona conforme planejado
+                // Se chegou aqui, redireciona conforme planejado ou fallback para Home
                 if (redirectTo === '/') {
                     window.location.replace('/')
                 } else if (redirectTo) {
@@ -91,37 +133,62 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                     {isSecretaria && <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>Acesso exclusivo para administradores e secretaria.</p>}
                 </div>
 
-                {isAlreadyLoggedIn ? (
-                    <div style={{ textAlign: 'center', padding: '1rem' }}>
-                        <div style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
-                            Você já está autenticado no sistema. Se estiver enfrentando problemas de carregamento, clique no botão abaixo para deslogar.
+                {isAlreadyLoggedIn && currentSessionUser && (
+                    <div className="animate-fade-in" style={{
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                        borderRadius: '12px',
+                        padding: '1.25rem',
+                        marginBottom: '1.5rem',
+                        fontSize: '0.875rem',
+                        textAlign: 'left'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)', fontWeight: '600', marginBottom: '0.5rem' }}>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', animation: 'pulse 2s infinite' }}></span>
+                            Sessão Ativa Detectada
                         </div>
-                        <button 
-                            onClick={handleLogout}
-                            className="btn btn-secondary"
-                            style={{ width: '100%', padding: '0.75rem', backgroundColor: '#ef4444', color: 'white', border: 'none' }}
-                        >
-                            Sair do Sistema (Log Out)
-                        </button>
-                        <button 
-                            onClick={() => navigate('/')}
-                            style={{ width: '100%', marginTop: '1rem', background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '600' }}
-                        >
-                            Voltar para a Home
-                        </button>
+                        <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-muted)' }}>
+                            Conectado como: <strong style={{ color: 'var(--text-color)' }}>{currentSessionUser.email}</strong>
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                                onClick={() => {
+                                    if (currentUserProfile?.role === 'aluno') {
+                                        window.location.replace('/meus-cursos')
+                                    } else if (currentUserProfile?.role === 'instrutor') {
+                                        window.location.replace('/professor')
+                                    } else if (['admin', 'coordenador', 'atendente'].includes(currentUserProfile?.role)) {
+                                        window.location.replace('/dashboard')
+                                    } else {
+                                        window.location.replace('/')
+                                    }
+                                }}
+                                className="btn btn-primary"
+                                style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem', fontWeight: '500' }}
+                            >
+                                Acessar Painel
+                            </button>
+                            <button 
+                                onClick={handleLogout}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: 'pointer' }}
+                            >
+                                Sair
+                            </button>
+                        </div>
                     </div>
-                ) : (
-                    <>
-                        {error && (
-                            <div style={{
-                                backgroundColor: 'var(--danger)', color: 'white', padding: '0.75rem',
-                                borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.875rem'
-                            }}>
-                                {error}
-                            </div>
-                        )}
+                )}
 
-                        <form onSubmit={handleLogin} autoComplete="off">
+                {error && (
+                    <div style={{
+                        backgroundColor: 'var(--danger)', color: 'white', padding: '0.75rem',
+                        borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.875rem'
+                    }}>
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleLogin} autoComplete="off">
                     <div className="form-group" style={{ position: 'relative' }}>
                         <label className="form-label">E-mail</label>
                         <div style={{ position: 'relative' }}>
@@ -187,8 +254,6 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                         {loading ? 'Entrando...' : 'Entrar no Sistema'}
                     </button>
                 </form>
-                </>
-                )}
             </div>
         </div>
     )

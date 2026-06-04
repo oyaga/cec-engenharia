@@ -68,12 +68,12 @@ const LeadsAdmin = () => {
     
     // Dados formatados
     const csvRows = leads.map(lead => [
-      lead.name,
-      lead.phone,
+      lead.name || "Sem Nome",
+      lead.phone || "Sem Telefone",
       lead.course_interest || "Não informado",
-      `"${lead.message.replace(/"/g, '""')}"`, // Escapar aspas na mensagem
-      lead.status,
-      new Date(lead.created_at).toLocaleDateString('pt-BR')
+      `"${(lead.message || '').replace(/"/g, '""')}"`, // Escapar aspas na mensagem
+      lead.status || "novo",
+      lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '-'
     ]);
 
     // Criar o conteúdo do CSV
@@ -93,10 +93,11 @@ const LeadsAdmin = () => {
     document.body.removeChild(link);
   };
 
-  const filteredLeads = leads.filter(lead => 
-    lead.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    lead.phone.includes(searchTerm)
-  );
+  const filteredLeads = leads.filter(lead => {
+    const name = lead.name || '';
+    const phone = lead.phone || '';
+    return name.toLowerCase().includes(searchTerm.toLowerCase()) || phone.includes(searchTerm);
+  });
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -182,18 +183,18 @@ const LeadsAdmin = () => {
               <div className="flex justify-between items-start">
                 <div className="flex gap-4">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-primary font-bold">
-                    {lead.name.charAt(0).toUpperCase()}
+                    {(lead.name || 'S').charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-lg">{lead.name}</h3>
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getStatusColor(lead.status)}`}>
-                        {lead.status.replace('_', ' ')}
+                      <h3 className="font-bold text-lg">{lead.name || 'Sem Nome'}</h3>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getStatusColor(lead.status || 'novo')}`}>
+                        {(lead.status || 'novo').replace('_', ' ')}
                       </span>
                     </div>
                     <div className="flex gap-4 text-sm text-secondary mb-2">
-                      <span className="flex items-center gap-1"><Phone size={14} /> {lead.phone}</span>
-                      <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(lead.created_at).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="flex items-center gap-1"><Phone size={14} /> {lead.phone || 'Sem Telefone'}</span>
+                      <span className="flex items-center gap-1"><Calendar size={14} /> {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                       {lead.course_interest && (
                         <span className="flex items-center gap-1 text-primary font-bold">
                           <BookOpen size={14} /> {lead.course_interest}
@@ -201,14 +202,14 @@ const LeadsAdmin = () => {
                       )}
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg border italic text-secondary max-w-2xl">
-                      "{lead.message}"
+                      "{lead.message || 'Sem mensagem.'}"
                     </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <a 
-                    href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} 
+                    href={`https://wa.me/${(lead.phone || '').replace(/\D/g, '')}`} 
                     target="_blank" 
                     rel="noreferrer"
                     className="btn btn-success flex items-center gap-2 justify-center"

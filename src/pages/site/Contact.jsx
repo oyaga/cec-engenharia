@@ -22,11 +22,19 @@ const Contact = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
 
   if (!contact_page) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (honeypot) {
+      console.warn('Bot detectado no formulário de contato.');
+      setIsSuccess(true);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -122,6 +130,15 @@ const Contact = () => {
             >
               {!isSuccess ? (
                 <form onSubmit={handleSubmit} className="premium-form">
+                  <input
+                    type="text"
+                    name="website"
+                    value={honeypot}
+                    onChange={(e) => setHoneypot(e.target.value)}
+                    style={{ display: 'none' }}
+                    tabIndex={-1}
+                    autoComplete="off"
+                  />
                   <div className="input-field">
                     <label>Nome Completo</label>
                     <div className="input-with-icon">
@@ -203,7 +220,7 @@ const Contact = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .contact-main { background: white; }
         .contact-header { 
           background: var(--primary-dark);

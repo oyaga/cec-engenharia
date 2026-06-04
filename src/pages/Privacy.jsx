@@ -71,7 +71,7 @@ const Privacy = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .legal-main {
           background: #f8fafc;
         }

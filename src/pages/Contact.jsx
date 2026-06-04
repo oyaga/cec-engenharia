@@ -175,7 +175,7 @@ const Contact = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .contact-main { background: white; }
         .contact-header { 
           background: var(--primary-dark);

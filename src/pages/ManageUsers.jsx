@@ -122,7 +122,7 @@ const ManageUsers = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style jsx="true">{`
         .manage-users-container {
           min-height: 100vh;
           background: #f1f5f9;

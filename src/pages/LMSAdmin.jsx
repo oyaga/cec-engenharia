@@ -1,18 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Plus, Book, Video, FileText, ChevronRight, ChevronDown, Save, Trash2, Edit, CheckSquare, Clock, Trophy, Eye, Printer, Search, Award, UploadCloud } from 'lucide-react'
+import { Plus, Book, Video, FileText, ChevronRight, ChevronDown, Save, Trash2, Edit, CheckSquare, Clock, Trophy, Eye, Printer, Search, Award, UploadCloud, Megaphone } from 'lucide-react'
 
 export default function LMSAdmin() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState([])
     const [loading, setLoading] = useState(true)
-    const [view, setView] = useState('list') // list | add_course | manage_course
+    const [view, setView] = useState('list') // list | add_course | manage_course | doubts | certificate_models | announcements
     const [selectedCourse, setSelectedCourse] = useState(null)
     const [modules, setModules] = useState([])
     const [lessons, setLessons] = useState({}) // { moduleId: [lessons] }
-    const [prices, setPrices] = useState([])
-    const [pricingView, setPricingView] = useState(false) // Toggle para aba de preços
     const [quizzes, setQuizzes] = useState({}) // { moduleId: quizObj }
     const [selectedQuiz, setSelectedQuiz] = useState(null)
     const [quizQuestions, setQuizQuestions] = useState([])
@@ -22,6 +20,12 @@ export default function LMSAdmin() {
     const [doubtAnswerText, setDoubtAnswerText] = useState('')
     const [certConfigs, setCertConfigs] = useState([])
     
+    // Estados do Quadro de Avisos (Prioridade 🟡 13)
+    const [announcements, setAnnouncements] = useState([])
+    const [loadingAnnouncements, setLoadingAnnouncements] = useState(false)
+    const [showAnnForm, setShowAnnForm] = useState(false)
+    const [annForm, setAnnForm] = useState({ id: null, title: '', content: '', priority: 'geral', course_id: '' })
+
     // Estados do NOVO QUESTION BUILDER
     const [showQuestionBuilder, setShowQuestionBuilder] = useState(false)
     const [questionForm, setQuestionForm] = useState({
@@ -75,9 +79,6 @@ export default function LMSAdmin() {
         passing_grade: 70
     })
 
-    const [showPriceForm, setShowPriceForm] = useState(false)
-    const [priceForm, setPriceForm] = useState({ id: null, course_name: '', default_value: 0 })
-
     const fetchCourses = async () => {
         setLoading(true)
         const { data, error } = await supabase
@@ -130,11 +131,6 @@ export default function LMSAdmin() {
         }
     }
 
-    const fetchPrices = async () => {
-        const { data } = await supabase.from('course_prices').select('*').order('course_name')
-        if (data) setPrices(data)
-    }
-
     const fetchAllDoubts = async () => {
         setLoading(true)
         const { data } = await supabase
@@ -166,42 +162,92 @@ export default function LMSAdmin() {
         }
     }
 
-    const handleOpenPriceForm = (price = null) => {
-        if (price) {
-            setPriceForm({ id: price.id, course_name: price.course_name, default_value: price.default_value })
-        } else {
-            setPriceForm({ id: null, course_name: '', default_value: 0 })
-        }
-        setShowPriceForm(true)
-    }
-
-    const handleSavePrice = async () => {
-        if (!priceForm.course_name.trim()) return alert('Nome do curso obrigatório')
-        
-        let error
-        if (priceForm.id) {
-            const { error: err } = await supabase.from('course_prices').update({ course_name: priceForm.course_name, default_value: parseFloat(priceForm.default_value) }).eq('id', priceForm.id)
-            error = err
-        } else {
-            const { error: err } = await supabase.from('course_prices').insert([{ course_name: priceForm.course_name, default_value: parseFloat(priceForm.default_value) }])
-            error = err
-        }
-
-        if (error) alert('Erro ao salvar preço: ' + error.message)
-        else {
-            setShowPriceForm(false)
-            fetchPrices()
-        }
-    }
-
     const fetchCertConfigs = async () => {
         const { data } = await supabase.from('lms_certificate_configs').select('*')
         if (data) setCertConfigs(data)
     }
 
+    const fetchAnnouncementsAdmin = async () => {
+        setLoadingAnnouncements(true)
+        try {
+            const { data, error } = await supabase
+                .from('lms_announcements')
+                .select('*, lms_courses(title)')
+                .order('created_at', { ascending: false })
+            
+            if (error) throw error
+            setAnnouncements(data || [])
+        } catch (err) {
+            console.error("Erro ao buscar avisos:", err)
+        } finally {
+            setLoadingAnnouncements(false)
+        }
+    }
+
+    const handleSaveAnnouncement = async (e) => {
+        e.preventDefault()
+        if (!annForm.title.trim() || !annForm.content.trim()) return alert('Título e Conteúdo são obrigatórios')
+        setLoadingAnnouncements(true)
+        
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            
+            const payload = {
+                title: annForm.title.trim(),
+                content: annForm.content.trim(),
+                priority: annForm.priority,
+                course_id: annForm.course_id || null,
+                created_by: user.id
+            }
+
+            let error
+            if (annForm.id) {
+                const { error: err } = await supabase
+                    .from('lms_announcements')
+                    .update(payload)
+                    .eq('id', annForm.id)
+                error = err
+            } else {
+                const { error: err } = await supabase
+                    .from('lms_announcements')
+                    .insert([payload])
+                error = err
+            }
+
+            if (error) throw error
+            
+            alert('Aviso salvo com sucesso!')
+            setShowAnnForm(false)
+            setAnnForm({ id: null, title: '', content: '', priority: 'geral', course_id: '' })
+            fetchAnnouncementsAdmin()
+        } catch (err) {
+            alert('Erro ao salvar aviso: ' + err.message)
+        } finally {
+            setLoadingAnnouncements(false)
+        }
+    }
+
+    const handleDeleteAnnouncement = async (id) => {
+        if (!confirm('Deseja excluir este aviso permanentemente?')) return
+        setLoadingAnnouncements(true)
+        try {
+            const { error } = await supabase
+                .from('lms_announcements')
+                .delete()
+                .eq('id', id)
+            
+            if (error) throw error
+            alert('Aviso excluído com sucesso!')
+            fetchAnnouncementsAdmin()
+        } catch (err) {
+            alert('Erro ao excluir aviso: ' + err.message)
+        } finally {
+            setLoadingAnnouncements(false)
+        }
+    }
+
     useEffect(() => {
         fetchCourses()
-        fetchPrices()
         fetchCertConfigs()
     }, [])
 
@@ -284,10 +330,8 @@ export default function LMSAdmin() {
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Gestão de Cursos EAD</h2>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button className="btn btn-secondary" onClick={() => { setView('doubts'); fetchAllDoubts(); }}>Central de Dúvidas</button>
+                    <button className="btn btn-secondary" onClick={() => { setView('announcements'); fetchAnnouncementsAdmin(); }} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Megaphone size={14} /> Quadro de Avisos</button>
                     <button className="btn btn-secondary" onClick={() => { setView('certificate_models'); fetchCertConfigs(); }}>Modelos de Certificado</button>
-                    <button className="btn btn-secondary" onClick={() => setPricingView(!pricingView)}>
-                        {pricingView ? 'Ver Cursos' : 'Gerenciar Preços'}
-                    </button>
                     <button className="btn btn-primary" onClick={() => {
                         setSelectedCourse(null)
                         setView('add_course')
@@ -299,37 +343,6 @@ export default function LMSAdmin() {
 
             {loading ? (
                 <p>Carregando dados...</p>
-            ) : pricingView ? (
-                <div className="card">
-                    <h3 style={{ marginBottom: '1.5rem' }}>Tabela de Preços Padrão</h3>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left' }}>
-                                    <th style={{ padding: '0.75rem' }}>Nome do Curso</th>
-                                    <th style={{ padding: '0.75rem' }}>Preço Sugerido (R$)</th>
-                                    <th style={{ padding: '0.75rem', textAlign: 'right' }}>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {prices.map(p => (
-                                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '0.75rem' }}>{p.course_name}</td>
-                                        <td style={{ padding: '0.75rem' }}>R$ {p.default_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                        <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                            <button className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem' }} onClick={() => handleOpenPriceForm(p)}>
-                                                <Edit size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={() => handleOpenPriceForm()}>
-                        + Adicionar Novo Preço
-                    </button>
-                </div>
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
                     {courses.map(course => (
@@ -1014,12 +1027,129 @@ export default function LMSAdmin() {
         </div>
     )
 
+    const renderAnnouncements = () => (
+        <div className="animate-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
+                <div>
+                    <button className="btn btn-secondary" style={{ marginBottom: '1rem' }} onClick={() => setView('list')}>&larr; Voltar para listagem</button>
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Megaphone size={24} color="var(--primary)" /> Quadro de Avisos &amp; Comunicados
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: '0.25rem', margin: 0 }}>
+                        Publique informações urgentes ou gerais para todos os alunos ou segmentados por cursos.
+                    </p>
+                </div>
+                <button className="btn btn-primary" onClick={() => {
+                    setAnnForm({ id: null, title: '', content: '', priority: 'geral', course_id: '' })
+                    setShowAnnForm(true)
+                }} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Plus size={16} /> Novo Aviso
+                </button>
+            </div>
+
+            {loadingAnnouncements ? <p>Carregando Quadro de Avisos...</p> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {announcements.map(ann => {
+                        const priorities = {
+                            urgente: { label: 'Urgente 🚨', color: '#EF4444', bg: '#FEE2E2' },
+                            importante: { label: 'Importante ⚠️', color: '#F59E0B', bg: '#FEF3C7' },
+                            geral: { label: 'Geral 📢', color: '#3B82F6', bg: '#DBEAFE' }
+                        }
+                        const p = priorities[ann.priority?.toLowerCase()] || priorities.geral
+                        return (
+                            <div key={ann.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: `4px solid ${p.color}` }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <span style={{ backgroundColor: p.bg, color: p.color, fontSize: '0.7rem', fontWeight: '800', padding: '2px 8px', borderRadius: '4px' }}>
+                                            {p.label}
+                                        </span>
+                                        <h4 style={{ fontWeight: 700, margin: 0 }}>{ann.title}</h4>
+                                        {ann.lms_courses?.title && (
+                                            <span style={{ backgroundColor: '#F1F5F9', color: '#475569', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                                Curso: {ann.lms_courses.title}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{new Date(ann.created_at).toLocaleDateString('pt-BR')}</span>
+                                        <button className="btn btn-secondary" style={{ padding: '0.35rem', color: 'var(--danger)' }} onClick={() => handleDeleteAnnouncement(ann.id)} title="Excluir Aviso">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-line' }}>{ann.content}</p>
+                            </div>
+                        )
+                    })}
+                    {announcements.length === 0 && <p className="text-secondary text-center" style={{ padding: '3rem', border: '1px dashed var(--border-color)', borderRadius: '12px' }}>Nenhum comunicado cadastrado.</p>}
+                </div>
+            )}
+        </div>
+    )
+
+    const renderCertificateModels = () => (
+        <div className="animate-fade-in">
+            <button className="btn btn-secondary" style={{ marginBottom: '1.5rem' }} onClick={() => setView('list')}>&larr; Voltar para listagem</button>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Award size={24} color="var(--primary)" /> Modelos de Texto para Certificados
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '2rem' }}>
+                Configure o texto padrão que será renderizado nos certificados dos alunos que concluírem o curso. Use as variáveis sugeridas.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {certConfigs.map(config => (
+                    <div key={config.id} className="card" style={{ padding: '2rem' }}>
+                        <h4 style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>Modelo Oficial CEC</h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600 }}>Texto Base do Certificado</label>
+                                <textarea 
+                                    className="form-control" 
+                                    rows="4" 
+                                    defaultValue={config.template_text}
+                                    id={`cert_text_${config.id}`}
+                                    style={{ fontFamily: 'system-ui, sans-serif', fontSize: '0.9rem', lineHeight: '1.5' }}
+                                />
+                            </div>
+
+                            <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <h5 style={{ fontWeight: 700, fontSize: '0.8rem', color: '#475569', marginTop: 0, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Variáveis Suportadas:</h5>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.78rem', color: '#64748b' }}>
+                                    <span><code>{"{{nome_aluno}}"}</code> - Nome completo do estudante</span>
+                                    <span><code>{"{{cpf_aluno}}"}</code> - CPF cadastrado do aluno</span>
+                                    <span><code>{"{{nome_curso}}"}</code> - Título do curso concluído</span>
+                                    <span><code>{"{{carga_horaria}}"}</code> - Horas teóricas do curso</span>
+                                </div>
+                            </div>
+
+                            <button 
+                                className="btn btn-primary" 
+                                style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                                onClick={() => {
+                                    const text = document.getElementById(`cert_text_${config.id}`).value
+                                    handleSaveCertConfig(config.id, text)
+                                }}
+                            >
+                                <Save size={16} /> Salvar Alterações
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                {certConfigs.length === 0 && <p className="text-secondary">Nenhum modelo de certificado encontrado no banco de dados.</p>}
+            </div>
+        </div>
+    )
+
     return (
         <div className="lms-admin-container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
             {view === 'list' && renderCourseList()}
             {view === 'add_course' && renderAddCourse()}
             {view === 'manage_course' && renderManageCourse()}
             {view === 'doubts' && renderDoubts()}
+            {view === 'announcements' && renderAnnouncements()}
+            {view === 'certificate_models' && renderCertificateModels()}
 
             {/* MODAL DE GERENCIAMENTO DE PROVAS (QUESTÕES) */}
             {isEditingQuiz && (
@@ -1236,23 +1366,55 @@ export default function LMSAdmin() {
                 </div>
             )}
 
-            {/* MODAL DE PREÇO */}
-            {showPriceForm && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '400px' }}>
-                        <h3 style={{ marginBottom: '1.5rem' }}>{priceForm.id ? 'Editar Preço' : 'Novo Preço Sugerido'}</h3>
-                        <div className="form-group">
-                            <label className="form-label">Nome do Curso</label>
-                            <input type="text" className="form-control" value={priceForm.course_name} onChange={e => setPriceForm({...priceForm, course_name: e.target.value})} />
+
+
+            {/* MODAL DE QUADRO DE AVISOS (Prioridade 🟡 13) */}
+            {showAnnForm && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
+                    <div className="card animate-fade-in" style={{ width: '500px', maxWidth: '90%', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'white', padding: '2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a' }}>
+                                <Megaphone color="var(--primary)" size={20} /> Novo Comunicado Pedagógico
+                            </h3>
+                            <button onClick={() => setShowAnnForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: '#64748b' }}>&times;</button>
                         </div>
-                        <div className="form-group">
-                            <label className="form-label">Valor Padrão (R$)</label>
-                            <input type="number" className="form-control" value={priceForm.default_value} onChange={e => setPriceForm({...priceForm, default_value: e.target.value})} />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
-                            <button className="btn btn-secondary" onClick={() => setShowPriceForm(false)}>Cancelar</button>
-                            <button className="btn btn-primary" onClick={handleSavePrice}>Salvar Preço</button>
-                        </div>
+                        <form onSubmit={handleSaveAnnouncement} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#475569' }}>Título do Comunicado *</label>
+                                <input type="text" required className="form-control" value={annForm.title} onChange={e => setAnnForm({...annForm, title: e.target.value})} placeholder="Ex: Treinamento Presencial Prático" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#475569' }}>Prioridade / Destacabilidade *</label>
+                                <select className="form-control" value={annForm.priority} onChange={e => setAnnForm({...annForm, priority: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                    <option value="geral">Informativo Geral (Azul)</option>
+                                    <option value="importante">Importante (Laranja)</option>
+                                    <option value="urgente">Urgente / Crítico (Vermelho)</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#475569' }}>Curso Destinatário (Opcional)</label>
+                                <select className="form-control" value={annForm.course_id} onChange={e => setAnnForm({...annForm, course_id: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                    <option value="">Aviso Geral para Todos os Alunos</option>
+                                    {courses.map(c => (
+                                        <option key={c.id} value={c.id}>{c.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#475569' }}>Conteúdo do Comunicado *</label>
+                                <textarea required className="form-control" rows="5" value={annForm.content} onChange={e => setAnnForm({...annForm, content: e.target.value})} placeholder="Escreva o comunicado em detalhes para os alunos..." style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical' }} />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowAnnForm(false)} style={{ flex: 1 }}>Cancelar</button>
+                                <button type="submit" disabled={loadingAnnouncements} className="btn btn-primary" style={{ flex: 1 }}>
+                                    {loadingAnnouncements ? 'Salvando...' : 'Salvar e Publicar'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

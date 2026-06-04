@@ -40,8 +40,22 @@ export default function ResetPassword() {
             
             if (dbError && dbError.code !== 'PGRST116') console.error("Erro ao atualizar aluno:", dbError)
 
+            // 3. Buscar papel do usuário para redirecionar corretamente
+            const { data: profile } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', session.user.id)
+                .maybeSingle()
+
             alert('Senha atualizada com sucesso! Bem-vindo ao portal.')
-            navigate('/')
+            
+            if (profile?.role === 'aluno') {
+                window.location.replace('/meus-cursos')
+            } else if (['admin', 'coordenador', 'atendente'].includes(profile?.role)) {
+                window.location.replace('/dashboard')
+            } else {
+                navigate('/')
+            }
         } catch (err) {
             setError(err.message)
         } finally {

@@ -307,7 +307,7 @@ const AboutUs = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .about-main {
           background: white;
         }

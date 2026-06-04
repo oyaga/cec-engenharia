@@ -1,9 +1,23 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { generateDocument } from '../lib/pdfGenerator'
-import { Search, Plus, Filter, Eye, Printer, FileText, FileBadge, Award, UploadCloud, Paperclip, Lock, Unlock, BookOpen, CheckSquare, Activity, Key, Clock } from 'lucide-react'
+import { Search, Plus, Filter, Eye, Printer, FileText, FileBadge, Award, UploadCloud, Paperclip, Lock, Unlock, BookOpen, CheckSquare, Activity, Key, Clock, X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import {
+    createOrFindCustomer,
+    createPixPayment,
+    getPixQrCode,
+    createBoletoPayment,
+    createCardPayment,
+    getPaymentStatus,
+    createFinancingPayment
+} from '../services/asaas'
 
 export default function Alunos() {
+    const { userProfile } = useAuth()
+    const isGerencial = ['admin', 'coordenador'].includes(userProfile?.role)
+    const isAtendente = userProfile?.role === 'atendente'
+
     const [view, setView] = useState('list') // list | add | detail (student obj)
     const [searchTerm, setSearchTerm] = useState('')
     const [students, setStudents] = useState([])
@@ -15,16 +29,342 @@ export default function Alunos() {
         full_name: '', cpf: '', rg: '', birth_date: '', birth_place: '', marital_status: 'Solteiro(a)',
         pai: '', mae: '', education_level: 'Ensino Médio Completo', email: '', phone: '',
         cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '',
-        how_knew: 'Amigo', how_knew_other: '',
+        how_knew: 'WhatsApp', how_knew_other: '',
         base_value: '', discount_value: '', manual_signed: false,
         payment_method: 'À Vista (PIX/Dinheiro)'
     })
 
     const [showAuthModal, setShowAuthModal] = useState(false)
+    const [authEmail, setAuthEmail] = useState('')
     const [authPassword, setAuthPassword] = useState('')
     const [authError, setAuthError] = useState('')
+    const [selectedAction, setSelectedAction] = useState('Desbloquear Desconto')
     const [discountUnlocked, setDiscountUnlocked] = useState(false)
     const [isEditing, setIsEditing] = useState(null) // ID do aluno sendo editado
+    const [showCredentialsModal, setShowCredentialsModal] = useState(false)
+    const [credentials, setCredentials] = useState({ name: '', email: '', password: '', phone: '' })
+    const asaasEnabled = true // Sprint B gancho
+
+    // Checkout states
+    const [checkoutValue, setCheckoutValue] = useState(0)
+    const [checkoutStudent, setCheckoutStudent] = useState(null)
+    const [showCheckoutModal, setShowCheckoutModal] = useState(false)
+    const [checkoutStep, setCheckoutStep] = useState('select_method') 
+    const [checkoutPaymentInfo, setCheckoutPaymentInfo] = useState(null)
+    const [cardForm, setCardForm] = useState({
+        holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '',
+        cpf: '', email: '', phone: '', postalCode: '', addressNumber: ''
+    })
+    const [boletoDueDate, setBoletoDueDate] = useState('')
+    const [financingInstallments, setFinancingInstallments] = useState('6')
+    const [pixQrCodeImage, setPixQrCodeImage] = useState('')
+    const [pixCopiaCola, setPixCopiaCola] = useState('')
+    const [pollingActive, setPollingActive] = useState(false)
+    const [generatedCredentials, setGeneratedCredentials] = useState(null)
+    const [checkoutError, setCheckoutError] = useState('')
+    const [financingApproved, setFinancingApproved] = useState(false)
+    const [authAttempts, setAuthAttempts] = useState(0)
+    const [authBlockedUntil, setAuthBlockedUntil] = useState(null)
+
+    useEffect(() => {
+        if (financingApproved && showCheckoutModal && checkoutStep === 'select_method') {
+            setCheckoutStep('financing_form');
+        }
+    }, [financingApproved, showCheckoutModal, checkoutStep]);
+
+    const [signedUrls, setSignedUrls] = useState({})
+
+    useEffect(() => {
+        if (view && typeof view === 'object' && view.id) {
+            const loadSignedUrls = async () => {
+                const urls = {}
+                const std = view.originalData || view
+                
+                const docsToSign = [
+                    { key: 'photo', url: std.doc_photo_url },
+                    { key: 'id', url: std.doc_id_url },
+                    { key: 'cpf', url: std.doc_cpf_url },
+                    { key: 'education', url: std.doc_education_url },
+                    { key: 'address', url: std.doc_address_url }
+                ]
+
+                for (const doc of docsToSign) {
+                    if (doc.url) {
+                        const parts = doc.url.split('/object/public/student_documents/')
+                        const filePath = parts.length > 1 ? parts[1] : null
+                        if (filePath) {
+                            try {
+                                const { data, error } = await supabase.storage
+                                    .from('student_documents')
+                                    .createSignedUrl(filePath, 900) // 15 min
+                                if (!error && data) {
+                                    urls[doc.key] = data.signedUrl
+                                }
+                            } catch (e) {
+                                console.warn('[Segurança] Falha ao assinar URL de storage:', e)
+                            }
+                        }
+                    }
+                }
+
+                if (std.doc_exams_url && Array.isArray(std.doc_exams_url)) {
+                    const signedExams = []
+                    for (const exam of std.doc_exams_url) {
+                        if (exam.url) {
+                            const parts = exam.url.split('/object/public/student_documents/')
+                            const filePath = parts.length > 1 ? parts[1] : null
+                            if (filePath) {
+                                try {
+                                    const { data, error } = await supabase.storage
+                                        .from('student_documents')
+                                        .createSignedUrl(filePath, 900)
+                                    if (!error && data) {
+                                        signedExams.push({ ...exam, url: data.signedUrl })
+                                    } else {
+                                        signedExams.push(exam)
+                                    }
+                                } catch (e) {
+                                    signedExams.push(exam)
+                                }
+                            } else {
+                                signedExams.push(exam)
+                            }
+                        } else {
+                            signedExams.push(exam)
+                        }
+                    }
+                    urls['exams'] = signedExams
+                }
+
+                setSignedUrls(urls)
+            }
+            loadSignedUrls()
+        } else {
+            setSignedUrls({})
+        }
+    }, [view])
+
+    const handleStartCheckout = (student) => {
+        const finalVal = (student.originalData?.base_value || 0) - (student.originalData?.discount_value || 0);
+        setCheckoutValue(finalVal);
+        setCheckoutStudent(student);
+        setCheckoutStep('select_method');
+        setCheckoutPaymentInfo(null);
+        setCardForm({
+            holderName: '',
+            number: '',
+            expiryMonth: '',
+            expiryYear: '',
+            ccv: '',
+            cpf: student.originalData.cpf || '',
+            email: student.originalData.email || '',
+            phone: student.originalData.phone || '',
+            postalCode: '',
+            addressNumber: ''
+        });
+        setBoletoDueDate(new Date(Date.now() + 5*24*60*60*1000).toISOString().split('T')[0]); 
+        setFinancingInstallments('6');
+        setPixQrCodeImage('');
+        setPixCopiaCola('');
+        setPollingActive(false);
+        setGeneratedCredentials(null);
+        setCheckoutError('');
+        setFinancingApproved(false);
+        setShowCheckoutModal(true);
+    };
+
+    const getAsaasCustomer = async (student) => {
+        const customer = await createOrFindCustomer({
+            id: student.id,
+            name: student.full_name,
+            cpf: student.cpf,
+            email: student.email,
+            phone: student.phone
+        });
+        return customer.id;
+    };
+
+    const handlePixCheckout = async (student, finalValue) => {
+        setCheckoutStep('processing');
+        setCheckoutError('');
+        try {
+            const customerId = await getAsaasCustomer(student.originalData);
+            const description = `Matrícula: ${student.class} - ${student.name}`;
+            const payment = await createPixPayment(customerId, finalValue, description);
+            const qrCode = await getPixQrCode(payment.id);
+            
+            setPixQrCodeImage(qrCode.encodedImage);
+            setPixCopiaCola(qrCode.payload);
+            setCheckoutPaymentInfo(payment);
+            setCheckoutStep('pix_display');
+            setPollingActive(true);
+            
+            startPixPolling(payment.id, student);
+        } catch (err) {
+            console.error("Erro no checkout PIX:", err);
+            setCheckoutError(err.message || 'Erro ao processar PIX no Asaas.');
+            setCheckoutStep('error');
+        }
+    };
+
+    const startPixPolling = (paymentId, student) => {
+        const interval = setInterval(async () => {
+            if (!showCheckoutModal) {
+                clearInterval(interval);
+                return;
+            }
+            try {
+                const statusObj = await getPaymentStatus(paymentId);
+                if (statusObj.status === 'CONFIRMED' || statusObj.status === 'RECEIVED') {
+                    clearInterval(interval);
+                    handlePaymentSuccess(statusObj, student);
+                }
+            } catch (err) {
+                console.error("Erro no polling de pagamento:", err);
+            }
+        }, 5000);
+    };
+
+    const handleCardCheckout = async (student, finalValue) => {
+        setCheckoutStep('processing');
+        setCheckoutError('');
+        try {
+            const customerId = await getAsaasCustomer(student.originalData);
+            const description = `Matrícula: ${student.class} - ${student.name}`;
+            const payment = await createCardPayment(customerId, finalValue, description, maxInstallmentsCard, {
+                ...cardForm,
+                email: cardForm.email || student.originalData.email,
+                phone: cardForm.phone || student.originalData.phone,
+                cpf: cardForm.cpf || student.originalData.cpf
+            });
+            handlePaymentSuccess(payment, student);
+        } catch (err) {
+            console.error("Erro no checkout Cartão:", err);
+            setCheckoutError(err.message || 'Erro ao processar Cartão no Asaas.');
+            setCheckoutStep('error');
+        }
+    };
+
+    const handleBoletoCheckout = async (student, finalValue) => {
+        setCheckoutStep('processing');
+        setCheckoutError('');
+        try {
+            const customerId = await getAsaasCustomer(student.originalData);
+            const description = `Matrícula: ${student.class} - ${student.name}`;
+            const payment = await createBoletoPayment(customerId, finalValue, description, boletoDueDate);
+            setCheckoutPaymentInfo(payment);
+            setCheckoutStep('boleto_display');
+        } catch (err) {
+            console.error("Erro no checkout Boleto:", err);
+            setCheckoutError(err.message || 'Erro ao emitir Boleto no Asaas.');
+            setCheckoutStep('error');
+        }
+    };
+
+    const handleFinancingSelect = () => {
+        if (isGerencial) {
+            setFinancingApproved(true);
+            setCheckoutStep('financing_form');
+        } else {
+            setSelectedAction('Aprovar Financiamento');
+            setShowAuthModal(true);
+        }
+    };
+
+    const handleFinancingCheckout = async (student, finalValue) => {
+        if (!financingApproved) {
+            alert("Financiamento próprio requer autorização do coordenador.");
+            return;
+        }
+        setCheckoutStep('processing');
+        setCheckoutError('');
+        try {
+            const customerId = await getAsaasCustomer(student.originalData);
+            const description = `Matrícula (Financiamento): ${student.class} - ${student.name}`;
+            const payments = await createFinancingPayment(customerId, finalValue, parseInt(financingInstallments), description);
+            handlePaymentSuccess(payments[0], student, true);
+        } catch (err) {
+            console.error("Erro no checkout Financiamento:", err);
+            setCheckoutError(err.message || 'Erro ao processar Financiamento no Asaas.');
+            setCheckoutStep('error');
+        }
+    };
+
+    const handlePaymentSuccess = async (payment, student, isFinancing = false) => {
+        try {
+            const credentialsPassword = `CEC@${Math.floor(100000 + Math.random() * 900000)}`;
+
+            const { data: existingUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', student.originalData.email)
+                .single();
+
+            let userId = existingUser?.id;
+
+            if (!userId) {
+                const { data: { session } } = await supabase.auth.getSession();
+                const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token}`
+                    },
+                    body: JSON.stringify({
+                        action: 'create',
+                        email: student.originalData.email,
+                        password: credentialsPassword,
+                        fullName: student.name,
+                        phone: student.originalData.phone,
+                        role: 'aluno'
+                    })
+                });
+
+                if (response.ok) {
+                    const resData = await response.json();
+                    userId = resData.userId;
+                } else {
+                    const errData = await response.json().catch(() => ({}));
+                    console.error("Erro ao criar usuário auth:", errData);
+                }
+            }
+
+            await supabase.from('students').update({
+                user_id: userId,
+                payment_status: 'pago',
+                asaas_customer_id: payment.customer,
+                asaas_payment_id: payment.id
+            }).eq('id', student.id);
+
+            await supabase.from('financial_records').insert({
+                student_id: student.id,
+                course_id: student.originalData.classes?.course_id || null,
+                type: 'receita',
+                category: 'matricula',
+                amount: payment.value,
+                payment_method: payment.billingType || (isFinancing ? 'FINANCIAMENTO' : 'BOLETO'),
+                asaas_payment_id: payment.id,
+                status: 'confirmado',
+                description: `Matrícula presencial confirmada - ${student.class}`,
+                date: new Date().toISOString()
+            });
+
+            setGeneratedCredentials({
+                name: student.name,
+                email: student.originalData.email,
+                password: credentialsPassword,
+                phone: student.originalData.phone
+            });
+
+            setCheckoutStep('success');
+            setDiscountUnlocked(false);
+            setFinancingApproved(false);
+        } catch (err) {
+            console.error("Erro ao salvar sucesso de pagamento:", err);
+            setCheckoutError('Pagamento recebido no Asaas, mas falhou ao atualizar banco local.');
+            setCheckoutStep('error');
+        }
+    };
 
     // Eval state
     const [evalData, setEvalData] = useState({ exam_type: 'TEORICA', attempt: 1, grade: '', retraining_hours: 0, date: new Date().toISOString().split('T')[0] })
@@ -42,16 +382,140 @@ export default function Alunos() {
         }
     }
 
+    const handleFinancialAction = (action) => {
+        setSelectedAction(action)
+        if (isGerencial) {
+            alert(`Ação "${action}" liberada diretamente para seu perfil de Gestor.`)
+            if (action === 'Aplicar Desconto') {
+                setDiscountUnlocked(true)
+            }
+        } else {
+            setShowAuthModal(true)
+        }
+    }
+
     const handleUnlockDiscount = async (e) => {
         e.preventDefault()
         setAuthError('')
-        const { data, error } = await supabase.from('financial_pins').select('*').eq('pin', authPassword).single()
-        if (data) {
-            setDiscountUnlocked(true)
+
+        // Verificar se está bloqueado temporariamente por excesso de tentativas
+        if (authBlockedUntil && Date.now() < authBlockedUntil) {
+            const timeLeft = Math.ceil((authBlockedUntil - Date.now()) / 1000)
+            const minutes = Math.floor(timeLeft / 60)
+            const seconds = timeLeft % 60
+            setAuthError(`Muitas tentativas. Tente novamente em ${minutes}:${seconds < 10 ? '0' : ''}${seconds}.`)
+            return
+        }
+
+        if (!authEmail || !authPassword) {
+            setAuthError('Preencha e-mail e senha de autorização.')
+            return
+        }
+
+        try {
+            const { createClient } = await import('@supabase/supabase-js')
+            const tempSupabase = createClient(
+                import.meta.env.VITE_SUPABASE_URL,
+                import.meta.env.VITE_SUPABASE_ANON_KEY,
+                { auth: { persistSession: false } }
+            )
+
+            const { data: authData, error: authErr } = await tempSupabase.auth.signInWithPassword({
+                email: authEmail,
+                password: authPassword
+            })
+
+            if (authErr || !authData?.user) {
+                const nextAttempts = authAttempts + 1
+                setAuthAttempts(nextAttempts)
+                
+                if (nextAttempts >= 3) {
+                    const blockTime = Date.now() + 5 * 60 * 1000 // 5 minutos de bloqueio
+                    setAuthBlockedUntil(blockTime)
+                    setAuthAttempts(0)
+                    setAuthError('Limite de 3 tentativas excedido. Acesso bloqueado por 5 minutos.')
+                } else {
+                    setAuthError(`E-mail ou senha do gestor incorretos. Tentativa ${nextAttempts} de 3.`)
+                }
+                return
+            }
+
+            const { data: profile, error: profErr } = await tempSupabase
+                .from('users')
+                .select('role, full_name')
+                .eq('id', authData.user.id)
+                .single()
+
+            if (profErr || !profile || !['admin', 'coordenador'].includes(profile.role)) {
+                const nextAttempts = authAttempts + 1
+                setAuthAttempts(nextAttempts)
+                if (nextAttempts >= 3) {
+                    const blockTime = Date.now() + 5 * 60 * 1000
+                    setAuthBlockedUntil(blockTime)
+                    setAuthAttempts(0)
+                    setAuthError('Limite de 3 tentativas excedido. Acesso bloqueado por 5 minutos.')
+                } else {
+                    setAuthError('O usuário autenticado não possui papel de Coordenador ou Administrador.')
+                }
+                return
+            }
+
+            // Sucesso! Limpar tentativas e bloqueios
+            setAuthAttempts(0)
+            setAuthBlockedUntil(null)
+
+            // Liberado com expiração automática após 15 minutos (900.000 ms)
+            if (selectedAction === 'Aprovar Financiamento') {
+                setFinancingApproved(true)
+                setTimeout(() => {
+                    setFinancingApproved(false)
+                    console.log('[Segurança] Permissão de financiamento expirada após 15 minutos.')
+                }, 15 * 60 * 1000)
+            } else {
+                setDiscountUnlocked(true)
+                setTimeout(() => {
+                    setDiscountUnlocked(false)
+                    console.log('[Segurança] Permissão de desconto expirada após 15 minutos.')
+                }, 15 * 60 * 1000)
+            }
             setShowAuthModal(false)
             setAuthPassword('')
-        } else {
-            setAuthError('Senha de autorização incorreta.')
+            setAuthEmail('')
+
+            // Gravar logs em public.audit_logs
+            try {
+                await supabase.from('audit_logs').insert({
+                    action: `AUTORIZACAO_GESTOR_${selectedAction.toUpperCase().replace(/\s/g, '_')}`,
+                    entity_type: 'students',
+                    entity_id: null,
+                    details: {
+                        requester: userProfile?.email || 'atendente@cec.com.br',
+                        authorizer: authEmail,
+                        action: selectedAction,
+                        result: 'sucesso',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            } catch (logErr) {
+                console.warn('[Segurança] Erro ao gravar log em audit_logs (usando fallback system_settings):', logErr)
+                // Fallback de contingência se a tabela audit_logs falhar por qualquer RLS anterior
+                const timestamp = Date.now()
+                await supabase.from('system_settings').upsert({
+                    key: `auth_log_${timestamp}`,
+                    value: JSON.stringify({
+                        requester: userProfile?.email || 'atendente@cec.com.br',
+                        authorizer: authEmail,
+                        action: selectedAction,
+                        timestamp: new Date().toISOString()
+                    }),
+                    updated_at: new Date()
+                }, { onConflict: 'key' })
+            }
+
+            alert(`Autorização concedida por ${profile.full_name}! Ação "${selectedAction}" liberada com sucesso por 15 minutos.`);
+        } catch (err) {
+            console.error('Erro na autorização:', err)
+            setAuthError('Erro interno ao validar credenciais. Tente novamente.')
         }
     }
 
@@ -203,6 +667,13 @@ export default function Alunos() {
             return
         }
 
+        if (!isEditing && (!formData.email || !formData.phone)) {
+            alert('E-mail e Telefone/WhatsApp são obrigatórios para a criação do acesso do aluno!')
+            return
+        }
+
+        const generatedPassword = 'CEC@' + Math.floor(100000 + Math.random() * 900000)
+
         const studentPayload = {
             full_name: formData.full_name,
             cpf: formData.cpf,
@@ -222,16 +693,27 @@ export default function Alunos() {
             discount_value: formData.discount_value && discountUnlocked ? parseFloat(formData.discount_value) : 0,
             manual_signed: formData.manual_signed,
             payment_method: formData.payment_method,
-            has_lms_access: formData.has_lms_access
+            has_lms_access: formData.has_lms_access,
+            requires_password_change: !isEditing // Travar troca de senha no primeiro login se for novo aluno
         }
 
         let result;
         if (isEditing) {
             result = await supabase.from('students').update(studentPayload).eq('id', isEditing)
+            if (result.error) {
+                alert('Erro ao salvar no Supabase: ' + result.error.message)
+            } else {
+                alert('Dados atualizados com sucesso!')
+                resetForm()
+                setView('list')
+                fetchStudents()
+            }
         } else {
             result = await supabase.from('students').insert([studentPayload]).select().single()
-            // Automação de Login: Criar conta via Edge Function para não deslogar o Admin
-            if (!result.error && result.data && formData.email) {
+            if (result.error) {
+                alert('Erro ao salvar no Supabase: ' + result.error.message)
+            } else if (result.data && formData.email) {
+                // Automação de Login: Criar conta via Edge Function para não deslogar a Atendente/Admin
                 try {
                     const { data: { session } } = await supabase.auth.getSession()
                     
@@ -245,7 +727,8 @@ export default function Alunos() {
                             email: formData.email,
                             name: formData.full_name,
                             cpf: formData.cpf,
-                            phone: formData.phone
+                            phone: formData.phone,
+                            password: generatedPassword
                         })
                     })
                     
@@ -253,24 +736,36 @@ export default function Alunos() {
                         const authData = await response.json()
                         // Vincular user_id ao registro do aluno
                         await supabase.from('students').update({ user_id: authData.userId }).eq('id', result.data.id)
+                        
+                        // Guardar credenciais e abrir o modal de sucesso
+                        setCredentials({
+                            name: formData.full_name,
+                            email: formData.email,
+                            password: generatedPassword,
+                            phone: formData.phone
+                        })
+                        setShowCredentialsModal(true)
                     } else {
                         const errorData = await response.json()
                         console.error("Erro ao criar login no Auth:", errorData)
-                        alert("O aluno foi matriculado, mas houve um erro ao criar o login: " + (errorData.error || response.statusText))
+                        alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + (errorData.error || response.statusText))
+                        resetForm()
+                        setView('list')
+                        fetchStudents()
                     }
                 } catch (err) {
                     console.error("Erro de rede ao chamar função:", err)
+                    alert("O aluno foi matriculado, mas houve um erro de rede ao criar o login.")
+                    resetForm()
+                    setView('list')
+                    fetchStudents()
                 }
+            } else {
+                alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
+                resetForm()
+                setView('list')
+                fetchStudents()
             }
-        }
-
-        if (result.error) {
-            alert('Erro ao salvar no Supabase: ' + result.error.message)
-        } else {
-            alert(isEditing ? 'Dados atualizados com sucesso!' : 'Matrícula e conta de acesso criadas com sucesso! (Senha inicial: CPF)')
-            resetForm()
-            setView('list')
-            fetchStudents()
         }
     }
 
@@ -279,7 +774,7 @@ export default function Alunos() {
             full_name: '', cpf: '', rg: '', birth_date: '', birth_place: '', marital_status: 'Solteiro(a)',
             pai: '', mae: '', education_level: 'Ensino Médio Completo', email: '', phone: '',
             cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '',
-            how_knew: 'Amigo', how_knew_other: '',
+            how_knew: 'WhatsApp', how_knew_other: '',
             base_value: '', discount_value: '', manual_signed: false,
             payment_method: 'À Vista (PIX/Dinheiro)',
             has_lms_access: false
@@ -309,7 +804,7 @@ export default function Alunos() {
             cidade: s.address?.cidade || '',
             estado: s.address?.estado || '',
             turma_id: s.turma_id || '',
-            how_knew: s.how_knew || 'Amigo',
+            how_knew: s.how_knew || 'WhatsApp',
             how_knew_other: s.how_knew_other || '',
             base_value: s.base_value || '',
             discount_value: s.discount_value || '',
@@ -641,9 +1136,10 @@ export default function Alunos() {
                     <div className="form-group">
                         <label className="form-label">Como conheceu o curso?</label>
                         <select className="form-control" name="how_knew" value={formData.how_knew} onChange={handleFormChange}>
-                            <option value="Amigo">Indicação de Amigo / Ex-Aluno</option>
-                            <option value="Facebook">Facebook</option>
-                            <option value="Instagram">Instagram</option>
+                            <option value="WhatsApp">WhatsApp</option>
+                            <option value="Indicação">Indicação (Amigo / Ex-Aluno)</option>
+                            <option value="Site">Site</option>
+                            <option value="Presencial">Presencial (Balcão)</option>
                             <option value="Outro">Outro Canal/Forma</option>
                         </select>
                     </div>
@@ -668,7 +1164,7 @@ export default function Alunos() {
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                             <input type="number" step="0.01" className="form-control" name="discount_value" value={formData.discount_value} onChange={handleFormChange} disabled={!discountUnlocked} placeholder={!discountUnlocked ? "Bloqueado..." : "Ex: 200.00"} />
                             {!discountUnlocked ? (
-                                <button type="button" className="btn btn-secondary" onClick={() => setShowAuthModal(true)} title="Desbloquear Desconto" style={{ padding: '0.5rem 0.75rem' }}><Lock size={18} /></button>
+                                <button type="button" className="btn btn-secondary" onClick={() => handleFinancialAction('Aplicar Desconto')} title="Desbloquear Desconto" style={{ padding: '0.5rem 0.75rem' }}><Lock size={18} /></button>
                             ) : (
                                 <button type="button" className="btn btn-secondary" disabled style={{ padding: '0.5rem 0.75rem', color: 'green', borderColor: 'green' }}><Unlock size={18} /></button>
                             )}
@@ -735,7 +1231,7 @@ export default function Alunos() {
                         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                             <div style={{ width: '80px', height: '80px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '2px solid var(--primary)' }}>
                                 {student.originalData.doc_photo_url ? (
-                                    <img src={student.originalData.doc_photo_url} alt={student.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <img src={signedUrls.photo || student.originalData.doc_photo_url} alt={student.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
                                         <Search size={32} />
@@ -753,7 +1249,80 @@ export default function Alunos() {
                         <div style={{ padding: '0.5rem 1rem', borderRadius: '999px', fontWeight: 600, backgroundColor: statusBadge.bg, color: statusBadge.color }}>{statusBadge.label}</div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
+                        {/* Situação Financeira do Aluno */}
+                        <div style={{ padding: '1.5rem', backgroundColor: '#FDF2F8', borderRadius: 'var(--radius-lg)', border: '1px solid #FBCFE8', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', borderBottom: '1px solid #F9A8D4', paddingBottom: '0.5rem', color: '#BE185D', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <Clock size={18} /> 💳 Situação Financeira
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span className="text-muted">Valor Bruto:</span>
+                                        <span style={{ fontWeight: 600 }}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(student.originalData?.base_value || 0)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span className="text-muted">Desconto:</span>
+                                        <span style={{ fontWeight: 600, color: 'green' }}>- {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(student.originalData?.discount_value || 0)}</span>
+                                    </div>
+                                    <div style={{ height: '1px', backgroundColor: '#F9A8D4', margin: '0.25rem 0' }}></div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                        <span style={{ color: '#BE185D' }}>Valor Líquido:</span>
+                                        <span style={{ color: '#BE185D' }}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((student.originalData?.base_value || 0) - (student.originalData?.discount_value || 0))}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                                        <span className="text-muted">Pagamento:</span>
+                                        <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>{student.originalData?.payment_method || 'À Vista'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <button 
+                                    className="btn btn-secondary" 
+                                    style={{ justifyContent: 'center', fontSize: '0.8rem', width: '100%', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                    onClick={() => handleFinancialAction('Aplicar Desconto')}
+                                >
+                                    {!isGerencial && !discountUnlocked ? <Lock size={12} /> : null} Aplicar Desconto
+                                </button>
+                                <button 
+                                    className="btn btn-secondary" 
+                                    style={{ justifyContent: 'center', fontSize: '0.8rem', width: '100%', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                    onClick={() => handleFinancialAction('Renegociar Parcelamento')}
+                                >
+                                    {!isGerencial ? <Lock size={12} /> : null} Renegociar Parcelamento
+                                </button>
+                                <button 
+                                    className="btn btn-secondary" 
+                                    style={{ justifyContent: 'center', fontSize: '0.8rem', width: '100%', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                    onClick={() => handleFinancialAction('Alterar Valor de Cobrança')}
+                                >
+                                    {!isGerencial ? <Lock size={12} /> : null} Alterar Valor
+                                </button>
+                                
+                                <button
+                                  disabled={!asaasEnabled}
+                                  title={!asaasEnabled ? "Módulo de pagamentos em breve" : "Registrar pagamento do aluno no Asaas"}
+                                  className="btn btn-primary"
+                                  onClick={() => handleStartCheckout(student)}
+                                  style={{ 
+                                      width: '100%', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      justifyContent: 'center', 
+                                      gap: '0.5rem', 
+                                      marginTop: '0.5rem', 
+                                      padding: '0.5rem', 
+                                      fontSize: '0.8rem',
+                                      opacity: asaasEnabled ? 1 : 0.5,
+                                      cursor: asaasEnabled ? 'pointer' : 'not-allowed'
+                                  }}
+                                >
+                                  💳 Registrar Pagamento
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Central de Emissão de Documentos e PDFs */}
                         <div style={{ padding: '1.5rem', backgroundColor: '#F8FAFC', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
                             <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', color: 'var(--primary)' }}>Emissão de Documentos</h3>
@@ -791,7 +1360,7 @@ export default function Alunos() {
                                         <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{doc.label}</span>
                                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                             {student.originalData[`doc_${doc.key}_url`] && doc.key !== 'provas' && (
-                                                <a href={student.originalData[`doc_${doc.key}_url`]} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: '#0369A1', fontWeight: 600 }}>Ver</a>
+                                                <a href={signedUrls[doc.key] || student.originalData[`doc_${doc.key}_url`]} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: '#0369A1', fontWeight: 600 }}>Ver</a>
                                             )}
                                             {doc.key === 'provas' && student.originalData.doc_exams_url?.length > 0 && (
                                                 <span style={{ fontSize: '0.7rem', color: '#0369A1' }}>{student.originalData.doc_exams_url.length} anexos</span>
@@ -808,7 +1377,7 @@ export default function Alunos() {
                                 <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#0369A1' }}>
                                     <strong>Provas Anexadas:</strong>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                        {student.originalData.doc_exams_url.map((exam, idx) => (
+                                        {(signedUrls.exams || student.originalData.doc_exams_url).map((exam, idx) => (
                                             <a key={idx} href={exam.url} target="_blank" rel="noreferrer" style={{ padding: '0.2rem 0.5rem', backgroundColor: '#fff', border: '1px solid #BAE6FD', borderRadius: '4px' }}>Prova {idx+1}</a>
                                         ))}
                                     </div>
@@ -904,16 +1473,541 @@ export default function Alunos() {
             {view === 'add' && renderAddForm()}
             {typeof view === 'object' && renderDetail(view)}
 
+            {showCheckoutModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }}>
+                    <div className="card animate-fade-in" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto', padding: '2.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--primary)' }}>💳 Registrar Pagamento</h3>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    Aluno: <strong>{checkoutStudent?.name}</strong> ({checkoutStudent?.originalData.email})
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setShowCheckoutModal(false);
+                                    setPollingActive(false);
+                                }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {checkoutError && (
+                            <div style={{ backgroundColor: '#FEE2E2', color: '#991B1B', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <AlertCircle size={16} />
+                                <span>{checkoutError}</span>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'select_method' && (
+                            <div>
+                                <div style={{ backgroundColor: '#F8FAFC', padding: '1rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', fontWeight: '600' }}>
+                                    <span className="text-secondary">Valor a cobrar:</span>
+                                    <span style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(checkoutValue)}
+                                    </span>
+                                </div>
+
+                                <p style={{ fontWeight: '600', fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--primary)' }}>Escolha a forma de pagamento:</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        onClick={() => handlePixCheckout(checkoutStudent, checkoutValue)}
+                                        style={{ height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', color: '#065F46' }}
+                                    >
+                                        <Smartphone size={20} />
+                                        <span style={{ fontSize: '0.85rem', fontWeight: '700' }}>⚡ PIX</span>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        onClick={() => setCheckoutStep('card_form')}
+                                        style={{ height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}
+                                    >
+                                        <CreditCard size={20} />
+                                        <span style={{ fontSize: '0.85rem', fontWeight: '700' }}>💳 Cartão de Crédito</span>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        onClick={() => setCheckoutStep('boleto_form')}
+                                        style={{ height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: '#FFFBEB', borderColor: '#FDE68A', color: '#92400E' }}
+                                    >
+                                        <FileText size={20} />
+                                        <span style={{ fontSize: '0.85rem', fontWeight: '700' }}>📄 Boleto Bancário</span>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        onClick={handleFinancingSelect}
+                                        style={{ height: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: '#FDF2F8', borderColor: '#FBCFE8', color: '#9D174D' }}
+                                    >
+                                        <Award size={20} />
+                                        <span style={{ fontSize: '0.85rem', fontWeight: '700' }}>🤝 Financiamento C&C</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'processing' && (
+                            <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                                <Loader2 size={40} className="animate-spin" color="var(--primary)" style={{ margin: '0 auto 1rem auto' }} />
+                                <h4 style={{ fontWeight: '600', color: 'var(--primary)' }}>Processando cobrança...</h4>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    Isso pode levar alguns segundos, por favor aguarde.
+                                </p>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'pix_display' && (
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                                    <p style={{ fontSize: '0.9rem', color: '#065F46', fontWeight: '600' }}>
+                                        PIX gerado! Peça para o aluno escanear o QR Code abaixo:
+                                    </p>
+                                    <p style={{ fontSize: '1.25rem', color: '#065F46', fontWeight: '800', marginTop: '0.25rem' }}>
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(checkoutValue)}
+                                    </p>
+                                </div>
+
+                                {pixQrCodeImage ? (
+                                    <div style={{ width: '220px', height: '220px', margin: '0 auto 1.5rem auto', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.5rem', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <img src={`data:image/png;base64,${pixQrCodeImage}`} alt="QR Code PIX" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                                    </div>
+                                ) : (
+                                    <div style={{ width: '220px', height: '220px', margin: '0 auto 1.5rem auto', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Loader2 className="animate-spin" />
+                                    </div>
+                                )}
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ fontSize: '0.8rem', fontWeight: '600', display: 'block', textAlign: 'left', marginBottom: '0.25rem' }}>
+                                        Código Copia e Cola:
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            className="form-control" 
+                                            value={pixCopiaCola} 
+                                            style={{ fontSize: '0.8rem', padding: '0.5rem' }} 
+                                        />
+                                        <button 
+                                            type="button" 
+                                            className="btn btn-secondary" 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(pixCopiaCola);
+                                                alert('PIX Copia e Cola copiado!');
+                                            }}
+                                            style={{ padding: '0.5rem' }}
+                                        >
+                                            Copiar
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: '#D97706', fontSize: '0.9rem', fontWeight: '600' }}>
+                                    <Loader2 size={16} className="animate-spin" />
+                                    <span>⏳ Aguardando pagamento...</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'boleto_form' && (
+                            <form onSubmit={(e) => { e.preventDefault(); handleBoletoCheckout(checkoutStudent, checkoutValue); }}>
+                                <h4 style={{ fontWeight: '600', marginBottom: '1rem', color: 'var(--primary)' }}>📄 Emitir Boleto Bancário</h4>
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label className="form-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Data de Vencimento</label>
+                                    <input 
+                                        type="date" 
+                                        required 
+                                        className="form-control" 
+                                        value={boletoDueDate} 
+                                        onChange={(e) => setBoletoDueDate(e.target.value)} 
+                                        min={new Date().toISOString().split('T')[0]} 
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setCheckoutStep('select_method')}>Voltar</button>
+                                    <button type="submit" className="btn btn-primary">Gerar Boleto</button>
+                                </div>
+                            </form>
+                        )}
+
+                        {checkoutStep === 'boleto_display' && (
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem', display: 'inline-flex', paddingInline: '2rem' }}>
+                                    <FileText size={48} color="#D97706" style={{ margin: '0 auto' }} />
+                                </div>
+                                <h4 style={{ fontWeight: '700', fontSize: '1.1rem', color: 'var(--primary)' }}>Boleto Gerado com Sucesso!</h4>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+                                    O boleto no valor de <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(checkoutValue)}</strong> foi criado com vencimento em <strong>{boletoDueDate ? new Date(boletoDueDate + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</strong>.
+                                </p>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <a 
+                                        href={checkoutPaymentInfo?.bankSlipUrl || checkoutPaymentInfo?.invoiceUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="btn btn-primary"
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                                    >
+                                        <Printer size={16} /> Abrir PDF do Boleto
+                                    </a>
+
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-secondary" 
+                                        onClick={() => {
+                                            const message = encodeURIComponent(`Olá ${checkoutStudent?.name}! Segue o link do boleto para pagamento da sua matrícula no curso da C&C Engenharia:\n\n🔗 Boleto: ${checkoutPaymentInfo?.bankSlipUrl || checkoutPaymentInfo?.invoiceUrl}`);
+                                            const phone = checkoutStudent?.originalData.phone.replace(/\D/g, '');
+                                            window.open(`https://wa.me/55${phone}?text=${message}`, '_blank');
+                                        }}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', backgroundColor: '#25D366', color: '#fff', borderColor: '#25D366' }}
+                                    >
+                                        <Smartphone size={16} /> Enviar por WhatsApp
+                                    </button>
+
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-secondary" 
+                                        onClick={() => setCheckoutStep('select_method')}
+                                    >
+                                        Voltar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'card_form' && (
+                            <form onSubmit={(e) => { e.preventDefault(); handleCardCheckout(checkoutStudent, checkoutValue); }}>
+                                <h4 style={{ fontWeight: '600', marginBottom: '1rem', color: 'var(--primary)' }}>💳 Dados do Cartão de Crédito</h4>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Número do Cartão</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                placeholder="0000 0000 0000 0000" 
+                                                className="form-control" 
+                                                value={cardForm.number} 
+                                                onChange={(e) => setCardForm({...cardForm, number: e.target.value})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Parcelas</label>
+                                            <select 
+                                                className="form-control" 
+                                                value={maxInstallmentsCard}
+                                                onChange={(e) => setMaxInstallmentsCard(e.target.value)}
+                                            >
+                                                {[...Array(10)].map((_, i) => (
+                                                    <option key={i+1} value={i+1}>{i+1}x de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(checkoutValue / (i+1))}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Nome Impresso no Cartão</label>
+                                        <input 
+                                            type="text" 
+                                            required 
+                                            placeholder="Como no cartão" 
+                                            className="form-control" 
+                                            value={cardForm.holderName} 
+                                            onChange={(e) => setCardForm({...cardForm, holderName: e.target.value})} 
+                                        />
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Validade Mês</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                maxLength="2" 
+                                                placeholder="MM" 
+                                                className="form-control" 
+                                                value={cardForm.expiryMonth} 
+                                                onChange={(e) => setCardForm({...cardForm, expiryMonth: e.target.value})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Validade Ano</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                maxLength="4" 
+                                                placeholder="AAAA" 
+                                                className="form-control" 
+                                                value={cardForm.expiryYear} 
+                                                onChange={(e) => setCardForm({...cardForm, expiryYear: e.target.value})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>CVV</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                maxLength="4" 
+                                                placeholder="123" 
+                                                className="form-control" 
+                                                value={cardForm.ccv} 
+                                                onChange={(e) => setCardForm({...cardForm, ccv: e.target.value})} 
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                                        <p style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.75rem', color: 'var(--primary)' }}>Dados do Titular:</p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem', marginBottom: '0.75rem' }}>
+                                            <div>
+                                                <label className="form-label" style={{ fontSize: '0.75rem' }}>CPF do Titular</label>
+                                                <input 
+                                                    type="text" 
+                                                    required 
+                                                    placeholder="000.000.000-00" 
+                                                    className="form-control" 
+                                                    value={cardForm.cpf} 
+                                                    onChange={(e) => setCardForm({...cardForm, cpf: e.target.value})} 
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="form-label" style={{ fontSize: '0.75rem' }}>CEP do Titular</label>
+                                                <input 
+                                                    type="text" 
+                                                    required 
+                                                    placeholder="00000-000" 
+                                                    className="form-control" 
+                                                    value={cardForm.postalCode} 
+                                                    onChange={(e) => setCardForm({...cardForm, postalCode: e.target.value})} 
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Número do Endereço</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                placeholder="Ex: 123" 
+                                                className="form-control" 
+                                                value={cardForm.addressNumber} 
+                                                onChange={(e) => setCardForm({...cardForm, addressNumber: e.target.value})} 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setCheckoutStep('select_method')}>Voltar</button>
+                                    <button type="submit" className="btn btn-primary">Processar Pagamento</button>
+                                </div>
+                            </form>
+                        )}
+
+                        {checkoutStep === 'financing_form' && (
+                            <form onSubmit={(e) => { e.preventDefault(); handleFinancingCheckout(checkoutStudent, checkoutValue); }}>
+                                <h4 style={{ fontWeight: '600', marginBottom: '1rem', color: '#9D174D', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    🤝 Financiamento Próprio C&C
+                                </h4>
+                                
+                                <div style={{ backgroundColor: '#FDF2F8', border: '1px solid #FBCFE8', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#9D174D', fontWeight: '500' }}>
+                                    ✅ Autorização concedida pelo coordenador.
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label className="form-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Número de Parcelas (Boletos Mensais)</label>
+                                    <select 
+                                        className="form-control" 
+                                        value={financingInstallments} 
+                                        onChange={(e) => setFinancingInstallments(e.target.value)}
+                                    >
+                                        {[2, 3, 4, 5, 6, 8, 10, 12].map(n => (
+                                            <option key={n} value={n}>{n}x de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(checkoutValue / n)}</option>
+                                        ))}
+                                    </select>
+                                    <small className="text-secondary" style={{ display: 'block', marginTop: '0.4rem' }}>
+                                        O primeiro boleto vencerá em 30 dias, e os subsequentes a cada 30 dias.
+                                    </small>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setCheckoutStep('select_method')}>Voltar</button>
+                                    <button type="submit" className="btn btn-primary" style={{ backgroundColor: '#9D174D', borderColor: '#9D174D' }}>Gerar Carnê de Boletos</button>
+                                </div>
+                            </form>
+                        )}
+
+                        {checkoutStep === 'success' && (
+                            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: '#10B981' }}>
+                                    <CheckCircle size={60} />
+                                </div>
+                                <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '0.5rem' }}>
+                                    ✅ Pagamento Registrado!
+                                </h3>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                                    As credenciais de acesso do aluno foram geradas com sucesso.
+                                </p>
+
+                                <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '1.25rem', textAlign: 'left', marginBottom: '1.5rem', fontSize: '0.9rem', color: '#334155' }}>
+                                    <p style={{ margin: '0 0 0.5rem 0' }}><strong>Link:</strong> cursocec.com.br/login</p>
+                                    <p style={{ margin: '0 0 0.5rem 0' }}><strong>Login:</strong> {generatedCredentials?.email}</p>
+                                    <p style={{ margin: 0 }}><strong>Senha provisória:</strong> {generatedCredentials?.password}</p>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <button 
+                                        type="button"
+                                        className="btn btn-primary" 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`Olá ${generatedCredentials?.name}! Seu acesso à plataforma C&C foi criado.\n\n🔗 Link: cursocec.com.br/login\n📧 Login: ${generatedCredentials?.email}\n🔑 Senha: ${generatedCredentials?.password}\n\nNo primeiro acesso você poderá alterar sua senha.`);
+                                            alert('Credenciais copiadas para a área de transferência!');
+                                        }}
+                                    >
+                                        Copiar Credenciais
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        style={{ backgroundColor: '#25D366', color: '#FFF', borderColor: '#25D366', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                                        onClick={() => {
+                                            const cleanPhone = generatedCredentials?.phone.replace(/\D/g, '');
+                                            const message = encodeURIComponent(`Olá ${generatedCredentials?.name}! Seu acesso à plataforma EAD C&C Engenharia foi liberado.\n\n🔗 Link: cursocec.com.br/login\n📧 Login: ${generatedCredentials?.email}\n🔑 Senha: ${generatedCredentials?.password}\n\nNo seu primeiro acesso, altere sua senha.`);
+                                            window.open(`https://wa.me/55${cleanPhone}?text=${message}`, '_blank');
+                                        }}
+                                    >
+                                        <Smartphone size={16} /> Enviar por WhatsApp
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="btn btn-secondary" 
+                                        onClick={() => {
+                                            setShowCheckoutModal(false);
+                                            fetchStudents(); // recarregar alunos
+                                        }}
+                                        style={{ marginTop: '0.5rem' }}
+                                    >
+                                        Fechar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {checkoutStep === 'error' && (
+                            <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: '#EF4444' }}>
+                                    <AlertCircle size={60} />
+                                </div>
+                                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#991B1B', marginBottom: '0.5rem' }}>
+                                    Erro ao Processar Pagamento
+                                </h3>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                                    Infelizmente ocorreu um erro ao registrar a cobrança no Asaas.
+                                </p>
+                                
+                                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setCheckoutStep('select_method')}>Tentar Novamente</button>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setShowCheckoutModal(false)}>Fechar</button>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                </div>
+            )}
+
             {showAuthModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                    <div className="card animate-fade-in" style={{ width: '400px', maxWidth: '90%' }}>
-                        <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}><Lock size={20} /> Autorização de Gestor</h3>
-                        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>Insira a senha mestra ou PIN financeiro para habilitar a aplicação de descontos na matrícula.</p>
-                        {authError && <div style={{ backgroundColor: '#FEE2E2', color: '#991B1B', padding: '0.75rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.875rem' }}>{authError}</div>}
-                        <input type="password" placeholder="PIN de Autorização..." className="form-control" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} style={{ marginBottom: '1.5rem', letterSpacing: '2px', textAlign: 'center', fontSize: '1.25rem' }} />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                            <button className="btn btn-secondary" onClick={() => setShowAuthModal(false)}>Cancelar</button>
-                            <button className="btn btn-primary" onClick={handleUnlockDiscount}>Desbloquear</button>
+                    <div className="card animate-fade-in" style={{ width: '420px', maxWidth: '95%' }}>
+                        <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}><Lock size={20} /> 🔐 Ação Requer Autorização</h3>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem', fontSize: '0.88rem', lineHeight: '1.4' }}>
+                            Esta ação (<strong>{selectedAction}</strong>) precisa de aprovação de um Coordenador ou Gerente.
+                        </p>
+                        {authError && <div style={{ backgroundColor: '#FEE2E2', color: '#991B1B', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 600 }}>{authError}</div>}
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                            <div>
+                                <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>E-mail do Autorizador</label>
+                                <input type="email" placeholder="gestor@cursocec.com.br" className="form-control" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} style={{ padding: '0.6rem' }} />
+                            </div>
+                            <div>
+                                <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Senha do Autorizador</label>
+                                <input type="password" placeholder="••••••••" className="form-control" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} style={{ padding: '0.6rem' }} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                            <button className="btn btn-secondary" onClick={() => { setShowAuthModal(false); setAuthEmail(''); setAuthPassword(''); setAuthError(''); }}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={handleUnlockDiscount}>Autorizar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCredentialsModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                    <div className="card animate-fade-in" style={{ width: '450px', maxWidth: '90%', textAlign: 'center', padding: '2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: '#10B981' }}>
+                            <CheckCircle size={48} />
+                        </div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '0.5rem' }}>
+                            ✅ Aluno cadastrado com sucesso!
+                        </h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                            A conta de acesso à plataforma C&C foi criada. Compartilhe as credenciais com o aluno:
+                        </p>
+                        
+                        <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '1rem', textAlign: 'left', marginBottom: '1.5rem', fontFamily: 'monospace', fontSize: '0.9rem', color: '#334155' }}>
+                            <p style={{ margin: '0 0 0.5rem 0' }}><strong>Link:</strong> cursocec.com.br/login</p>
+                            <p style={{ margin: '0 0 0.5rem 0' }}><strong>Login:</strong> {credentials.email}</p>
+                            <p style={{ margin: 0 }}><strong>Senha provisória:</strong> {credentials.password}</p>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <button 
+                                className="btn btn-primary" 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`Olá ${credentials.name}! Seu acesso à plataforma C&C foi criado.\n\n🔗 Link: cursocec.com.br/login\n📧 Login: ${credentials.email}\n🔑 Senha: ${credentials.password}\n\nNo primeiro acesso você poderá alterar sua senha.`);
+                                    alert('Credenciais copiadas para a área de transferência!');
+                                }}
+                            >
+                                Copiar credenciais
+                            </button>
+                            <button 
+                                className="btn btn-secondary" 
+                                style={{ backgroundColor: '#25D366', color: '#FFF', borderColor: '#25D366', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                                onClick={() => {
+                                    const cleanPhone = credentials.phone.replace(/\D/g, '');
+                                    const message = encodeURIComponent(`Olá ${credentials.name}! Seu acesso à plataforma C&C foi criado.\n\n🔗 Link: cursocec.com.br/login\n📧 Login: ${credentials.email}\n🔑 Senha: ${credentials.password}\n\nNo primeiro acesso você poderá alterar sua senha.`);
+                                    window.open(`https://wa.me/55${cleanPhone}?text=${message}`, '_blank');
+                                }}
+                            >
+                                Enviar por WhatsApp
+                            </button>
+                            <button 
+                                className="btn btn-secondary" 
+                                onClick={() => {
+                                    setShowCredentialsModal(false);
+                                    resetForm();
+                                    setView('list');
+                                    fetchStudents();
+                                }}
+                            >
+                                Fechar
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare } from 'lucide-react'
+import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function Sidebar() {
@@ -91,19 +91,8 @@ export default function Sidebar() {
                 </div>
 
             <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-                <NavLink
-                    to="/"
-                    style={({ isActive }) => ({
-                        display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                        borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                        backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                        fontWeight: isActive ? '600' : '500'
-                    })}
-                >
-                    <LayoutDashboard size={20} />
-                    Painel Geral
-                </NavLink>
-
+                
+                {/* Menus Visíveis para Todos */}
                 <NavLink
                     to="/meus-cursos"
                     style={({ isActive }) => ({
@@ -114,10 +103,26 @@ export default function Sidebar() {
                     })}
                 >
                     <PlayCircle size={20} />
-                    Meus Cursos
+                    Meus Cursos (Área do Aluno)
                 </NavLink>
 
+                {/* Menus Administrativos e Coordenação */}
+                {(userRole === 'admin' || userRole === 'coordenador' || userRole === 'atendente') && (
                 <>
+                    <NavLink
+                        to="/dashboard"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '1rem'
+                        })}
+                    >
+                        <LayoutDashboard size={20} />
+                        Painel Administrativo
+                    </NavLink>
+
                     <NavLink
                         to="/alunos"
                         style={({ isActive }) => ({
@@ -129,6 +134,19 @@ export default function Sidebar() {
                     >
                         <UsersIcon size={20} />
                         Listagem de Alunos
+                    </NavLink>
+
+                    <NavLink
+                        to="/secretaria/matriculas"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500'
+                        })}
+                    >
+                        <ClipboardList size={20} />
+                        Matrículas
                     </NavLink>
 
                     <NavLink
@@ -156,6 +174,23 @@ export default function Sidebar() {
                         <GraduationCap size={20} />
                         Turmas
                     </NavLink>
+                </>
+                )}
+
+                {(userRole === 'admin' || userRole === 'coordenador') && (
+                <>
+                    <NavLink
+                        to="/secretaria/cursos"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500'
+                        })}
+                    >
+                        <BookOpen size={20} />
+                        Cursos
+                    </NavLink>
 
                     <NavLink
                         to="/financeiro"
@@ -171,6 +206,50 @@ export default function Sidebar() {
                     </NavLink>
 
                     <NavLink
+                        to="/relatorios"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500'
+                        })}
+                    >
+                        <ShieldCheck size={20} />
+                        Relatórios (Analytics)
+                    </NavLink>
+
+                    <NavLink
+                        to="/secretaria/instrutores"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '0.5rem'
+                        })}
+                    >
+                        <Award size={20} />
+                        Instrutores (PR-127)
+                    </NavLink>
+
+                    <NavLink
+                        to="/secretaria/certificados"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '0.5rem'
+                        })}
+                    >
+                        <Award size={20} />
+                        Certificados
+                    </NavLink>
+                </>
+                )}
+
+                {(userRole === 'admin' || userRole === 'coordenador' || userRole === 'instrutor') && (
+                    <NavLink
                         to="/professor"
                         style={({ isActive }) => ({
                             display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
@@ -182,7 +261,10 @@ export default function Sidebar() {
                         <BookOpen size={20} />
                         Portal do Instrutor
                     </NavLink>
+                )}
 
+                {userRole === 'admin' && (
+                <>
                     <NavLink
                         to="/auditoria"
                         style={({ isActive }) => ({
@@ -209,11 +291,13 @@ export default function Sidebar() {
                         Ouvidoria
                     </NavLink>
                 </>
+                )}
 
+                {(userRole === 'admin' || userRole === 'coordenador') && (
                 <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                    <>
+                    {(userRole === 'admin' || userRole === 'coordenador') && (
                         <NavLink
-                            to="/equipe"
+                            to="/secretaria/funcionarios"
                             style={({ isActive }) => ({
                                 display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
                                 borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
@@ -221,24 +305,40 @@ export default function Sidebar() {
                                 fontWeight: isActive ? '600' : '500'
                             })}
                         >
-                            <ShieldCheck size={20} />
-                            Equipe (Auth)
+                            <UsersIcon size={20} />
+                            Funcionários
                         </NavLink>
+                    )}
 
-                        <NavLink
-                            to="/lms"
-                            style={({ isActive }) => ({
-                                display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                fontWeight: isActive ? '600' : '500',
-                                marginTop: '0.5rem'
-                            })}
-                        >
-                            <Video size={20} />
-                            Plataforma EAD (LMS)
-                        </NavLink>
+                    <NavLink
+                        to="/lms"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '0.5rem'
+                        })}
+                    >
+                        <Video size={20} />
+                        Plataforma EAD (LMS)
+                    </NavLink>
 
+                    <NavLink
+                        to="/secretaria/comunicados"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '0.5rem'
+                        })}
+                    >
+                        <Megaphone size={20} />
+                        Comunicados
+                    </NavLink>
+
+                    {userRole === 'admin' && (
                         <NavLink
                             to="/config"
                             style={({ isActive }) => ({
@@ -250,10 +350,25 @@ export default function Sidebar() {
                             })}
                         >
                             <Settings size={20} />
-                            Modelos de Texto
+                            Configurações Gerais
                         </NavLink>
-                    </>
+                    )}
+
+                    <NavLink
+                        to="/config-asaas"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500',
+                            marginTop: '0.5rem'
+                        })}
+                    >
+                        <Settings size={20} />
+                        Configurações Asaas
+                    </NavLink>
                 </div>
+                )}
             </nav>
 
             <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>

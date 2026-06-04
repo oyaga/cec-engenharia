@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { FileText, Save, Eye, LayoutTemplate, Briefcase, UploadCloud, CheckCircle, AlertTriangle } from 'lucide-react'
 import jsPDF from 'jspdf'
 import { supabase } from '../lib/supabase'
+import { uploadSiteAsset } from '../services/storage'
 
 const AVAILABLE_VARIABLES = [
     { code: '{{NOME_ALUNO}}', desc: 'Nome completo do aluno' },
@@ -58,6 +59,8 @@ export default function ConfigDocs() {
     const [bgImageBase64, setBgImageBase64] = useState('')
     const [isUploading, setIsUploading] = useState(false)
     const [isUploadingBg, setIsUploadingBg] = useState(false)
+    const [isUploadingAsset, setIsUploadingAsset] = useState(false)
+    const [siteAssets, setSiteAssets] = useState({ logo: '', banner: '' })
     const [loading, setLoading] = useState(true)
     const [configError, setConfigError] = useState(null)
 
@@ -99,6 +102,13 @@ export default function ConfigDocs() {
                     const currentBgKey = `bg_doc_${activeDoc}`
                     const bg = settings.find(s => s.key === currentBgKey)
                     setBgImageBase64(bg ? bg.value : '')
+
+                    const logo = settings.find(s => s.key === 'site_logo_url')
+                    const banner = settings.find(s => s.key === 'site_banner_url')
+                    setSiteAssets({
+                        logo: logo?.value || '',
+                        banner: banner?.value || ''
+                    })
                 }
             } catch (err) {
                 console.error("Erro ao carregar configurações:", err)
@@ -115,6 +125,28 @@ export default function ConfigDocs() {
         if (docType === 'contrato') setTemplateContent(defaultContrato)
         if (docType === 'declaracao') setTemplateContent(defaultDeclaracao)
         if (docType === 'recibo') setTemplateContent(defaultRecibo)
+    }
+
+    const handleSiteAssetUpload = async (e, type) => {
+        const file = e.target.files[0]
+        if (!file) return
+        
+        setIsUploadingAsset(true)
+        try {
+            const fileName = `${type}_${Date.now()}.${file.name.split('.').pop()}`
+            const publicUrl = await uploadSiteAsset(file, fileName)
+            
+            if (publicUrl) {
+                const key = `site_${type}_url`
+                await supabase.from('system_settings').upsert({ key, value: publicUrl, updated_at: new Date() }, { onConflict: 'key' })
+                setSiteAssets(prev => ({ ...prev, [type]: publicUrl }))
+                alert(`Asset ${type} atualizado com sucesso!`)
+            }
+        } catch (error) {
+            alert('Erro ao fazer upload: ' + error.message)
+        } finally {
+            setIsUploadingAsset(false)
+        }
     }
 
     const testPdfSimulator = () => {
@@ -206,6 +238,7 @@ export default function ConfigDocs() {
                         <button className={`btn ${activeDoc === 'contrato' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleTabChange('contrato')}><Briefcase size={16} /> Contrato</button>
                         <button className={`btn ${activeDoc === 'declaracao' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleTabChange('declaracao')}><FileText size={16} /> Declaração</button>
                         <button className={`btn ${activeDoc === 'recibo' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleTabChange('recibo')}><LayoutTemplate size={16} /> Recibo</button>
+                        <button className={`btn ${activeDoc === 'site_assets' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleTabChange('site_assets')}><UploadCloud size={16} /> Assets do Site</button>
                     </div>
 
                     {userAuth.canUpload && (
@@ -234,26 +267,58 @@ export default function ConfigDocs() {
                 </div>
 
                 {/* Editor */}
-                <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '600px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                        <h3 style={{ fontSize: '1rem' }}>Texto-Base</h3>
-                        <button className="btn btn-secondary" style={{ fontSize: '0.75rem' }} onClick={testPdfSimulator}><Eye size={14} /> Prévia PDF</button>
+                {activeDoc !== 'site_assets' ? (
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '600px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                            <h3 style={{ fontSize: '1rem' }}>Texto-Base</h3>
+                            <button className="btn btn-secondary" style={{ fontSize: '0.75rem' }} onClick={testPdfSimulator}><Eye size={14} /> Prévia PDF</button>
+                        </div>
+                        <textarea className="form-control" style={{ flex: 1, resize: 'none', fontFamily: 'monospace', fontSize: '0.8rem' }} value={templateContent} onChange={(e) => setTemplateContent(e.target.value)}></textarea>
                     </div>
-                    <textarea className="form-control" style={{ flex: 1, resize: 'none', fontFamily: 'monospace', fontSize: '0.8rem' }} value={templateContent} onChange={(e) => setTemplateContent(e.target.value)}></textarea>
-                </div>
+                ) : (
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '600px', gap: '2rem' }}>
+                        <h3 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>CMS - Assets do Site Público</h3>
+                        
+                        <div>
+                            <h4 className="font-semibold mb-2">Logo Principal do Site</h4>
+                            <div className="flex gap-4 items-center">
+                                {siteAssets.logo && <img src={siteAssets.logo} alt="Logo" className="h-16 object-contain border p-2 rounded bg-gray-50" />}
+                                <label className="btn btn-secondary cursor-pointer">
+                                    {isUploadingAsset ? 'Enviando...' : 'Fazer Upload Logo'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleSiteAssetUpload(e, 'logo')} />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="font-semibold mb-2">Banner Principal (Home)</h4>
+                            <div className="flex flex-col gap-4">
+                                {siteAssets.banner && <img src={siteAssets.banner} alt="Banner" className="w-full h-32 object-cover border rounded" />}
+                                <div>
+                                    <label className="btn btn-secondary cursor-pointer">
+                                        {isUploadingAsset ? 'Enviando...' : 'Fazer Upload Banner'}
+                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleSiteAssetUpload(e, 'banner')} />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Variáveis */}
-                <div className="card" style={{ padding: '1rem', backgroundColor: '#F1F5F9' }}>
-                    <h3 style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>Variáveis</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {AVAILABLE_VARIABLES.map(v => (
-                            <div key={v.code} style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px', fontSize: '0.75rem', cursor: 'copy' }} onClick={() => navigator.clipboard.writeText(v.code)}>
-                                <code style={{ color: 'var(--primary)' }}>{v.code}</code>
-                                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{v.desc}</div>
-                            </div>
-                        ))}
+                {activeDoc !== 'site_assets' && (
+                    <div className="card" style={{ padding: '1rem', backgroundColor: '#F1F5F9' }}>
+                        <h3 style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>Variáveis</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {AVAILABLE_VARIABLES.map(v => (
+                                <div key={v.code} style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px', fontSize: '0.75rem', cursor: 'copy' }} onClick={() => navigator.clipboard.writeText(v.code)}>
+                                    <code style={{ color: 'var(--primary)' }}>{v.code}</code>
+                                    <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{v.desc}</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     )

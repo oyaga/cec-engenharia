@@ -47,7 +47,7 @@ const Cta = () => {
         </motion.div>
       </div>
 
-      <style jsx>{`
+      <style jsx="true">{`
         .cta-section {
           padding-bottom: 8rem;
         }

@@ -35,6 +35,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   
+  const isGerencial = ['admin', 'coordenador'].includes(userRole);
+  
   // KPIs do Dashboard
   const [kpis, setKpis] = useState({
     activeStudents: 0,
@@ -319,9 +321,9 @@ export default function Dashboard() {
     <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
       
       {/* 1. Top Banner Alerts */}
-      {(overdueOrdersCount > 0 || criticalClasses.length > 0 || pixPendingList.length > 0) && (
+      {((isGerencial && overdueOrdersCount > 0) || criticalClasses.length > 0 || (isGerencial && pixPendingList.length > 0)) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
-          {overdueOrdersCount > 0 && (
+          {isGerencial && overdueOrdersCount > 0 && (
             <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#991B1B' }}>
               <AlertCircle size={20} />
               <div>
@@ -337,7 +339,7 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-          {pixPendingList.length > 0 && (
+          {isGerencial && pixPendingList.length > 0 && (
             <div style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#1E40AF' }}>
               <AlertCircle size={20} />
               <div>
@@ -352,20 +354,22 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
         {/* KPI: Faturamento Real */}
-        <div className="card" style={{ borderLeft: '4px solid var(--primary)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h3 className="text-secondary" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Receita Real (Mês)
-              </h3>
-              <Wallet size={16} color="var(--primary)" />
+        {isGerencial && (
+          <div className="card" style={{ borderLeft: '4px solid var(--primary)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h3 className="text-secondary" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                  Receita Real (Mês)
+                </h3>
+                <Wallet size={16} color="var(--primary)" />
+              </div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--primary)', margin: '0.25rem 0' }}>
+                {formatMoney(kpis.monthlyRevenue)}
+              </div>
             </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--primary)', margin: '0.25rem 0' }}>
-              {formatMoney(kpis.monthlyRevenue)}
-            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.5rem 0 0 0' }}>Soma total de cobranças compensadas</p>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.5rem 0 0 0' }}>Soma total de cobranças compensadas</p>
-        </div>
+        )}
 
         {/* KPI: Alunos Ativos */}
         <div className="card" style={{ borderLeft: '4px solid #14b8a6', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -418,64 +422,66 @@ export default function Dashboard() {
       </div>
 
       {/* 3. Painel de BI e Analytics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-        
-        {/* Gráfico 1: Evolução Mensal da Receita (últimos 6 meses) */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={18} /> Histórico Mensal de Faturamento (Real)
-          </h3>
-          <div style={{ width: '100%', height: 230 }}>
-            {salesHistory.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} unit="R$" />
-                  <ChartTooltip 
-                    formatter={(value) => [formatMoney(value), 'Faturamento']}
-                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
-                  />
-                  <Area type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : <p className="text-muted" style={{ textAlign: 'center', paddingTop: '4rem' }}>Carregando dados...</p>}
+      {isGerencial && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+          
+          {/* Gráfico 1: Evolução Mensal da Receita (últimos 6 meses) */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <TrendingUp size={18} /> Histórico Mensal de Faturamento (Real)
+            </h3>
+            <div style={{ width: '100%', height: 230 }}>
+              {salesHistory.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={salesHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} unit="R$" />
+                    <ChartTooltip 
+                      formatter={(value) => [formatMoney(value), 'Faturamento']}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
+                    />
+                    <Area type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted" style={{ textAlign: 'center', paddingTop: '4rem' }}>Carregando dados...</p>}
+            </div>
           </div>
-        </div>
 
-        {/* Gráfico 2: Matrículas por Curso */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Trophy size={18} /> Cursos Campeões de Matrículas (Semestre)
-          </h3>
-          <div style={{ width: '100%', height: 230 }}>
-            {courseRanking.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={courseRanking} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                  <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <ChartTooltip 
-                    cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-                    formatter={(value) => [`${value} aluno${value !== 1 ? 's' : ''}`, 'Matrículas']}
-                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}
-                  />
-                  <Bar dataKey="count" barSize={14} radius={[0, 4, 4, 0]}>
-                    {courseRanking.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <p className="text-muted" style={{ textAlign: 'center', paddingTop: '4rem' }}>Nenhuma matrícula registrada.</p>}
+          {/* Gráfico 2: Matrículas por Curso */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Trophy size={18} /> Cursos Campeões de Matrículas (Semestre)
+            </h3>
+            <div style={{ width: '100%', height: 230 }}>
+              {courseRanking.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={courseRanking} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <ChartTooltip 
+                      cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                      formatter={(value) => [`${value} aluno${value !== 1 ? 's' : ''}`, 'Matrículas']}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}
+                    />
+                    <Bar dataKey="count" barSize={14} radius={[0, 4, 4, 0]}>
+                      {courseRanking.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted" style={{ textAlign: 'center', paddingTop: '4rem' }}>Nenhuma matrícula registrada.</p>}
+            </div>
           </div>
-        </div>
 
-      </div>
+        </div>
+      )}
 
       {/* 4. Próximas Aulas Práticas (Finais de Semana) */}
       <div className="card" style={{ marginBottom: '2rem' }}>
@@ -548,109 +554,111 @@ export default function Dashboard() {
       </div>
 
       {/* 5. Financeiro e Rateio (Despesas / Verificação de PIX) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-        
-        {/* Rateio / Contas a Pagar */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '1.25rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <DollarSign size={18} color="var(--primary)" /> Despesas Financeiras Pendentes
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {payables.map(conta => (
-                <div key={conta.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#f8fafc' }}>
-                  <div>
-                    <p style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', margin: '0 0 2px 0' }}>{conta.description}</p>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Vence em: {new Date(conta.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontWeight: '800', color: '#b91c1c', margin: '0 0 2px 0', fontSize: '0.9rem' }}>- {formatMoney(conta.amount)}</p>
-                    <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e' }}>
-                      AGUARDANDO
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {payables.length === 0 && (
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '2rem 0' }}>Tudo em dia! Nenhuma despesa pendente.</p>
-              )}
-            </div>
-          </div>
+      {isGerencial && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
           
-          <Link to="/financeiro" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', textDecoration: 'none', marginTop: '1.5rem', width: 'fit-content' }}>
-            <span>Ir para o Financeiro Completo</span>
-            <ChevronRight size={14} />
-          </Link>
-        </div>
-
-        {/* Verificação de PIX Parcelado */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '1.25rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <CheckCircle size={18} color="#14b8a6" /> Verificação de PIX Parcelado
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {pixPendingList.map(pix => (
-                <div key={pix.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#f8fafc' }}>
-                  <div>
-                    <p style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', margin: '0 0 2px 0' }}>{pix.student}</p>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Enviado em: {new Date(pix.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+          {/* Rateio / Contas a Pagar */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: '1.25rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <DollarSign size={18} color="var(--primary)" /> Despesas Financeiras Pendentes
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {payables.map(conta => (
+                  <div key={conta.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#f8fafc' }}>
+                    <div>
+                      <p style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', margin: '0 0 2px 0' }}>{conta.description}</p>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Vence em: {new Date(conta.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ fontWeight: '800', color: '#b91c1c', margin: '0 0 2px 0', fontSize: '0.9rem' }}>- {formatMoney(conta.amount)}</p>
+                      <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e' }}>
+                        AGUARDANDO
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <p style={{ fontWeight: '800', color: 'var(--primary)', margin: 0, fontSize: '0.9rem' }}>{formatMoney(pix.amount)}</p>
-                    <button
-                      onClick={async () => {
-                        // Confirmar o recebimento no banco de dados (exemplo atualiza status para paid)
-                        const { error } = await supabase
-                          .from('orders')
-                          .update({ status: 'paid', paid_at: new Date().toISOString() })
-                          .eq('id', pix.id);
-                        
-                        if (error) {
-                          alert('Erro ao confirmar recebimento: ' + error.message);
-                        } else {
-                          // Remover da lista localmente
-                          setPixPendingList(prev => prev.filter(p => p.id !== pix.id));
-                          setKpis(prev => ({ ...prev, monthlyRevenue: prev.monthlyRevenue + pix.amount }));
-                          alert('PIX confirmado com sucesso!');
-                        }
-                      }}
-                      className="btn"
-                      style={{ 
-                        padding: '4px 10px', 
-                        backgroundColor: '#dcfce7', 
-                        color: '#166534', 
-                        fontWeight: '800', 
-                        fontSize: '0.72rem', 
-                        borderRadius: '6px',
-                        border: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Confirmar
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {pixPendingList.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#166534' }}>
-                  <CheckCircle size={32} style={{ margin: '0 auto 0.5rem' }} />
-                  <p style={{ fontWeight: '700', fontSize: '0.85rem', margin: 0 }}>Nenhum PIX pendente!</p>
-                  <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0 0' }}>Todos os parcelados estão conferidos.</p>
-                </div>
-              )}
+                ))}
+                {payables.length === 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '2rem 0' }}>Tudo em dia! Nenhuma despesa pendente.</p>
+                )}
+              </div>
             </div>
+            
+            <Link to="/financeiro" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', textDecoration: 'none', marginTop: '1.5rem', width: 'fit-content' }}>
+              <span>Ir para o Financeiro Completo</span>
+              <ChevronRight size={14} />
+            </Link>
           </div>
-          
-          <Link to="/alunos" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', textDecoration: 'none', marginTop: '1.5rem', width: 'fit-content' }}>
-            <span>Ver Listagem de Alunos</span>
-            <ChevronRight size={14} />
-          </Link>
-        </div>
 
-      </div>
+          {/* Verificação de PIX Parcelado */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: '1.25rem', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle size={18} color="#14b8a6" /> Verificação de PIX Parcelado
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {pixPendingList.map(pix => (
+                  <div key={pix.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#f8fafc' }}>
+                    <div>
+                      <p style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', margin: '0 0 2px 0' }}>{pix.student}</p>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Enviado em: {new Date(pix.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <p style={{ fontWeight: '800', color: 'var(--primary)', margin: 0, fontSize: '0.9rem' }}>{formatMoney(pix.amount)}</p>
+                      <button
+                        onClick={async () => {
+                          // Confirmar o recebimento no banco de dados (exemplo updates status para paid)
+                          const { error } = await supabase
+                            .from('orders')
+                            .update({ status: 'paid', paid_at: new Date().toISOString() })
+                            .eq('id', pix.id);
+                          
+                          if (error) {
+                            alert('Erro ao confirmar recebimento: ' + error.message);
+                          } else {
+                            // Remover da lista localmente
+                            setPixPendingList(prev => prev.filter(p => p.id !== pix.id));
+                            setKpis(prev => ({ ...prev, monthlyRevenue: prev.monthlyRevenue + pix.amount }));
+                            alert('PIX confirmado com sucesso!');
+                          }
+                        }}
+                        className="btn"
+                        style={{ 
+                          padding: '4px 10px', 
+                          backgroundColor: '#dcfce7', 
+                          color: '#166534', 
+                          fontWeight: '800', 
+                          fontSize: '0.72rem', 
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Confirmar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {pixPendingList.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#166534' }}>
+                    <CheckCircle size={32} style={{ margin: '0 auto 0.5rem' }} />
+                    <p style={{ fontWeight: '700', fontSize: '0.85rem', margin: 0 }}>Nenhum PIX pendente!</p>
+                    <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0 0' }}>Todos os parcelados estão conferidos.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <Link to="/alunos" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', textDecoration: 'none', marginTop: '1.5rem', width: 'fit-content' }}>
+              <span>Ver Listagem de Alunos</span>
+              <ChevronRight size={14} />
+            </Link>
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

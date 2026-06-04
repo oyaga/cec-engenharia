@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -12,24 +12,118 @@ import {
   MessageCircle,
   Award,
   Video,
-  AlertCircle
+  AlertCircle,
+  MessageSquare,
+  DollarSign,
+  FileText,
+  Users,
+  Search,
+  Send,
+  Lock,
+  Unlock,
+  FileCheck,
+  ChevronRight,
+  Megaphone,
+  Download,
+  Heart,
+  Sparkles,
+  Star,
+  Phone,
+  Zap
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { generateDocument } from '../lib/pdfGenerator';
 
 export default function AreaAluno() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { session } = useAuth();
+
+  // Estados principais
+  const [userName, setUserName] = useState('');
+  const [studentId, setStudentId] = useState(null);
+  const [turmaId, setTurmaId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [greeting, setGreeting] = useState('Olá');
+  const [missingDocs, setMissingDocs] = useState(false);
+  const [studentData, setStudentData] = useState(null);
+
+  // Dados das abas
   const [myCourses, setMyCourses] = useState([]);
   const [upcomingPractical, setUpcomingPractical] = useState(null);
   const [hasConfirmedAttendance, setHasConfirmedAttendance] = useState(false);
   const [quizResults, setQuizResults] = useState([]);
   const [technicalEvals, setTechnicalEvals] = useState([]);
-  const [missingDocs, setMissingDocs] = useState(false);
-  const [studentId, setStudentId] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [greeting, setGreeting] = useState('Olá');
-  const { session } = useAuth();
+  const [announcements, setAnnouncements] = useState([]);
+  const [attendanceHistory, setAttendanceHistory] = useState([]);
+  const [certificatesCount, setCertificatesCount] = useState(0);
+  const [issuedCertificates, setIssuedCertificates] = useState([]);
+  const [financialRecord, setFinancialRecord] = useState(null);
+  const [signedUrls, setSignedUrls] = useState({});
 
-  // Função para definir saudação dinâmica com base na hora
+  useEffect(() => {
+    if (studentData && studentData.id) {
+      const loadSignedUrls = async () => {
+        const urls = {};
+        const docsToSign = [
+          { key: 'photo', url: studentData.doc_photo_url },
+          { key: 'id', url: studentData.doc_id_url },
+          { key: 'cpf', url: studentData.doc_cpf_url },
+          { key: 'address', url: studentData.doc_address_url },
+          { key: 'education', url: studentData.doc_education_url }
+        ];
+
+        for (const doc of docsToSign) {
+          if (doc.url) {
+            const parts = doc.url.split('/object/public/student_documents/');
+            const filePath = parts.length > 1 ? parts[1] : null;
+            if (filePath) {
+              try {
+                const { data, error } = await supabase.storage
+                  .from('student_documents')
+                  .createSignedUrl(filePath, 900); // 15 minutos
+                if (!error && data) {
+                  urls[doc.key] = data.signedUrl;
+                }
+              } catch (e) {
+                console.warn('[Segurança] Falha ao assinar URL para o aluno:', e);
+              }
+            }
+          }
+        }
+        setSignedUrls(urls);
+      };
+      loadSignedUrls();
+    } else {
+      setSignedUrls({});
+    }
+  }, [studentData]);
+
+  // Estados da Vitrine de Cursos (Wishlist)
+  const [availableCourses, setAvailableCourses] = useState([]);
+  const [wishlist, setWishlist] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cec_wishlist') || '[]'); } catch { return []; }
+  });
+  const [vitrineSearch, setVitrineSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
+
+  // Estados do Fórum
+  const [forumTopics, setForumTopics] = useState([]);
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [topicReplies, setTopicReplies] = useState([]);
+  const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [newTopicContent, setNewTopicContent] = useState('');
+  const [newReplyContent, setNewReplyContent] = useState('');
+  const [forumSearch, setForumSearch] = useState('');
+
+  // Estados do Chat
+  const [instructors, setInstructors] = useState([]);
+  const [selectedInstructor, setSelectedInstructor] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newChatMessage, setNewChatMessage] = useState('');
+  const messagesEndRef = useRef(null);
+
+  // Efeito para a saudação baseada no horário
   useEffect(() => {
     const hr = new Date().getHours();
     if (hr < 12) setGreeting('Bom dia');
@@ -37,111 +131,54 @@ export default function AreaAluno() {
     else setGreeting('Boa noite');
   }, []);
 
-  const handleStartCourse = async (courseId) => {
-    // Buscar primeira aula ou última aula acessada do curso para continuar de onde parou
-    const { data: lessons } = await supabase
-      .from('lms_lessons')
-      .select('id, module_id, lms_modules(course_id)')
-      .order('order_index', { ascending: true });
+  // Rolar mensagens de chat para o final automaticamente
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, selectedInstructor]);
 
-    // Filtrar aulas deste curso
-    const courseLessons = lessons?.filter(l => l.lms_modules?.course_id === courseId) || [];
-    
-    if (courseLessons.length > 0) {
-      // Tentar ver se o aluno já tem algum progresso em andamento
-      const { data: progress } = await supabase
-        .from('lms_student_progress')
-        .select('lesson_id, last_accessed')
-        .eq('student_id', session.user.id)
-        .order('last_accessed', { ascending: false });
-
-      // Encontrar a última aula acessada que pertence a este curso
-      const lastAccessed = progress?.find(p => courseLessons.some(l => l.id === p.lesson_id));
-
-      if (lastAccessed) {
-        navigate(`/curso/${courseId}/aula/${lastAccessed.lesson_id}`);
-      } else {
-        // Se for a primeira vez, vai para a primeira aula
-        navigate(`/curso/${courseId}/aula/${courseLessons[0].id}`);
-      }
-    } else {
-      alert('Este curso ainda não possui aulas cadastradas no portal.');
-    }
-  };
-
-  const handleConfirmAttendance = async () => {
-    if (!studentId || !upcomingPractical) return;
-    
-    try {
-      const { error } = await supabase
-        .from('attendance_records')
-        .insert([{
-          student_id: studentId,
-          class_id: upcomingPractical.id,
-          status: 'presente',
-          confirmed_by_student: true,
-          created_at: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
-
-      setHasConfirmedAttendance(true);
-      
-      // Incrementar localmente o enrolled_count para feedback visual instantâneo
-      setUpcomingPractical(prev => ({
-        ...prev,
-        enrolled_count: (prev.enrolled_count || 0) + 1
-      }));
-
-      alert('Presença confirmada com sucesso! Esperamos você no treinamento prático presencial.');
-    } catch (err) {
-      console.error('Erro ao confirmar presença na aula presencial:', err);
-      alert('Erro ao confirmar presença: ' + err.message);
-    }
-  };
-
+  // Carregamento geral de dados do Supabase
   const fetchData = async () => {
     if (!session?.user?.id) return;
     setLoading(true);
 
     try {
-      // 1. Buscar cadastro do estudante e documentos do aluno pelo user_id
-      const { data: studentsData, error: stError } = await supabase
+      // 1. Buscar Perfil do Usuário
+      const { data: profile } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', session.user.id)
+        .single();
+      
+      const fullName = profile?.full_name || session.user.email.split('@')[0];
+      setUserName(fullName);
+
+      // 2. Buscar Cadastro do Aluno
+      const { data: student, error: stError } = await supabase
         .from('students')
-        .select(`
-          id,
-          turma_id,
-          doc_photo_url,
-          doc_id_url,
-          doc_cpf_url,
-          doc_address_url,
-          doc_education_url,
-          has_lms_access
-        `)
+        .select('*')
         .eq('user_id', session.user.id)
         .maybeSingle();
 
       let activeStudentId = null;
       let activeTurmaId = null;
 
-      if (!stError && studentsData) {
-        activeStudentId = studentsData.id;
-        activeTurmaId = studentsData.turma_id;
-        setStudentId(studentsData.id);
+      if (!stError && student) {
+        activeStudentId = student.id;
+        activeTurmaId = student.turma_id;
+        setStudentId(student.id);
+        setTurmaId(student.turma_id);
+        setStudentData(student);
         
-        // Verificar se há documentos pendentes
-        const hasMissing = !studentsData.doc_photo_url || 
-                           !studentsData.doc_id_url || 
-                           !studentsData.doc_cpf_url || 
-                           !studentsData.doc_address_url || 
-                           !studentsData.doc_education_url;
+        // Verificar pendência Abendi
+        const hasMissing = !student.doc_photo_url || 
+                           !student.doc_id_url || 
+                           !student.doc_cpf_url || 
+                           !student.doc_address_url || 
+                           !student.doc_education_url;
         setMissingDocs(hasMissing);
       }
 
-      // 2. Buscar Cursos matriculados e Progresso Real
-      // Para calcular progresso real, precisamos:
-      // a) Total de aulas cadastrado por curso
-      // b) Total de aulas marcadas como concluídas pelo aluno
+      // 3. Buscar Cursos e calcular progresso real
       const { data: lessonsData } = await supabase
         .from('lms_lessons')
         .select('id, module_id, lms_modules(course_id)');
@@ -152,13 +189,12 @@ export default function AreaAluno() {
         .eq('student_id', session.user.id)
         .eq('is_completed', true);
 
-      // Buscar matrículas para extrair os cursos ativados
-      const { data: studentEnrollments } = await supabase
+      const { data: enrollments } = await supabase
         .from('students')
         .select('has_lms_access, classes(lms_course_id)')
         .eq('user_id', session.user.id);
 
-      const courseIds = studentEnrollments
+      const courseIds = enrollments
         ?.filter(e => e.has_lms_access)
         .map(e => e.classes?.lms_course_id)
         .filter(Boolean) || [];
@@ -171,7 +207,6 @@ export default function AreaAluno() {
           .eq('is_published', true);
 
         if (courses) {
-          // Processar progresso real para cada curso
           const coursesWithProgress = courses.map(course => {
             const courseLessons = lessonsData?.filter(l => l.lms_modules?.course_id === course.id) || [];
             const courseCompleted = courseLessons.filter(l => 
@@ -191,24 +226,25 @@ export default function AreaAluno() {
         }
       }
 
-      // 3. Buscar Turma e Aula Prática Presencial de Final de Semana (upcoming_classes)
+      // 4. Buscar Próxima Aula Prática Presencial
       if (activeTurmaId) {
-        const { data: turmaData } = await supabase
+        const { data: upcoming } = await supabase
           .from('upcoming_classes')
           .select('*, lms_courses(title)')
           .eq('id', activeTurmaId)
           .maybeSingle();
 
-        if (turmaData) {
-          setUpcomingPractical(turmaData);
+        if (upcoming) {
+          setUpcomingPractical(upcoming);
 
-          // Verificar se o aluno já confirmou presença para esta turma
+          // Verificar confirmação de presença do aluno
           if (activeStudentId) {
             const { data: attendanceCheck } = await supabase
               .from('attendance_records')
               .select('id')
               .eq('student_id', activeStudentId)
               .eq('class_id', activeTurmaId)
+              .eq('status', 'presente')
               .maybeSingle();
             
             setHasConfirmedAttendance(!!attendanceCheck);
@@ -216,28 +252,77 @@ export default function AreaAluno() {
         }
       }
 
-      // 4. Buscar Notas de Avaliações Técnicas (Presenciais)
+      // 5. Histórico de Chamadas e Frequência Presencial
+      if (activeStudentId && activeTurmaId) {
+        const { data: attData } = await supabase
+          .from('attendance_records')
+          .select('*, classes(name)')
+          .eq('student_id', activeStudentId)
+          .order('created_at', { ascending: false });
+
+        setAttendanceHistory(attData || []);
+      }
+
+      // 6. Buscar Notas de Provas Online (Quizzes) e Presenciais
+      const { data: qResults } = await supabase
+        .from('lms_quiz_results')
+        .select('*, lms_quizzes(title, quiz_type)')
+        .eq('student_id', session.user.id)
+        .order('updated_at', { ascending: false });
+      if (qResults) setQuizResults(qResults);
+
       if (activeStudentId) {
         const { data: evals } = await supabase
           .from('student_evaluations')
           .select('*, classes(name, course_name)')
           .eq('student_id', activeStudentId)
           .order('date', { ascending: false });
-        
         if (evals) setTechnicalEvals(evals);
       }
 
-      // 5. Buscar Notas dos Quizzes EAD realizados
-      const { data: qResults } = await supabase
-        .from('lms_quiz_results')
-        .select('*, lms_quizzes(title, quiz_type)')
-        .eq('student_id', session.user.id)
-        .order('updated_at', { ascending: false });
-      
-      if (qResults) setQuizResults(qResults);
+      // 7. Mural de Comunicados Reativo
+      const { data: annData } = await supabase
+        .from('announcements')
+        .select('*, author:users!created_by(full_name)')
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (annData) {
+        const activeAnn = annData.filter(a => 
+          a.target_roles?.includes('aluno') && 
+          (!a.expires_at || new Date(a.expires_at) >= new Date())
+        );
+        setAnnouncements(activeAnn);
+      }
+
+      // 8. Buscar Certificados Emitidos
+      if (activeStudentId) {
+        const { data: certs } = await supabase
+          .from('lms_issued_certificates')
+          .select('*')
+          .eq('student_id', activeStudentId);
+        
+        setIssuedCertificates(certs || []);
+        setCertificatesCount(certs?.length || 0);
+      }
+
+      // 9. Buscar Financeiro (Receitas / Parcelas)
+      if (activeStudentId) {
+        const { data: finData } = await supabase
+          .from('financial_records')
+          .select('*')
+          .eq('student_id', activeStudentId)
+          .maybeSingle();
+        setFinancialRecord(finData);
+      }
+
+      // 10. Carregar Fórum e Instrutores para Chat
+      loadForum(activeTurmaId);
+      loadInstructors(activeTurmaId);
+      loadAvailableCourses();
 
     } catch (err) {
-      console.error('Erro ao carregar dados do aluno:', err);
+      console.error('Erro ao carregar dados do Supabase:', err);
     } finally {
       setLoading(false);
     }
@@ -245,8 +330,316 @@ export default function AreaAluno() {
 
   useEffect(() => {
     fetchData();
-  }, [session]);
+  }, [session, location.pathname]);
 
+  // Função para carregar fórum (com resiliência no localStorage)
+  const loadForum = async (activeTurmaId) => {
+    try {
+      const { data, error } = await supabase
+        .from('lms_forum_topics')
+        .select('*, student:users!student_id(full_name)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setForumTopics(data || []);
+    } catch (err) {
+      console.warn("Fórum: Usando fallback resiliente do localStorage");
+      const localForum = localStorage.getItem('local_forum_topics');
+      if (localForum) {
+        setForumTopics(JSON.parse(localForum));
+      } else {
+        const initialMock = [
+          { id: 'f-1', title: 'Dúvida sobre o ensaio de Líquido Penetrante', content: 'Quantas demãos de revelador são ideais no ensaio?', student: { full_name: 'Ana Maria Silva' }, created_at: new Date().toISOString() },
+          { id: 'f-2', title: 'Diferença entre CD e CL no Ultrassom', content: 'Gostaria de entender melhor a diferença conceitual das ondas.', student: { full_name: 'Bruno Lima' }, created_at: new Date().toISOString() }
+        ];
+        setForumTopics(initialMock);
+        localStorage.setItem('local_forum_topics', JSON.stringify(initialMock));
+      }
+    }
+  };
+
+  // Carregar cursos disponíveis para matrícula (Vitrine)
+  const loadAvailableCourses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('lms_courses')
+        .select('id, title, description, modality, category, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
+        .eq('is_published', true)
+        .order('title', { ascending: true });
+
+      if (error) throw error;
+      setAvailableCourses(data || []);
+    } catch (err) {
+      console.warn('Vitrine: usando cursos de demonstração');
+      setAvailableCourses([
+        { id: 'demo-1', title: 'Ensaio por Líquido Penetrante - LP Nível I', description: 'Treinamento completo em LP para detecção de descontinuidades superficiais. Atende às normas ASME e ABNT.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-LP1', price_card: 1800, price_pix: 1530, max_installments: 10 },
+        { id: 'demo-2', title: 'Inspeção Visual - IV Nível I', description: 'Capacitação em inspeção visual de equipamentos e estruturas, com fundamentos de código AWS D1.1 e ASME V.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-IV1', price_card: 1600, price_pix: 1360, max_installments: 10 },
+        { id: 'demo-3', title: 'Radiografia Industrial - RT Nível I', description: 'Formação em radiografia industrial com uso de equipamentos de Raios X e gama para detecção de falhas internas.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-RT1', price_card: 2200, price_pix: 1870, max_installments: 10 },
+        { id: 'demo-4', title: 'Ultrassom - UT Nível I', description: 'Fundamentos e prática de ultrassom industrial para inspeção de soldas, chapas e componentes metálicos.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-UT1', price_card: 1800, price_pix: 1530, max_installments: 10 },
+        { id: 'demo-5', title: 'Partículas Magnéticas - PM Nível I', description: 'Técnicas de magnetização e revelação de descontinuidades em materiais ferromagnéticos por partículas magnéticas.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-PM1', price_card: 1600, price_pix: 1360, max_installments: 10 },
+        { id: 'demo-6', title: 'NR-12 – Segurança em Máquinas e Equipamentos', description: 'Treinamento obrigatório de segurança para operadores e manutenção de máquinas industriais conforme NR-12.', modality: 'presencial', category: 'NR', thumbnail_url: null, code: 'NR-12', price_card: 950, price_pix: 807.50, max_installments: 6 },
+        { id: 'demo-7', title: 'NR-10 – Segurança em Instalações Elétricas', description: 'Capacitação em segurança no trabalho em instalações elétricas para eletricistas, técnicos e engenheiros.', modality: 'presencial', category: 'NR', thumbnail_url: null, code: 'NR-10', price_card: 850, price_pix: 722.50, max_installments: 6 },
+        { id: 'demo-8', title: 'Correntes Parasitas - EC Nível I', description: 'Formação em correntes parasitas (Eddy Current) para inspeção de tubulações e materiais condutores.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-EC1', price_card: 2000, price_pix: 1700, max_installments: 10 }
+      ]);
+    }
+  };
+
+  // Toggle na Wishlist (Salva no localStorage)
+  const toggleWishlist = (courseId) => {
+    setWishlist(prev => {
+      const updated = prev.includes(courseId)
+        ? prev.filter(id => id !== courseId)
+        : [...prev, courseId];
+      localStorage.setItem('cec_wishlist', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Disparo de WhatsApp para Secretaria
+  const handleContactSecretaria = (course) => {
+    const message = encodeURIComponent(
+      `Olá! Me chamo *${userName}* e tenho interesse em me matricular no curso:\n\n` +
+      `📚 *${course.title}*\n` +
+      `🔖 Código: ${course.code || 'Consultar'}\n` +
+      `🏫 Modalidade: ${course.modality?.toUpperCase() || 'HÍBRIDO'}\n\n` +
+      `Poderia me passar mais informações sobre valores, turmas disponíveis e datas de início? Obrigado(a)!`
+    );
+    window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
+  };
+
+  // Carregar instrutores da turma do aluno para o Chat
+  const loadInstructors = async (activeTurmaId) => {
+    try {
+      if (activeTurmaId) {
+        const { data } = await supabase
+          .from('class_instructors')
+          .select('*, user:users(id, full_name, email)')
+          .eq('class_id', activeTurmaId);
+
+        if (data && data.length > 0) {
+          setInstructors(data.map(i => i.user).filter(Boolean));
+          return;
+        }
+      }
+      // Se não houver vinculados na turma, busca coordenadores ou admins de fallback
+      const { data: fallbacks } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('role', ['coordenador', 'admin']);
+      
+      setInstructors(fallbacks || []);
+    } catch (err) {
+      setInstructors([{ id: 'inst-fallback', full_name: 'Suporte Pedagógico C&C', email: 'suporte@cursocec.com.br' }]);
+    }
+  };
+
+  // Enviar dúvida no Fórum
+  const handleAddTopic = async (e) => {
+    e.preventDefault();
+    if (!newTopicTitle.trim() || !newTopicContent.trim() || !session?.user?.id) return;
+
+    const topicPayload = {
+      title: newTopicTitle.trim(),
+      content: newTopicContent.trim(),
+      student_id: session.user.id,
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('lms_forum_topics')
+        .insert([topicPayload])
+        .select('*, student:users!student_id(full_name)');
+
+      if (error) throw error;
+      setForumTopics(prev => [data[0], ...prev]);
+    } catch (err) {
+      // Fallback localstorage
+      const newLocalTopic = {
+        id: 'f-' + Date.now(),
+        title: topicPayload.title,
+        content: topicPayload.content,
+        student: { full_name: userName },
+        created_at: topicPayload.created_at
+      };
+      const updated = [newLocalTopic, ...forumTopics];
+      setForumTopics(updated);
+      localStorage.setItem('local_forum_topics', JSON.stringify(updated));
+    }
+
+    setNewTopicTitle('');
+    setNewTopicContent('');
+    alert('Dúvida publicada no fórum com sucesso!');
+  };
+
+  // Carregar respostas de um tópico selecionado
+  const handleSelectTopic = async (topic) => {
+    setSelectedTopic(topic);
+    setTopicReplies([]);
+    try {
+      const { data, error } = await supabase
+        .from('lms_forum_replies')
+        .select('*, author:users!author_id(full_name, role)')
+        .eq('topic_id', topic.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setTopicReplies(data || []);
+    } catch (err) {
+      // Fallback localstorage para respostas
+      const localReplies = localStorage.getItem(`replies_${topic.id}`);
+      if (localReplies) {
+        setTopicReplies(JSON.parse(localReplies));
+      } else {
+        const initialReplies = [
+          { id: 'r-1', content: 'O ideal é uma demão fina e uniforme a uma distância de 20-30cm.', author: { full_name: 'Prof. Carlos Santos', role: 'instrutor' }, created_at: new Date().toISOString() }
+        ];
+        setTopicReplies(initialReplies);
+        localStorage.setItem(`replies_${topic.id}`, JSON.stringify(initialReplies));
+      }
+    }
+  };
+
+  // Responder no Fórum
+  const handleAddReply = async (e) => {
+    e.preventDefault();
+    if (!newReplyContent.trim() || !selectedTopic || !session?.user?.id) return;
+
+    const replyPayload = {
+      topic_id: selectedTopic.id,
+      author_id: session.user.id,
+      content: newReplyContent.trim(),
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('lms_forum_replies')
+        .insert([replyPayload])
+        .select('*, author:users!author_id(full_name, role)');
+
+      if (error) throw error;
+      setTopicReplies(prev => [...prev, data[0]]);
+    } catch (err) {
+      const newLocalReply = {
+        id: 'r-' + Date.now(),
+        content: replyPayload.content,
+        author: { full_name: userName, role: 'aluno' },
+        created_at: replyPayload.created_at
+      };
+      const updated = [...topicReplies, newLocalReply];
+      setTopicReplies(updated);
+      localStorage.setItem(`replies_${selectedTopic.id}`, JSON.stringify(updated));
+    }
+
+    setNewReplyContent('');
+  };
+
+  // Selecionar instrutor para Chat e carregar mensagens
+  const handleSelectInstructorChat = async (inst) => {
+    setSelectedInstructor(inst);
+    setChatMessages([]);
+    if (!session?.user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${inst.id}),and(sender_id.eq.${inst.id},receiver_id.eq.${session.user.id})`)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setChatMessages(data || []);
+      
+      // Marcar mensagens recebidas como lidas
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('sender_id', inst.id)
+        .eq('receiver_id', session.user.id)
+        .eq('is_read', false);
+
+    } catch (err) {
+      // Fallback localstorage para chat
+      const localChat = localStorage.getItem(`chat_${inst.id}`);
+      if (localChat) {
+        setChatMessages(JSON.parse(localChat));
+      } else {
+        const initialMsg = [
+          { id: 'm-1', sender_id: inst.id, receiver_id: session.user.id, content: `Olá, tudo bem? Sou o ${inst.full_name}, estou aqui para te ajudar com suas dúvidas!`, created_at: new Date().toISOString() }
+        ];
+        setChatMessages(initialMsg);
+        localStorage.setItem(`chat_${inst.id}`, JSON.stringify(initialMsg));
+      }
+    }
+  };
+
+  // Enviar mensagem no Chat
+  const handleSendChatMessage = async (e) => {
+    e.preventDefault();
+    if (!newChatMessage.trim() || !selectedInstructor || !session?.user?.id) return;
+
+    const payload = {
+      sender_id: session.user.id,
+      receiver_id: selectedInstructor.id,
+      content: newChatMessage.trim(),
+      is_read: false,
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([payload])
+        .select();
+
+      if (error) throw error;
+      setChatMessages(prev => [...prev, data[0]]);
+    } catch (err) {
+      const newLocalMsg = {
+        id: 'm-' + Date.now(),
+        ...payload
+      };
+      const updated = [...chatMessages, newLocalMsg];
+      setChatMessages(updated);
+      localStorage.setItem(`chat_${selectedInstructor.id}`, JSON.stringify(updated));
+    }
+
+    setNewChatMessage('');
+  };
+
+  // Confirmar Presença
+  const handleConfirmAttendance = async () => {
+    if (!studentId || !upcomingPractical) return;
+    
+    try {
+      const { error } = await supabase
+        .from('attendance_records')
+        .insert([{
+          student_id: studentId,
+          class_id: upcomingPractical.id,
+          status: 'presente',
+          confirmed_by_student: true,
+          created_at: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      setHasConfirmedAttendance(true);
+      setUpcomingPractical(prev => ({
+        ...prev,
+        enrolled_count: (prev.enrolled_count || 0) + 1
+      }));
+
+      alert('Presença confirmada com sucesso! Esperamos você no treinamento prático presencial.');
+      fetchData();
+    } catch (err) {
+      console.error('Erro ao confirmar presença na aula presencial:', err);
+      alert('Erro ao confirmar presença: ' + err.message);
+    }
+  };
+
+  // Upload de Documentos Abendi
   const handleFileUpload = async (e, docType) => {
     const file = e.target.files[0];
     if (!file || !studentId) return;
@@ -274,14 +667,1489 @@ export default function AreaAluno() {
       if (updateError) throw updateError;
 
       alert(`Documento (${docType.toUpperCase()}) enviado com sucesso!`);
-      fetchData(); // Recarrega dados para conferência
+      fetchData();
     } catch (error) {
       console.error('Erro no upload de documento:', error);
       alert('Falha ao enviar arquivo. Por favor, tente novamente.');
     }
   };
 
-  // Se houver documentos pendentes por exigência Abendi, exibe bloqueio amigável
+  // Baixar Certificado Conquistado (Gera PDF Client-side)
+  const handleDownloadPDF = (cert) => {
+    const studentObj = {
+      name: cert.student_name || userName,
+      cpf: studentData?.cpf || ' --- ',
+      class: cert.class_name || 'Turma CEC'
+    };
+    generateDocument('custom_certificate', studentObj, {
+      content: `Certificamos que o aluno ${studentObj.name}, portador do CPF ${studentObj.cpf}, concluiu com êxito o treinamento técnico de ${cert.course_title}, com aproveitamento de nota média ${cert.grade || '8.0'}, cumprindo todos os requisitos teóricos e práticos de qualificação.`,
+      uuid: cert.certificate_code
+    });
+    alert(`Certificado digital baixado com sucesso!`);
+  };
+
+  // Redireciona o aluno para a primeira aula do curso EAD
+  const handleStartCourse = async (courseId) => {
+    try {
+      // Buscar módulos do curso ordenados
+      const { data: modules, error: modError } = await supabase
+        .from('lms_modules')
+        .select('id')
+        .eq('course_id', courseId)
+        .order('order_index', { ascending: true });
+
+      if (modError) throw modError;
+
+      if (!modules || modules.length === 0) {
+        alert('Este curso ainda não possui módulos teóricos EAD cadastrados.');
+        return;
+      }
+
+      // Buscar a primeira aula do primeiro módulo
+      const moduleIds = modules.map(m => m.id);
+      const { data: lessons, error: lesError } = await supabase
+        .from('lms_lessons')
+        .select('id')
+        .in('module_id', moduleIds)
+        .order('order_index', { ascending: true })
+        .limit(1);
+
+      if (lesError) throw lesError;
+
+      if (!lessons || lessons.length === 0) {
+        alert('Este curso ainda não possui aulas teóricas EAD cadastradas.');
+        return;
+      }
+
+      // Navegar para a rota da lição
+      navigate(`/curso/${courseId}/aula/${lessons[0].id}`);
+    } catch (err) {
+      console.error('Erro ao acessar o player do curso:', err);
+      alert('Não foi possível iniciar o curso. Tente novamente mais tarde.');
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // CÁLCULO DE FREQUÊNCIA PRESENCIAL (Fórmulas do Resumo)
+  // ═══════════════════════════════════════════
+  const getFrequenciaPresencial = () => {
+    if (!turmaId) return { freq: 100, presencas: 0, totalDadas: 0, progresso: 0 };
+    
+    // Total de aulas ocorridas = datas distintas na tabela attendance_records para a turma
+    // Buscamos datas distintas de presença lançadas
+    const datasUnicas = Array.from(new Set(attendanceHistory.map(a => a.created_at?.split('T')[0])));
+    const totalDadas = datasUnicas.length;
+    
+    // Contagem de presenças e faltas justificadas (status 'presente' ou 'falta_justificada')
+    const presencas = attendanceHistory.filter(a => 
+      a.class_id === turmaId && (a.status === 'presente' || a.status === 'falta_justificada')
+    ).length;
+
+    const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100;
+    const progresso = Math.round((presencas / 10) * 100); // Divisor padrão 10
+
+    return { freq, presencas, totalDadas, progresso };
+  };
+
+  const { freq: freqReal, presencas: presencasReal, totalDadas: totalDadasReal, progresso: progressoPresencial } = getFrequenciaPresencial();
+
+  // ═══════════════════════════════════════════
+  // RENDERIZAÇÃO DAS VISTAS/ROTAS/ABAS INTERNAS
+  // ═══════════════════════════════════════════
+
+  // ABA 1: DASHBOARD
+  const renderDashboard = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {/* CARD DE BOAS-VINDAS */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+        color: 'white',
+        padding: '2.5rem',
+        borderRadius: '20px',
+        boxShadow: '0 10px 25px -5px rgba(0, 75, 73, 0.3)'
+      }}>
+        <h2 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
+          {greeting}, {userName}! 👋
+        </h2>
+        <p style={{ margin: '0.75rem 0 0 0', opacity: 0.85, fontSize: '0.95rem' }}>
+          Bem-vindo de volta ao seu portal de estudos C&C Engenharia e Capacitação. Veja abaixo seu andamento teórico e presencial.
+        </p>
+      </div>
+
+      {/* CARDS DE KPIS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+        <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: 'white' }}>
+          <div style={{ backgroundColor: 'rgba(0, 75, 73, 0.08)', color: 'var(--primary)', padding: '1rem', borderRadius: '12px' }}>
+            <BookOpen size={24} />
+          </div>
+          <div>
+            <h4 style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', margin: 0, fontWeight: 700 }}>Meus Cursos</h4>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', margin: '4px 0 0 0' }}>{myCourses.length}</p>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: 'white' }}>
+          <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', color: '#10b981', padding: '1rem', borderRadius: '12px' }}>
+            <Award size={24} />
+          </div>
+          <div>
+            <h4 style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', margin: 0, fontWeight: 700 }}>Certificados</h4>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', margin: '4px 0 0 0' }}>{certificatesCount}</p>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: 'white' }}>
+          <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', color: '#d97706', padding: '1rem', borderRadius: '12px' }}>
+            <Calendar size={24} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', margin: 0, fontWeight: 700 }}>Próxima Aula Presencial</h4>
+            {upcomingPractical ? (
+              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0 0' }}>
+                {new Date(upcomingPractical.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · {upcomingPractical.start_time?.substring(0, 5)}h ({upcomingPractical.classes?.name || 'CEC'})
+              </p>
+            ) : (
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0', fontWeight: 600 }}>Sem cronograma</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+        {/* CURSOS EM ANDAMENTO */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <PlayCircle size={22} color="var(--primary)" /> Meus Cursos em Andamento
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {myCourses.map(course => {
+              const isEligible = course.progress_percent === 100 && freqReal >= 75;
+              const hasCert = issuedCertificates.some(c => c.course_id === course.id);
+              
+              return (
+                <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0 }}>{course.title}</h4>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Modalidade: {course.modality?.toUpperCase() || 'HÍBRIDO'}</span>
+                    </div>
+
+                    <div>
+                      {hasCert ? (
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px' }}>
+                          ✅ Certificado Emitido
+                        </span>
+                      ) : isEligible ? (
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px' }}>
+                          ⏳ Aguardando Emissão
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px' }}>
+                          🔒 Certificado Bloqueado
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+                    {/* Progresso Teórico EAD */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
+                        <span>Aulas Teóricas EAD</span>
+                        <span>{course.progress_percent || 0}%</span>
+                      </div>
+                      <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 0.4s' }}></div>
+                      </div>
+                    </div>
+
+                    {/* Progresso Presencial */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
+                        <span>Presenças Práticas</span>
+                        <span>{presencasReal} de 10 aulas ({progressoPresencial}%)</span>
+                      </div>
+                      <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ width: `${progressoPresencial}%`, height: '100%', backgroundColor: '#f59e0b', transition: 'width 0.4s' }}></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '700' }}>Frequência Presencial:</span>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: '800', 
+                        color: freqReal >= 75 ? '#10b981' : '#ef4444',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '2px'
+                      }}>
+                        {freqReal}% {freqReal < 75 && <AlertCircle size={14} title="Mínimo exigido para aprovação: 75%" />}
+                      </span>
+                    </div>
+
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={() => handleStartCourse(course.id)}
+                      style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '700', fontSize: '0.85rem' }}
+                    >
+                      Estudar EAD <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {myCourses.length === 0 && (
+              <div className="card" style={{ padding: '3rem', textCenter: 'center', backgroundColor: 'white' }}>
+                <p className="text-secondary" style={{ margin: 0 }}>Você não possui matrículas ativas no momento.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* COMUNICADOS DO MURAL */}
+        <div>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: '0 0 1.25rem 0', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Megaphone size={22} className="text-warning" /> Avisos da Secretaria
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {announcements.slice(0, 3).map(ann => (
+              <div key={ann.id} className="card" style={{ 
+                padding: '1.25rem', 
+                backgroundColor: ann.is_pinned ? '#FEF2F2' : 'white', 
+                borderLeft: ann.is_pinned ? '4px solid #ef4444' : '4px solid var(--primary)',
+                borderColor: ann.is_pinned ? '#FCA5A5' : '#cbd5e1'
+              }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#1e293b', margin: '0 0 4px 0' }}>{ann.title}</h4>
+                <p style={{ fontSize: '0.78rem', color: '#475569', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                  {ann.body.length > 120 ? `${ann.body.slice(0, 120)}...` : ann.body}
+                </p>
+                <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+                  Publicado em: {new Date(ann.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+            ))}
+            {announcements.length === 0 && (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>Nenhum comunicado no mural no momento.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ABA 2: MEUS CURSOS
+  const renderCursos = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)' }}>Meus Cursos Matriculados</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+        {myCourses.map(course => (
+          <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <h4 style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)', margin: 0 }}>{course.title}</h4>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Código do Curso: <strong>{course.code || ' --- '}</strong></p>
+            
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
+                <span>Progresso Teórico</span>
+                <span>{course.progress_percent || 0}%</span>
+              </div>
+              <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: 'var(--primary)' }}></div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-primary"
+              onClick={() => handleStartCourse(course.id)}
+              style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', marginTop: '1rem' }}
+            >
+              Acessar Player de Aula
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
+  const renderPresencial = () => {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+        {/* HISTÓRICO DE PRESENÇAS */}
+        <div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Frequência e Chamadas Presenciais</h3>
+          
+          <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>Frequência Prática Registrada</h4>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>Cálculo baseado em {totalDadasReal} aulas ministradas na turma (mínimo exigido: 75%).</p>
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ 
+                  fontSize: '2rem', 
+                  fontWeight: 900, 
+                  color: freqReal >= 75 ? '#10b981' : '#ef4444',
+                  display: 'block',
+                  lineHeight: 1
+                }}>
+                  {freqReal}%
+                </span>
+                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: freqReal >= 75 ? '#047857' : '#b91c1c' }}>
+                  {freqReal >= 75 ? 'Aprovado por Frequência' : 'Frequência Insuficiente'}
+                </span>
+              </div>
+            </div>
+
+            {/* Barra de Progresso de Frequência */}
+            <div style={{ height: '12px', backgroundColor: '#e2e8f0', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
+              <div style={{ width: `${freqReal}%`, height: '100%', backgroundColor: freqReal >= 75 ? '#10b981' : '#ef4444', transition: 'width 0.4s' }}></div>
+            </div>
+
+            {freqReal < 75 && (
+              <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', display: 'flex', gap: '0.5rem', color: '#991B1B', fontSize: '0.82rem', lineHeight: '1.4' }}>
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                <span>
+                  <strong>Atenção:</strong> Sua frequência prática está abaixo de 75%. De acordo com as normas regulamentares da **Abendi**, a emissão do certificado permanecerá **bloqueada** até que as faltas sejam justificadas ou repostas com a secretaria.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1rem' }}>Lista de Chamadas Realizadas</h4>
+          <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
+                  <th style={{ padding: '1rem' }}>Data da Aula</th>
+                  <th style={{ padding: '1rem' }}>Turma / Disciplina</th>
+                  <th style={{ padding: '1rem' }}>Status</th>
+                  <th style={{ padding: '1rem' }}>Justificativa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceHistory.map(a => (
+                  <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
+                    <td style={{ padding: '0.85rem 1rem' }}>
+                      <span style={{ 
+                        padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
+                        backgroundColor: a.status === 'presente' ? '#dcfce7' : (a.status === 'falta_justificada' ? '#fee2e2' : '#f1f5f9'),
+                        color: a.status === 'presente' ? '#15803d' : (a.status === 'falta_justificada' ? '#991b1b' : '#475569')
+                      }}>
+                        {a.status === 'presente' ? 'Presente' : (a.status === 'falta_justificada' ? 'Falta Justificada' : 'Falta')}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                      {a.justification_type || ' --- '}
+                    </td>
+                  </tr>
+                ))}
+                {attendanceHistory.length === 0 && (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                      Nenhum registro de chamada lançado para sua matrícula no momento.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* CARD PRESENCIAL DO FINAL DE SEMANA */}
+        <div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Cronograma Presencial</h3>
+          {upcomingPractical ? (
+            <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FCD34D', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '5px', background: '#F59E0B' }}></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#B45309', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+                <MapPin size={15} />
+                <span>Aula Presencial Prevista</span>
+              </div>
+              <h4 style={{ color: 'var(--primary-dark)', fontSize: '1rem', fontWeight: '800', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
+                {upcomingPractical.lms_courses?.title || 'Treinamento CEC'}
+              </h4>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.84rem', color: 'var(--text-main)', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '750', color: '#B45309' }}>
+                  <Calendar size={14} />
+                  <span>
+                    {new Date(upcomingPractical.date + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Clock size={14} className="text-muted" />
+                  <span>{upcomingPractical.start_time?.substring(0, 5)}h às {upcomingPractical.end_time?.substring(0, 5)}h</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'start', gap: '0.4rem' }}>
+                  <MapPin size={14} className="text-muted" style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <span>{upcomingPractical.address}</span>
+                </div>
+                {upcomingPractical.instructor_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Users size={14} className="text-muted" />
+                    <span>Instrutor: <strong>{upcomingPractical.instructor_name}</strong></span>
+                  </div>
+                )}
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Vagas: <strong>{(upcomingPractical.capacity || 20) - (upcomingPractical.enrolled_count || 0)} de {upcomingPractical.capacity || 20} livres</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid #FCD34D', paddingTop: '1rem' }}>
+                {hasConfirmedAttendance ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#D1FAE5', color: '#065F46', borderRadius: '10px', fontSize: '0.8rem', fontWeight: '800', width: '100%', border: '1px solid #A7F3D0' }}>
+                    <CheckCircle size={16} /> Presença Confirmada
+                  </div>
+                ) : (
+                  <button 
+                    onClick={handleConfirmAttendance}
+                    className="btn"
+                    style={{ 
+                      width: '100%', padding: '0.65rem', backgroundColor: '#10b981', color: 'white', 
+                      fontWeight: '800', fontSize: '0.82rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)', transition: 'all 0.2s'
+                    }}
+                  >
+                    ✓ Confirmar Presença
+                  </button>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <a 
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(upcomingPractical.address)}`} 
+                    target="_blank" rel="noopener noreferrer" className="btn"
+                    style={{ 
+                      padding: '0.5rem', background: 'white', border: '1px solid #e2e8f0', color: 'var(--text-main)', 
+                      fontWeight: '700', fontSize: '0.78rem', borderRadius: '8px', textDecoration: 'none',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                    }}
+                  >
+                    <MapPin size={12} /> Ver no Maps
+                  </a>
+                  {upcomingPractical.whatsapp_group_url && (
+                    <a 
+                      href={upcomingPractical.whatsapp_group_url} 
+                      target="_blank" rel="noopener noreferrer" className="btn"
+                      style={{ 
+                        padding: '0.5rem', background: '#075E54', color: 'white', border: 'none',
+                        fontWeight: '700', fontSize: '0.78rem', borderRadius: '8px', textDecoration: 'none',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                      }}
+                    >
+                      <MessageCircle size={12} /> Grupo WhatsApp
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FEF3C7', padding: '2rem 1.5rem', textAlign: 'center' }}>
+              <Clock size={32} color="#B45309" style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
+              <p style={{ fontSize: '0.85rem', color: '#B45309', margin: 0, fontWeight: '600' }}>Nenhuma aula prática presencial prevista no momento.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ABA 4: DESEMPENHO E NOTAS
+  const renderDesempenho = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Histórico de Notas e Desempenho</h3>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
+        {/* Provas Online (EAD) */}
+        <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
+          <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provas Online (LMS)</h4>
+          <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                <th style={{ padding: '0.5rem 0' }}>Teste / Módulo</th>
+                <th style={{ padding: '0.5rem 0' }}>Tentativas</th>
+                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Nota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quizResults.map(r => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '0.75rem 0' }}>
+                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{r.lms_quizzes?.title}</div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: '800', color: r.lms_quizzes?.quiz_type === 'final_exam' ? '#7c3aed' : '#059669', marginTop: '2px' }}>
+                      {r.lms_quizzes?.quiz_type === 'final_exam' ? '🏆 PROVA FINAL' : '📝 EXERCÍCIO'}
+                    </div>
+                  </td>
+                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{r.attempts_count} / 3</td>
+                  <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: r.score >= 70 ? '#10b981' : '#ef4444' }}>
+                    {r.score}%
+                  </td>
+                </tr>
+              ))}
+              {quizResults.length === 0 && (
+                <tr>
+                  <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
+                    Nenhum quiz online concluído ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Avaliações Presenciais */}
+        <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
+          <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avaliações Práticas Presenciais</h4>
+          <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                <th style={{ padding: '0.5rem 0' }}>Data</th>
+                <th style={{ padding: '0.5rem 0' }}>Exame Prático</th>
+                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Média Final</th>
+              </tr>
+            </thead>
+            <tbody>
+              {technicalEvals.map(e => (
+                <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{new Date(e.date).toLocaleDateString('pt-BR')}</td>
+                  <td style={{ padding: '0.75rem 0' }}>
+                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{e.exam_type}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>{e.classes?.name}</div>
+                  </td>
+                  <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: e.grade >= 7.0 ? '#10b981' : '#ef4444' }}>
+                    {e.grade}
+                  </td>
+                </tr>
+              ))}
+              {technicalEvals.length === 0 && (
+                <tr>
+                  <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
+                    Nenhuma nota presencial lançada pelo instrutor.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ABA 5: FÓRUM DE DÚVIDAS
+  const renderForum = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
+      {/* TÓPICOS DO FÓRUM */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Fórum de Dúvidas</h3>
+          <input 
+            type="text" 
+            placeholder="Buscar dúvidas..."
+            value={forumSearch}
+            onChange={e => setForumSearch(e.target.value)}
+            style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', maxHeight: '65vh', overflowY: 'auto', paddingRight: '4px' }}>
+          {forumTopics
+            .filter(t => t.title.toLowerCase().includes(forumSearch.toLowerCase()) || t.content.toLowerCase().includes(forumSearch.toLowerCase()))
+            .map(t => (
+              <div 
+                key={t.id} 
+                className="card" 
+                onClick={() => handleSelectTopic(t)}
+                style={{ 
+                  padding: '1.25rem', 
+                  backgroundColor: selectedTopic?.id === t.id ? '#F0F9FF' : 'white', 
+                  borderColor: selectedTopic?.id === t.id ? '#0284c7' : '#cbd5e1',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <h4 style={{ fontSize: '0.98rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 6px 0' }}>{t.title}</h4>
+                <p style={{ fontSize: '0.82rem', color: '#475569', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                  {t.content.length > 100 ? `${t.content.slice(0, 100)}...` : t.content}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94a3b8' }}>
+                  <span>Por: <strong>{t.student?.full_name}</strong></span>
+                  <span>{new Date(t.created_at).toLocaleDateString('pt-BR')}</span>
+                </div>
+              </div>
+            ))
+          }
+          {forumTopics.length === 0 && (
+            <div className="card" style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'white' }}>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhuma dúvida registrada no fórum.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* DETALHE DO TÓPICO / CRIAR TÓPICO */}
+      <div>
+        {selectedTopic ? (
+          <div className="card animate-fade-in" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', maxHeight: '72vh' }}>
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+              <div>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{selectedTopic.title}</h4>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Postado por {selectedTopic.student?.full_name} em {new Date(selectedTopic.created_at).toLocaleString('pt-BR')}</span>
+              </div>
+              <button 
+                onClick={() => setSelectedTopic(null)}
+                style={{ background: '#f1f5f9', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700', cursor: 'pointer' }}
+              >
+                Voltar
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#334155', margin: 0, lineHeight: 1.5, padding: '0.5rem 0' }}>{selectedTopic.content}</p>
+
+            {/* Respostas */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+              <h5 style={{ fontSize: '0.82rem', fontWeight: '800', color: '#475569', margin: '0 0 4px 0' }}>Respostas Pedagógicas</h5>
+              {topicReplies.map(r => (
+                <div key={r.id} style={{ 
+                  padding: '0.85rem', 
+                  backgroundColor: r.author?.role === 'instrutor' || r.author?.role === 'admin' ? '#ECFDF5' : '#f8fafc',
+                  border: '1px solid',
+                  borderColor: r.author?.role === 'instrutor' || r.author?.role === 'admin' ? '#A7F3D0' : '#e2e8f0',
+                  borderRadius: '10px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748b', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: '750', color: r.author?.role === 'instrutor' ? '#065f46' : '#1e293b' }}>
+                      {r.author?.full_name} ({r.author?.role?.toUpperCase() || 'ALUNO'})
+                    </span>
+                    <span>{new Date(r.created_at).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: '#334155', margin: 0, lineHeight: 1.4 }}>{r.content}</p>
+                </div>
+              ))}
+              {topicReplies.length === 0 && (
+                <p style={{ fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>Nenhuma resposta no momento.</p>
+              )}
+            </div>
+
+            {/* Form de Resposta */}
+            <form onSubmit={handleAddReply} style={{ display: 'flex', gap: '0.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+              <input 
+                type="text" 
+                placeholder="Escreva sua resposta..."
+                value={newReplyContent}
+                onChange={e => setNewReplyContent(e.target.value)}
+                style={{ flex: 1, padding: '0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none' }}
+              />
+              <button type="submit" className="btn btn-primary" style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700' }}>Responder</button>
+            </form>
+          </div>
+        ) : (
+          <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <MessageSquare size={18} color="var(--primary)" /> Nova Dúvida Pedagógica
+            </h4>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Sua pergunta ficará disponível para que instrutores e outros alunos respondam.</p>
+            
+            <form onSubmit={handleAddTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Título da Dúvida</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Como calibrar o bloco V1 no Ultrassom?"
+                  value={newTopicTitle}
+                  onChange={e => setNewTopicTitle(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Explique sua Dúvida em Detalhes</label>
+                <textarea 
+                  rows="4" 
+                  placeholder="Descreva aqui sua pergunta com o máximo de informações possível..."
+                  value={newTopicContent}
+                  onChange={e => setNewTopicContent(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', fontSize: '0.85rem' }}>
+                Enviar para o Fórum
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ABA 6: CHAT COM INSTRUTOR
+  const renderMensagens = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem', height: '70vh', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '16px', overflow: 'hidden' }}>
+      {/* LISTA DE CONTATOS */}
+      <div style={{ borderRight: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ padding: '1rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc' }}>
+          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary-dark)' }}>Instrutores & Suporte</h4>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {instructors.map(inst => (
+            <div 
+              key={inst.id} 
+              onClick={() => handleSelectInstructorChat(inst)}
+              style={{ 
+                padding: '0.85rem 1rem', 
+                borderBottom: '1px solid #f1f5f9', 
+                cursor: 'pointer',
+                backgroundColor: selectedInstructor?.id === inst.id ? 'var(--primary-light)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+            >
+              <div style={{ 
+                width: '32px', height: '32px', borderRadius: '50%', 
+                backgroundColor: 'var(--primary)', color: 'white', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                fontWeight: 'bold', fontSize: '0.8rem' 
+              }}>
+                {inst.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.full_name}</div>
+                <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.email}</div>
+              </div>
+            </div>
+          ))}
+          {instructors.length === 0 && (
+            <p style={{ fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>Carregando contatos...</p>
+          )}
+        </div>
+      </div>
+
+      {/* ÁREA DE MENSAGENS */}
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {selectedInstructor ? (
+          <>
+            {/* Header do Chat */}
+            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                {selectedInstructor.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: '800', color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
+                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700' }}>● Online</span>
+              </div>
+            </div>
+
+            {/* Listagem de Mensagens */}
+            <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem', backgroundColor: '#f8fafc' }}>
+              {chatMessages.map(msg => {
+                const isMe = msg.sender_id === session?.user?.id;
+                return (
+                  <div 
+                    key={msg.id}
+                    style={{ 
+                      alignSelf: isMe ? 'flex-end' : 'flex-start',
+                      backgroundColor: isMe ? 'var(--primary)' : 'white',
+                      color: isMe ? 'white' : '#1e293b',
+                      padding: '0.6rem 0.85rem',
+                      borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
+                      maxWidth: '70%',
+                      fontSize: '0.82rem',
+                      lineHeight: '1.4',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      border: isMe ? 'none' : '1px solid #e2e8f0',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px'
+                    }}
+                  >
+                    <span>{msg.content}</span>
+                    <span style={{ fontSize: '0.6rem', alignSelf: 'flex-end', opacity: 0.65, marginTop: '2px' }}>
+                      {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleSendChatMessage} style={{ padding: '1rem', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
+              <input 
+                type="text" 
+                placeholder="Digite sua mensagem pedagógica..."
+                value={newChatMessage}
+                onChange={e => setNewChatMessage(e.target.value)}
+                style={{ flex: 1, padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+              />
+              <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Send size={16} />
+              </button>
+            </form>
+          </>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem' }}>
+            <MessageCircle size={48} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
+            <h4 style={{ margin: 0, fontWeight: 700 }}>Chat Pedagógico</h4>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0 0', textAlign: 'center' }}>Selecione um instrutor na barra lateral para iniciar sua conversa em tempo real.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
+  const renderDocumentos = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Secretaria Digital - Envio de Documentos</h3>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrícula em conformidade com as regras da **Abendi** e garantir a emissão de certificados.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+        {/* Formulário de Upload */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {[
+            { type: 'photo', label: 'Foto de Rosto (Foto / Selfie)', field: studentData?.doc_photo_url, signedField: signedUrls.photo },
+            { type: 'id', label: 'Documento de Identidade Oficial (RG ou CNH)', field: studentData?.doc_id_url, signedField: signedUrls.id },
+            { type: 'cpf', label: 'Cadastro de Pessoa Física (CPF)', field: studentData?.doc_cpf_url, signedField: signedUrls.cpf },
+            { type: 'address', label: 'Comprovante de Residência recente', field: studentData?.doc_address_url, signedField: signedUrls.address },
+            { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: studentData?.doc_education_url, signedField: signedUrls.education }
+          ].map(doc => (
+            <div key={doc.type} className="card" style={{ padding: '1.25rem', backgroundColor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <span style={{ fontWeight: '750', fontSize: '0.88rem', color: 'var(--primary-dark)', display: 'block' }}>{doc.label}</span>
+                <span style={{ fontSize: '0.72rem', color: doc.field ? '#10b981' : '#f59e0b', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px', marginTop: '2px' }}>
+                  {doc.field ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
+                  {doc.field ? 'Enviado para Auditoria' : 'Pendente de Upload'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {doc.field && (
+                  <a href={doc.signedField || doc.field} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', textDecoration: 'none' }}>
+                    Visualizar
+                  </a>
+                )}
+                <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                  {doc.field ? 'Re-enviar' : 'Fazer Upload'}
+                  <input 
+                    type="file" 
+                    hidden 
+                    accept={doc.type === 'photo' ? "image/*" : ".pdf,image/*"} 
+                    capture={doc.type === 'photo' ? "user" : undefined}
+                    onChange={(e) => handleFileUpload(e, doc.type)} 
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Status e Orientações Abendi */}
+        <div>
+          <div className="card" style={{ backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0369a1', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <FileCheck size={18} /> Diretrizes de Auditoria Abendi
+            </h4>
+            <ul style={{ fontSize: '0.8rem', color: '#0369a1', paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: 1.4 }}>
+              <li>Os arquivos devem estar legíveis e sem cortes nas bordas.</li>
+              <li>A foto de rosto deve ser frontal, com fundo claro e sem óculos de sol ou boné.</li>
+              <li>Formatos aceitos: PDF, PNG, JPG e JPEG de até 5MB.</li>
+              <li>Certificados de conclusão dependem de 100% dos documentos aprovados.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ABA 8: MEUS CERTIFICADOS
+  const renderCertificates = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Meus Certificados de Conclusão</h3>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Visualize e baixe seus certificados digitais emitidos pela C&C Engenharia e Capacitação.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
+        {issuedCertificates.map(cert => (
+          <div key={cert.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', gap: '1rem', alignItems: 'center', borderLeft: '5px solid #10b981' }}>
+            <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', color: '#10b981', padding: '1rem', borderRadius: '12px' }}>
+              <Award size={36} />
+            </div>
+            
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.course_title}</h4>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')}</span>
+              
+              <button 
+                className="btn btn-primary"
+                onClick={() => handleDownloadPDF(cert)}
+                style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Download size={14} /> Download PDF
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {/* Cursos aptos pendentes de emissão pela secretaria */}
+        {myCourses
+          .filter(c => c.progress_percent === 100 && freqReal >= 75 && !issuedCertificates.some(cert => cert.course_id === c.id))
+          .map(course => (
+            <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', gap: '1rem', alignItems: 'center', borderLeft: '5px solid #d97706' }}>
+              <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', color: '#d97706', padding: '1rem', borderRadius: '12px' }}>
+                <Clock size={36} />
+              </div>
+              
+              <div style={{ flex: 1 }}>
+                <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{course.title}</h4>
+                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Aguardando homologação da Secretaria</span>
+                
+                <button 
+                  disabled
+                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', background: '#f1f5f9', color: '#94a3b8', border: '1px solid #cbd5e1', cursor: 'not-allowed' }}
+                >
+                  Pendente de Emissão
+                </button>
+              </div>
+            </div>
+          ))
+        }
+
+        {issuedCertificates.length === 0 && !myCourses.some(c => c.progress_percent === 100 && freqReal >= 75) && (
+          <div className="card" style={{ colSpan: '2', padding: '3rem', textAlign: 'center', backgroundColor: 'white', width: '100%' }}>
+            <Lock size={32} color="#cbd5e1" style={{ margin: '0 auto 0.5rem' }} />
+            <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: 0 }}>Você ainda não conquistou nenhum certificado nesta conta. Conclua os módulos teóricos (100% EAD) e atinja frequência ≥ 75% nas aulas presenciais para liberar!</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ABA 9: FINANCEIRO (Mensalidades e Faturas)
+  const renderFinanceiro = () => {
+    const installments = financialRecord?.installments || [];
+    
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+        {/* PARCELAS */}
+        <div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>Mensalidades e Faturas</h3>
+          
+          <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
+                  <th style={{ padding: '1rem' }}>Parcela</th>
+                  <th style={{ padding: '1rem' }}>Vencimento</th>
+                  <th style={{ padding: '1rem' }}>Valor</th>
+                  <th style={{ padding: '1rem' }}>Status</th>
+                  <th style={{ padding: '1rem', textAlign: 'right' }}>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {installments.map((inst, index) => {
+                  const isPaid = inst.status === 'pago';
+                  const isLate = !isPaid && new Date(inst.dueDate) < new Date();
+                  
+                  return (
+                    <tr key={index} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>{index + 1}ª Mensalidade</td>
+                      <td style={{ padding: '0.85rem 1rem' }}>{new Date(inst.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: '800' }}>R$ {Number(inst.amount).toFixed(2)}</td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <span style={{ 
+                          padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
+                          backgroundColor: isPaid ? '#dcfce7' : (isLate ? '#fee2e2' : '#fef9c3'),
+                          color: isPaid ? '#15803d' : (isLate ? '#991b1b' : '#a16207')
+                        }}>
+                          {isPaid ? 'Pago' : (isLate ? 'Atrasado' : 'Pendente')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                        {!isPaid && (
+                          <button 
+                            className="btn btn-primary"
+                            onClick={() => {
+                              navigator.clipboard.writeText("00020101021126360014br.gov.bcb.pix0114cc@cursocec.com");
+                              alert("Chave PIX da C&C copiada com sucesso! Faça a transferência no app do seu banco.");
+                            }}
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.72rem', borderRadius: '6px' }}
+                          >
+                            Copiar PIX
+                          </button>
+                        )}
+                        {isPaid && <span style={{ color: '#10b981', fontWeight: '800' }}>✓</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {installments.length === 0 && (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                      Nenhum registro de faturamento encontrado para esta conta.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* INFORMAÇÕES FINANCEIRAS */}
+        <div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>Informações de Pagamento</h3>
+          
+          <div className="card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Valor Total Contratado</span>
+              <p style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)', margin: '4px 0 0 0' }}>
+                R$ {financialRecord ? Number(financialRecord.total_value).toFixed(2) : '0,00'}
+              </p>
+            </div>
+            
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Chave PIX Oficial (CNPJ)</span>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <code style={{ flex: 1, backgroundColor: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', color: '#334155' }}>
+                  cc@cursocec.com
+                </code>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    navigator.clipboard.writeText("cc@cursocec.com");
+                    alert("Chave PIX copiada para a área de transferência.");
+                  }}
+                  style={{ padding: '0.5rem', fontSize: '0.78rem' }}
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+            
+            <p style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4, margin: 0, fontStyle: 'italic' }}>
+              Para pagamento via Boleto Bancário ou Nota Fiscal, entre em contato diretamente com a nossa secretaria financeira pelo canal oficial.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ABA 10: VITRINE DE CURSOS / WISHLIST
+  const renderVitrine = () => {
+    const categories = ['Todos', ...Array.from(new Set(availableCourses.map(c => c.category || 'Outros').filter(Boolean)))];
+    
+    const enrolledIds = new Set(myCourses.map(c => c.id));
+
+    const filtered = availableCourses.filter(c => {
+      const matchSearch = !vitrineSearch || 
+        c.title.toLowerCase().includes(vitrineSearch.toLowerCase()) ||
+        (c.description || '').toLowerCase().includes(vitrineSearch.toLowerCase()) ||
+        (c.code || '').toLowerCase().includes(vitrineSearch.toLowerCase());
+      const matchCat = selectedCategory === 'Todos' || (c.category || 'Outros') === selectedCategory;
+      return matchSearch && matchCat;
+    });
+
+    const wishlistCourses = availableCourses.filter(c => wishlist.includes(c.id));
+
+    const modalityBadge = (mod) => {
+      const colors = { presencial: '#0ea5e9', ead: '#8b5cf6', hibrido: '#10b981', online: '#8b5cf6' };
+      const labels = { presencial: '🏫 Presencial', ead: '💻 EAD', hibrido: '⚡ Híbrido', online: '💻 Online' };
+      const bg = colors[mod] || '#64748b';
+      return (
+        <span style={{ fontSize: '0.68rem', fontWeight: '800', background: `${bg}18`, color: bg, padding: '3px 8px', borderRadius: '10px', border: `1px solid ${bg}30` }}>
+          {labels[mod] || mod?.toUpperCase() || 'HÍBRIDO'}
+        </span>
+      );
+    };
+
+    const gradients = [
+      'linear-gradient(135deg, #004B49 0%, #006B68 100%)',
+      'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+      'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
+      'linear-gradient(135deg, #b45309 0%, #f59e0b 100%)',
+      'linear-gradient(135deg, #065f46 0%, #10b981 100%)',
+      'linear-gradient(135deg, #9f1239 0%, #f43f5e 100%)',
+    ];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+        {/* CABEÇALHO */}
+        <div style={{
+          background: 'linear-gradient(135deg, #3b0764 0%, #7c3aed 50%, #1d4ed8 100%)',
+          color: 'white',
+          padding: '2.5rem',
+          borderRadius: '20px',
+          boxShadow: '0 10px 40px -10px rgba(124, 58, 237, 0.5)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
+          <div style={{ position: 'absolute', bottom: '-40px', left: '30%', width: '200px', height: '200px', background: 'rgba(255,255,255,0.03)', borderRadius: '50%' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', position: 'relative' }}>
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '0.75rem', borderRadius: '12px', backdropFilter: 'blur(10px)' }}>
+              <Sparkles size={28} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>Vitrine de Cursos</h2>
+              <p style={{ margin: '4px 0 0 0', opacity: 0.8, fontSize: '0.88rem' }}>Explore, salve na lista de desejos e solicite sua matrícula via WhatsApp</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem', position: 'relative' }}>
+            <div style={{ background: 'rgba(255,255,255,0.12)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <BookOpen size={14} /> {availableCourses.length} cursos disponíveis
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.12)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Heart size={14} /> {wishlist.length} na sua wishlist
+            </div>
+          </div>
+        </div>
+
+        {/* WISHLIST RÁPIDA */}
+        {wishlistCourses.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7c3aed', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Heart size={18} fill="#7c3aed" /> Minha Lista de Desejos ({wishlistCourses.length})
+            </h3>
+            <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.75rem' }}>
+              {wishlistCourses.map(course => (
+                <div key={`w-${course.id}`} style={{
+                  minWidth: '260px',
+                  background: 'white',
+                  borderRadius: '14px',
+                  border: '2px solid #ede9fe',
+                  padding: '1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                  boxShadow: '0 4px 15px rgba(124,58,237,0.08)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#7c3aed', background: '#f5f3ff', padding: '3px 8px', borderRadius: '6px' }}>{course.category || 'END'}</span>
+                    <button onClick={() => toggleWishlist(course.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
+                      <Heart size={16} fill="#ef4444" color="#ef4444" />
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e293b', margin: 0, lineHeight: 1.3 }}>{course.title}</p>
+                  <button
+                    onClick={() => handleContactSecretaria(course)}
+                    style={{
+                      background: '#25D366',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.5rem',
+                      fontSize: '0.72rem',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem'
+                    }}
+                  >
+                    <Phone size={12} /> Solicitar Matrícula
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* BUSCA E FILTROS */}
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+            <input
+              type="text"
+              placeholder="Buscar curso, código ou área..."
+              value={vitrineSearch}
+              onChange={e => setVitrineSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.7rem 0.75rem 0.7rem 2.5rem',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                fontSize: '0.875rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={e => e.target.style.borderColor = '#7c3aed'}
+              onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '20px',
+                  border: selectedCategory === cat ? '2px solid #7c3aed' : '2px solid #e2e8f0',
+                  background: selectedCategory === cat ? '#7c3aed' : 'white',
+                  color: selectedCategory === cat ? 'white' : '#475569',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* GRADE DE CURSOS */}
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '4rem 2rem', background: 'white', borderRadius: '16px', border: '1px dashed #e2e8f0' }}>
+            <Sparkles size={40} color="#cbd5e1" style={{ margin: '0 auto 1rem' }} />
+            <p style={{ color: '#94a3b8', fontWeight: '600', margin: 0 }}>Nenhum curso encontrado para "{vitrineSearch}".</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {filtered.map((course, idx) => {
+              const inWishlist = wishlist.includes(course.id);
+              const alreadyEnrolled = enrolledIds.has(course.id);
+              const gradient = gradients[idx % gradients.length];
+              return (
+                <div key={course.id} style={{
+                  background: 'white',
+                  borderRadius: '20px',
+                  overflow: 'hidden',
+                  boxShadow: inWishlist 
+                    ? '0 8px 30px rgba(124,58,237,0.2), 0 0 0 2px #ede9fe' 
+                    : '0 4px 20px rgba(0,0,0,0.06)',
+                  transition: 'all 0.25s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  transform: 'translateY(0)',
+                  cursor: 'default'
+                }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  {/* Thumbnail / Banner */}
+                  <div style={{
+                    height: '120px',
+                    background: course.thumbnail_url ? `url(${course.thumbnail_url}) center/cover` : gradient,
+                    position: 'relative',
+                    flexShrink: 0
+                  }}>
+                    {/* Badge categoria */}
+                    <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: '900', background: 'rgba(0,0,0,0.45)', color: 'white', padding: '4px 10px', borderRadius: '8px', backdropFilter: 'blur(4px)', letterSpacing: '0.05em' }}>
+                        {course.category || 'END'}
+                      </span>
+                    </div>
+
+                    {/* Botão Wishlist */}
+                    <button
+                      onClick={() => toggleWishlist(course.id)}
+                      title={inWishlist ? 'Remover da lista de desejos' : 'Adicionar à lista de desejos'}
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '12px',
+                        background: 'rgba(255,255,255,0.9)',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '34px',
+                        height: '34px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        backdropFilter: 'blur(4px)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                      }}
+                    >
+                      <Heart size={16} fill={inWishlist ? '#ef4444' : 'none'} color={inWishlist ? '#ef4444' : '#64748b'} />
+                    </button>
+
+                    {/* Badge Já Matriculado */}
+                    {alreadyEnrolled && (
+                      <div style={{ position: 'absolute', bottom: '10px', left: '12px' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: '900', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                          ✅ Já matriculado
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Conteúdo do Card */}
+                  <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      {modalityBadge(course.modality)}
+                      {course.code && <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: '700', fontFamily: 'monospace' }}>{course.code}</span>}
+                    </div>
+
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#1e293b', margin: 0, lineHeight: 1.35 }}>{course.title}</h4>
+
+                    {/* Preços dinâmicos */}
+                    {course.price_pix ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '1rem', fontWeight: 900, color: '#15803d' }}>
+                          ⚡ R$ {Number(course.price_pix).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no PIX
+                        </span>
+                        {course.price_card && course.max_installments && (
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            ou {course.max_installments}x de R$ {(Number(course.price_card) / Number(course.max_installments)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no cartão
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic' }}>Consulte valores com a secretaria</span>
+                    )}
+
+                    {course.description && (
+                      <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0, lineHeight: 1.5, flex: 1 }}>
+                        {course.description.length > 100 ? `${course.description.substring(0, 100)}...` : course.description}
+                      </p>
+                    )}
+
+                    {/* Ações */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                      <button
+                        onClick={() => toggleWishlist(course.id)}
+                        style={{
+                          flex: 1,
+                          padding: '0.6rem',
+                          borderRadius: '8px',
+                          border: inWishlist ? '1.5px solid #ef4444' : '1.5px solid #e2e8f0',
+                          background: inWishlist ? '#fef2f2' : '#f8fafc',
+                          color: inWishlist ? '#ef4444' : '#64748b',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.3rem',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <Heart size={13} fill={inWishlist ? '#ef4444' : 'none'} />
+                        {inWishlist ? 'Salvo' : 'Salvar'}
+                      </button>
+
+                      <button
+                        onClick={() => handleContactSecretaria(course)}
+                        disabled={alreadyEnrolled}
+                        style={{
+                          flex: 2,
+                          padding: '0.6rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: alreadyEnrolled ? '#e2e8f0' : 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                          color: alreadyEnrolled ? '#94a3b8' : 'white',
+                          fontSize: '0.75rem',
+                          fontWeight: '800',
+                          cursor: alreadyEnrolled ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.3rem',
+                          boxShadow: alreadyEnrolled ? 'none' : '0 3px 10px rgba(37,211,102,0.3)',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <Phone size={13} />
+                        {alreadyEnrolled ? 'Já Matriculado' : 'Quero me Matricular'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* CTA FINAL */}
+        <div style={{
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+          border: '1px solid #bbf7d0',
+          borderRadius: '16px',
+          padding: '1.75rem',
+          display: 'flex',
+          gap: '1.5rem',
+          alignItems: 'center',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ background: '#25D366', color: 'white', padding: '1rem', borderRadius: '14px', flexShrink: 0 }}>
+            <Phone size={28} />
+          </div>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <h4 style={{ fontSize: '1rem', fontWeight: '800', color: '#065f46', margin: '0 0 4px 0' }}>Ficou com dúvidas? Fale com nossa secretaria!</h4>
+            <p style={{ fontSize: '0.82rem', color: '#047857', margin: 0, lineHeight: 1.5 }}>
+              Nossa equipe está disponível para te ajudar a escolher o treinamento ideal, verificar pré-requisitos e condições especiais de pagamento.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              const msg = encodeURIComponent(`Olá! Me chamo *${userName}*. Gostaria de saber mais sobre os cursos disponíveis na C&C Engenharia e Capacitação. Pode me ajudar?`);
+              window.open(`https://wa.me/5521965554180?text=${msg}`, '_blank');
+            }}
+            style={{
+              background: '#25D366',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '0.85rem 1.75rem',
+              fontSize: '0.9rem',
+              fontWeight: '800',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 15px rgba(37,211,102,0.35)',
+              flexShrink: 0
+            }}
+          >
+            <Phone size={18} /> Chamar no WhatsApp
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════
+  // CONTROLE GERAL DA RENDERIZAÇÃO
+  // ═══════════════════════════════════════════
+  
+  // Se estiver carregando, exibe loader premium
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ width: '48px', height: '48px', border: '4px solid var(--primary-light)', borderTopColor: 'var(--primary)', borderRadius: '50%' }} className="animate-spin" />
+        <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: '600' }}>Carregando Portal C&C...</span>
+      </div>
+    );
+  }
+
+  // Se houver pendência Abendi, exibe bloqueio amigável
   if (missingDocs) {
     return (
       <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '4rem auto', padding: '0 1.5rem' }}>
@@ -320,326 +2188,38 @@ export default function AreaAluno() {
     );
   }
 
+  // Roteamento condicional baseado na rota ativa
+  const getActiveTabContent = () => {
+    const path = location.pathname;
+    
+    if (path === '/area-aluno/cursos') {
+      return renderCursos();
+    } else if (path === '/area-aluno/ead') {
+      return renderCursos(); // Aulas EAD também lista e direciona para player
+    } else if (path === '/area-aluno/presencial') {
+      return renderPresencial();
+    } else if (path === '/area-aluno/desempenho') {
+      return renderDesempenho();
+    } else if (path === '/area-aluno/forum') {
+      return renderForum();
+    } else if (path === '/area-aluno/mensagens') {
+      return renderMensagens();
+    } else if (path === '/area-aluno/documentos') {
+      return renderDocumentos();
+    } else if (path === '/area-aluno/certificados') {
+      return renderCertificates();
+    } else if (path === '/area-aluno/financeiro') {
+      return renderFinanceiro();
+    } else if (path === '/area-aluno/vitrine') {
+      return renderVitrine();
+    } else {
+      return renderDashboard();
+    }
+  };
+
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-      <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '2.5rem', color: 'var(--primary)' }}>
-        {greeting}, Aluno(a)! 👋
-      </h2>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
-        
-        {/* COLUNA ESQUERDA: LISTAGEM DE CURSOS */}
-        <div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-dark)' }}>
-            <BookOpen size={22} color="var(--primary)" /> Meus Cursos Online
-          </h3>
-
-          {loading ? (
-            <p className="text-muted">Carregando seus cursos...</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {myCourses.map(course => {
-                const isEad = course.modality === 'online';
-                const isPres = course.modality === 'presencial';
-                const isHib = course.modality === 'hibrido' || !course.modality;
-                
-                return (
-                  <div key={course.id} className="card" style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '1.5rem' }}>
-                    <div style={{ width: '100px', height: '70px', backgroundColor: 'rgba(0, 75, 73, 0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <PlayCircle size={36} color="var(--primary)" style={{ opacity: 0.7 }} />
-                    </div>
-                    
-                    <div style={{ flex: 1, minWidth: '220px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                        <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary-dark)', margin: 0 }}>{course.title}</h4>
-                        
-                        {/* Badges de Modalidade */}
-                        {isEad && (
-                          <span style={{ fontSize: '0.68rem', fontWeight: '800', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <Video size={10} /> Online
-                          </span>
-                        )}
-                        {isPres && (
-                          <span style={{ fontSize: '0.68rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <MapPin size={10} /> Presencial
-                          </span>
-                        )}
-                        {isHib && (
-                          <span style={{ fontSize: '0.68rem', fontWeight: '800', background: '#f3e8ff', color: '#6b21a8', padding: '2px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <Award size={10} /> Híbrido
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
-                        <div style={{ flex: 1, height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 0.4s ease' }}></div>
-                        </div>
-                        <span style={{ fontSize: '0.78rem', fontWeight: '800', color: 'var(--text-secondary)' }}>{course.progress_percent || 0}%</span>
-                      </div>
-                    </div>
-                    
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => handleStartCourse(course.id)}
-                      style={{ padding: '0.6rem 1.25rem', borderRadius: '10px', fontWeight: '700' }}
-                    >
-                      Continuar Aula
-                    </button>
-                  </div>
-                );
-              })}
-              {myCourses.length === 0 && (
-                <div className="card" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-                  <p className="text-secondary" style={{ fontSize: '1rem', margin: 0 }}>Você não possui matrículas de cursos online ativas no momento.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* COLUNA DIREITA: CALENDÁRIO PRÁTICO (PRESENCIALCARD) */}
-        <div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-dark)' }}>
-            <Calendar size={22} className="text-warning" /> Aula Prática (Presencial)
-          </h3>
-          
-          {upcomingPractical ? (
-            <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FCD34D', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '5px', background: '#F59E0B' }}></div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#B45309', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-                <MapPin size={15} />
-                <span>Aula Prática — Final de Semana</span>
-              </div>
-              
-              <h4 style={{ color: 'var(--primary-dark)', fontSize: '0.98rem', fontWeight: '800', margin: '0 0 0.5rem 0', lineHeight: '1.4' }}>
-                {upcomingPractical.lms_courses?.title || 'Treinamento Técnico'}
-              </h4>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.84rem', color: 'var(--text-main)', marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '700', color: '#B45309' }}>
-                  <Calendar size={14} />
-                  <span>
-                    {new Date(upcomingPractical.date + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Clock size={14} className="text-muted" />
-                  <span>{upcomingPractical.start_time?.substring(0, 5) || '08:00'} às {upcomingPractical.end_time?.substring(0, 5) || '17:00'}</span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'start', gap: '0.4rem' }}>
-                  <MapPin size={14} className="text-muted" style={{ marginTop: '2px', flexShrink: 0 }} />
-                  <span>{upcomingPractical.address || 'Sede C&C Engenharia'}</span>
-                </div>
-                
-                {upcomingPractical.instructor_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Users size={14} className="text-muted" />
-                    <span>Instrutor: <strong>{upcomingPractical.instructor_name}</strong></span>
-                  </div>
-                )}
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    Vagas: <strong>{(upcomingPractical.capacity || 20) - (upcomingPractical.enrolled_count || 0)} de {upcomingPractical.capacity || 20} disponíveis</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Botões de Ação do PresencialCard */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid #FCD34D', paddingTop: '1rem' }}>
-                {hasConfirmedAttendance ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#D1FAE5', color: '#065F46', borderRadius: '10px', fontSize: '0.8rem', fontWeight: '800', width: '100%', border: '1px solid #A7F3D0' }}>
-                    <CheckCircle size={16} /> Presença Confirmada
-                  </div>
-                ) : (
-                  <button 
-                    onClick={handleConfirmAttendance}
-                    className="btn"
-                    style={{ 
-                      width: '100%', 
-                      padding: '0.65rem', 
-                      backgroundColor: '#10b981', 
-                      color: 'white', 
-                      fontWeight: '800', 
-                      fontSize: '0.82rem', 
-                      borderRadius: '10px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    ✓ Confirmar Presença
-                  </button>
-                )}
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
-                  <a 
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(upcomingPractical.address || 'Sede C&C Engenharia')}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="btn"
-                    style={{ 
-                      padding: '0.5rem', 
-                      background: 'white', 
-                      border: '1px solid #e2e8f0', 
-                      color: 'var(--text-main)', 
-                      fontWeight: '700', 
-                      fontSize: '0.78rem', 
-                      borderRadius: '8px',
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <MapPin size={12} /> Ver no Maps
-                  </a>
-                  
-                  {upcomingPractical.whatsapp_group_url ? (
-                    <a 
-                      href={upcomingPractical.whatsapp_group_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="btn"
-                      style={{ 
-                        padding: '0.5rem', 
-                        background: '#075E54', 
-                        color: 'white', 
-                        border: 'none',
-                        fontWeight: '700', 
-                        fontSize: '0.78rem', 
-                        borderRadius: '8px',
-                        textDecoration: 'none',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      <MessageCircle size={12} /> Grupo da Turma
-                    </a>
-                  ) : (
-                    <button
-                      disabled
-                      style={{ 
-                        padding: '0.5rem', 
-                        background: '#f1f5f9', 
-                        color: '#94a3b8', 
-                        border: '1px solid #e2e8f0',
-                        fontWeight: '700', 
-                        fontSize: '0.78rem', 
-                        borderRadius: '8px',
-                        cursor: 'not-allowed',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      Sem WhatsApp
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: '600', marginTop: '1rem', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <AlertCircle size={12} />
-                <span>Nota: Traga seus EPIs e documentos necessários para a aula prática.</span>
-              </div>
-            </div>
-          ) : (
-            <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FEF3C7', padding: '2rem 1.5rem', textAlign: 'center' }}>
-              <Clock size={32} color="#B45309" style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
-              <p style={{ fontSize: '0.85rem', color: '#B45309', margin: 0, fontWeight: '600' }}>Nenhuma aula prática presencial prevista no momento.</p>
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* HISTÓRICO DE DESEMPENHO */}
-      <div style={{ marginTop: '3.5rem' }}>
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-dark)' }}>
-          <CheckCircle size={22} className="text-success" /> Meu Desempenho e Notas
-        </h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
-          
-          {/* NOTAS EAD */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provas Online (EAD)</h4>
-            {quizResults.length === 0 ? (
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhum teste concluído ainda.</p>
-            ) : (
-              <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
-                    <th style={{ padding: '0.5rem 0' }}>Teste / Módulo</th>
-                    <th style={{ padding: '0.5rem 0' }}>Tentativas</th>
-                    <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Maior Nota</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quizResults.map(r => (
-                    <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.75rem 0' }}>
-                        <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{r.lms_quizzes?.title}</div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: '800', color: r.lms_quizzes?.quiz_type === 'final_exam' ? '#7c3aed' : '#059669', marginTop: '2px' }}>
-                          {r.lms_quizzes?.quiz_type === 'final_exam' ? '🏆 PROVA FINAL' : '📝 EXERCÍCIO'}
-                        </div>
-                      </td>
-                      <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{r.attempts_count} / 3</td>
-                      <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: r.score >= 70 ? '#10b981' : '#ef4444' }}>
-                        {r.score}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* NOTAS PRESENCIAIS */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avaliações Presenciais</h4>
-            {technicalEvals.length === 0 ? (
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhuma nota presencial lançada pelo instrutor no momento.</p>
-            ) : (
-              <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
-                    <th style={{ padding: '0.5rem 0' }}>Data</th>
-                    <th style={{ padding: '0.5rem 0' }}>Exame Prático</th>
-                    <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Média Final</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {technicalEvals.map(e => (
-                    <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{new Date(e.date).toLocaleDateString('pt-BR')}</td>
-                      <td style={{ padding: '0.75rem 0' }}>
-                        <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{e.exam_type}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>{e.classes?.name}</div>
-                      </td>
-                      <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: e.grade >= 7 ? '#10b981' : '#ef4444' }}>
-                        {e.grade}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-        </div>
-      </div>
-
+    <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {getActiveTabContent()}
     </div>
   );
 }

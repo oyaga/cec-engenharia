@@ -167,7 +167,7 @@ const Enrollment = () => {
 
       <Footer />
 
-      <style jsx>{`
+      <style jsx="true">{`
         .enroll-main {
           background: #fdfdfd;
           padding-top: 10rem;
