@@ -4,7 +4,7 @@ import { Settings, Save, X, Edit3, Trash2, LogOut, ShieldCheck, Users, Star, Mov
 import { useEdit } from '../context/EditContext';
 
 const AdminToolbar = () => {
-  const { isEditing, toggleEditing, saveChanges, discardChanges, user, logout, isMaster } = useEdit();
+  const { isEditing, toggleEditing, saveChanges, discardChanges, user, logout, isMaster, hasPermission, userProfile } = useEdit();
   const [isVisible, setIsVisible] = useState(true);
 
   // Estados e Refs para arrastar a barra de ferramentas (Drag and Drop)
@@ -72,6 +72,20 @@ const AdminToolbar = () => {
 
   // Se não houver usuário logado, não mostra a barra
   if (!user) return null;
+
+  // Filtrar quem pode visualizar a barra administrativa no site público
+  const isStaff = userProfile && ['admin', 'coordenador', 'atendente'].includes(userProfile.role);
+  const masterEmails = [
+    'webdesigner@cec.com.br',
+    'secretaria@cursocec.com.br',
+    'piticalyn@cec.com.br'
+  ];
+  const isMasterEmail = user?.email && masterEmails.includes(user.email.toLowerCase());
+  const hasEditPermission = hasPermission && hasPermission('edit_site');
+
+  if (!isStaff && !isMaster && !isMasterEmail && !hasEditPermission) {
+    return null;
+  }
 
   if (!isVisible) {
     return (

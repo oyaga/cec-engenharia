@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CheckCircle, Send, Phone, User, Mail, BookOpen, 
   CreditCard, MapPin, Hash, X, ShieldCheck, Info,
-  Smartphone, FileText, Calendar
+  Smartphone, FileText, Calendar, Clock
 } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
 import { supabase } from '../../lib/supabase';

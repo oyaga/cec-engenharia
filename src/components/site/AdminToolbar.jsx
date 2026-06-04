@@ -6,7 +6,7 @@ import LegalDocumentsModal from './LegalDocumentsModal';
 
 const AdminToolbar = () => {
   try {
-    const { isEditing, toggleEditing, saveChanges, discardChanges, user, logout, isMaster, hasPermission } = useEdit();
+    const { isEditing, toggleEditing, saveChanges, discardChanges, user, logout, isMaster, hasPermission, userProfile } = useEdit();
     const [isVisible, setIsVisible] = useState(true);
     const [pos, setPos] = useState(() => {
       const saved = localStorage.getItem('admin_toolbar_pos');
@@ -73,6 +73,20 @@ const AdminToolbar = () => {
     const [showLegalModal, setShowLegalModal] = useState(false);
 
     if (!user) return null;
+
+    // Filtrar quem pode visualizar a barra administrativa no site público
+    const isStaff = userProfile && ['admin', 'coordenador', 'atendente'].includes(userProfile.role);
+    const masterEmails = [
+      'webdesigner@cec.com.br',
+      'secretaria@cursocec.com.br',
+      'piticalyn@cec.com.br'
+    ];
+    const isMasterEmail = user?.email && masterEmails.includes(user.email.toLowerCase());
+    const hasEditPermission = hasPermission && hasPermission('edit_site');
+
+    if (!isStaff && !isMaster && !isMasterEmail && !hasEditPermission) {
+      return null;
+    }
 
     if (!isVisible) {
       return (

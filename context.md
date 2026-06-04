@@ -105,3 +105,24 @@ git push origin main
 
 Decisões importantes do projeto e como contornar problemas estão documentadas
 no chat com Piticalyn (proprietário do projeto).
+
+## 📝 Notas para Próxima Sessão (Deploy & Correção de Tela Branca)
+
+Durante a sessão do dia 03/06/2026, identificamos o seguinte cenário para concluir amanhã:
+
+1. **Bug da Tela Branca em `/matricular-se`:**
+   - **Causa:** O código antigo tentava formatar a data de início da turma (`selectedClass.start_date`) usando `new Date(start_date + 'T00:00:00')`. Quando a data era nula/inválida, gerava `Invalid Date` e o `.toLocaleDateString('pt-BR')` disparava um `RangeError` que quebrava o React.
+   - **Correção local:** Aplicada com sucesso em [src/pages/site/Enrollment.jsx](file:///Users/piticalyn/site%20cec/src/pages/site/Enrollment.jsx). O build local com `npm run build` está compilando com sucesso.
+   - **Por que continua em branco em produção:** O código local não foi commitado nem enviado para o GitHub (`git push`). O deploy automático da Hostinger só ocorre após o push.
+
+2. **Banco de Dados de Produção (Supabase):**
+   - **Problema:** O console do site público (`cursocec.com.br`) mostra erros de `CONNECTION_REFUSED` tentando se conectar ao banco no host antigo da Easypanel (`cecnovo-supabase.e0kmyh.easypanel.host`), que está offline.
+   - **Solução:** O banco ativo e correto a ser utilizado é o projeto oficial do Supabase com ref `sedwwagwrkfaiptoemsp` (C&C CURSO).
+   - **Ação necessária:** Atualizar as variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no painel da Hostinger para apontar para o projeto correto, permitindo que a build do site público se conecte com sucesso ao Supabase.
+
+3. **Próximos Passos (Amanhã):**
+   - Fazer `git add src/pages/site/Enrollment.jsx`.
+   - Realizar o commit e `git push origin main`.
+   - Orientar o usuário a configurar as variáveis de ambiente na Hostinger para o projeto `sedwwagwrkfaiptoemsp`.
+   - Validar se a página voltou a carregar normalmente no ar.
+

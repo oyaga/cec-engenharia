@@ -1,28 +1,45 @@
--- ==========================================
--- SUPER APP ICC - ATUALIZAÇÃO FASE 14
--- Proteção do Usuário Mestre (Desenvolvedor)
--- ==========================================
+-- =====================================================================
+-- MIGRAÇÃO DE BANCO DE DADOS: PRIORIDADE 14 - CERTIFICADOS EMITIDOS
+-- =====================================================================
 
--- 1. Criação de uma Trigger Function para impedir a exclusão do usuário Mestre
-CREATE OR REPLACE FUNCTION prevent_master_user_deletion()
-RETURNS TRIGGER AS $$
+-- 1. Criar a tabela de certificados emitidos
+CREATE TABLE IF NOT EXISTS public.lms_issued_certificates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    student_name TEXT NOT NULL,
+    student_cpf TEXT,
+    course_name TEXT NOT NULL,
+    hours INTEGER NOT NULL,
+    issued_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 2. Habilitar RLS
+ALTER TABLE public.lms_issued_certificates ENABLE ROW LEVEL SECURITY;
+
+-- 3. Remover políticas antigas para evitar duplicidade e conflitos (idempotência)
+DO $$
 BEGIN
-    -- Impede a exclusão se o nome ou email apontar para o desenvolvedor
-    IF OLD.full_name ILIKE '%desenvolvedor%' OR OLD.email ILIKE '%desenvolvedor%' THEN
-        RAISE EXCEPTION 'Ação Negada: O usuário Mestre (Desenvolvedor) é protegido pelo sistema e não pode ser deletado.';
+    IF EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'lms_issued_certificates' AND policyname = 'Qualquer pessoa pode validar certificados emitidos'
+    ) THEN
+        DROP POLICY "Qualquer pessoa pode validar certificados emitidos" ON public.lms_issued_certificates;
     END IF;
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
 
--- 2. Anexando a regra à tabela de usuários caso tentem deletar
-DROP TRIGGER IF EXISTS protect_master_user ON users;
-CREATE TRIGGER protect_master_user
-BEFORE DELETE ON users
-FOR EACH ROW
-EXECUTE FUNCTION prevent_master_user_deletion();
+    IF EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'lms_issued_certificates' AND policyname = 'Qualquer usuario autenticado pode emitir certificados'
+    ) THEN
+        DROP POLICY "Qualquer usuario autenticado pode emitir certificados" ON public.lms_issued_certificates;
+    END IF;
+END
+$$;
 
--- Nota: Como as senhas do Supabase são criptografadas (Bcrypt), 
--- o Administrador poderá criar o usuário "desenvolvedor" (senha: Mariaclara1)
--- diretamente pela interface "Equipe > Novo Colaborador" do próprio sistema de forma 100% segura.
--- A partir do momento da criação, ele estará blindado de exclusão via Banco de Dados.
+-- 4. Criar novas políticas de segurança
+CREATE POLICY "Qualquer pessoa pode validar certificados emitidos" 
+ON public.lms_issued_certificates FOR SELECT 
+USING (true); -- Acesso público necessário para permitir a validação por terceiros através do QR Code
+
+CREATE POLICY "Qualquer usuario autenticado pode emitir certificados" 
+ON public.lms_issued_certificates FOR INSERT 
+WITH CHECK (auth.role() = 'authenticated');
