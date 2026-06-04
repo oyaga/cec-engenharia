@@ -45,7 +45,7 @@ const LeadsAdmin = () => {
       if (error) throw error;
       fetchLeads();
     } catch (err) {
-      alert('Erro ao atualizar status');
+      alert('Erro ao atualizar status: ' + (err.message || JSON.stringify(err)));
     }
   };
 
@@ -56,7 +56,7 @@ const LeadsAdmin = () => {
       if (error) throw error;
       fetchLeads();
     } catch (err) {
-      alert('Erro ao excluir');
+      alert('Erro ao excluir: ' + (err.message || JSON.stringify(err)));
     }
   };
 
