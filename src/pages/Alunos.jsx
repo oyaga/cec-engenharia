@@ -1049,7 +1049,12 @@ export default function Alunos() {
                                         </div>
                                     </td>
                                     <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{s.num}</td>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{s.name}</td>
+                                    <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                        {s.name}
+                                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                                            {s.originalData.email || 'Sem e-mail'}
+                                        </span>
+                                    </td>
                                     <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{s.cpf}</td>
                                     <td style={{ padding: '1rem' }}>{s.class}</td>
                                     <td style={{ padding: '1rem' }}>
