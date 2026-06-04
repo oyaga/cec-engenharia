@@ -12,6 +12,7 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
     const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false)
     const [currentSessionUser, setCurrentSessionUser] = useState(null)
     const [currentUserProfile, setCurrentUserProfile] = useState(null)
+    const [rememberMe, setRememberMe] = useState(false)
     const navigate = useNavigate()
 
     // Verificar se já está logado ao carregar
@@ -47,6 +48,9 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
         setLoading(true)
         setError(null)
 
+        // Salvar a preferência do usuário antes de efetuar o login para o CustomStorage ler
+        localStorage.setItem('cec_remember_me', rememberMe ? 'true' : 'false')
+
         try {
             // Se já há um usuário ativo, desloga silenciosamente primeiro para permitir a troca limpa de conta
             const { data: { session } } = await supabase.auth.getSession()
@@ -54,6 +58,8 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                 await supabase.auth.signOut()
                 sessionStorage.clear()
                 localStorage.clear()
+                // Preservar a flag mesmo limpando tudo
+                localStorage.setItem('cec_remember_me', rememberMe ? 'true' : 'false')
             }
         } catch (err) {
             console.warn("Erro ao limpar sessão anterior:", err)
@@ -243,6 +249,19 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            id="rememberMe"
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="rememberMe" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', margin: 0 }}>
+                            Lembrar de mim (Mantenha-me conectado)
+                        </label>
                     </div>
 
                     <button
