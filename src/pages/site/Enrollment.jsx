@@ -142,19 +142,46 @@ const Enrollment = () => {
       })();
 
       // 1. Salvar intenção de matrícula no Supabase (apenas insert, sem select para evitar erro de privilégio de leitura RLS da role anon)
-      const { error: insertError } = await supabase
-        .from('enrollments')
-        .insert([{
-          id: enrollmentId,
-          name: formData.name,
-          social_name: formData.social_name,
-          phone: formData.phone,
-          email: formData.email,
-          course_name: formData.course,
-          payment_method: formData.paymentMethod,
-          status: 'pending_payment',
-          turma_id: selectedClass?.id || null
-        }]);
+      let insertError = null;
+      try {
+        const { error } = await supabase
+          .from('enrollments')
+          .insert([{
+            id: enrollmentId,
+            name: formData.name,
+            social_name: formData.social_name,
+            phone: formData.phone,
+            email: formData.email,
+            course_name: formData.course,
+            payment_method: formData.paymentMethod,
+            status: 'pending_payment',
+            turma_id: selectedClass?.id || null,
+            cpf: formData.cpf
+          }]);
+        
+        if (error) {
+          // Se deu erro de coluna inexistente (PGRST204 ou 42703), tentamos o insert simplificado como fallback resiliente
+          if (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema')) {
+            console.warn("Colunas estendidas não encontradas no banco. Executando insert de contingência...");
+            const { error: fallbackError } = await supabase
+              .from('enrollments')
+              .insert([{
+                id: enrollmentId,
+                name: formData.name,
+                phone: formData.phone,
+                email: formData.email,
+                course_name: formData.course,
+                status: 'pending_payment'
+              }]);
+            
+            if (fallbackError) insertError = fallbackError;
+          } else {
+            insertError = error;
+          }
+        }
+      } catch (e) {
+        insertError = e;
+      }
 
       if (insertError) throw new Error(insertError.message);
 
