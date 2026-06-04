@@ -81,12 +81,20 @@ const Footer = () => {
                 <input value={navbar.social?.instagram || ''} onChange={e => updateContent('navbar.social.instagram', e.target.value)} placeholder="URL Instagram" />
                 <input value={navbar.social?.facebook || ''} onChange={e => updateContent('navbar.social.facebook', e.target.value)} placeholder="URL Facebook" />
                 <input value={navbar.social?.linkedin || ''} onChange={e => updateContent('navbar.social.linkedin', e.target.value)} placeholder="URL LinkedIn" />
+                <input value={navbar.social?.tiktok || ''} onChange={e => updateContent('navbar.social.tiktok', e.target.value)} placeholder="URL TikTok" />
               </div>
             ) : (
               <>
                 {navbar.social?.instagram && <a href={navbar.social.instagram} target="_blank" rel="noopener noreferrer" title="Instagram"><Camera size={20} /></a>}
                 {navbar.social?.facebook && <a href={navbar.social.facebook} target="_blank" rel="noopener noreferrer" title="Facebook"><Facebook size={20} /></a>}
                 {navbar.social?.linkedin && <a href={navbar.social.linkedin} target="_blank" rel="noopener noreferrer" title="LinkedIn"><Linkedin size={20} /></a>}
+                {navbar.social?.tiktok && (
+                  <a href={navbar.social.tiktok} target="_blank" rel="noopener noreferrer" title="TikTok">
+                    <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 448 512" height="18" width="18" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                      <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"></path>
+                    </svg>
+                  </a>
+                )}
               </>
             )}
           </div>

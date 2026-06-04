@@ -185,29 +185,51 @@ const Enrollment = () => {
 
       if (insertError) throw new Error(insertError.message);
 
-      // 2. Chamar a Edge Function do Supabase para gerar cobrança no Asaas
-      const { data: result, error: funcError } = await supabase.functions.invoke('asaas-checkout', {
-        body: {
+      // 2. Chamar a Edge Function do Supabase via fetch para melhor captura de erros
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || supabase.supabaseUrl;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase.supabaseKey;
+      
+      const funcUrl = `${supabaseUrl}/functions/v1/asaas-checkout`;
+      const response = await fetch(funcUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey
+        },
+        body: JSON.stringify({
           ...formData,
           price: getSelectedPrice(),
           enrollmentId: enrollmentId,
           turmaId: selectedClass?.id || null
-        }
+        })
       });
       
-      if (funcError) throw new Error(funcError.message);
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Não foi possível gerar o link de pagamento.');
+      }
       
       if (result && result.invoiceUrl) {
         setPaymentInfo(result);
+        // Redireciona o aluno imediatamente para o checkout do Asaas
+        window.location.href = result.invoiceUrl;
       } else {
-        throw new Error('Não foi possível gerar o link de pagamento.');
+        throw new Error('Não foi possível obter a URL de pagamento.');
       }
 
     } catch (err) {
       console.error('Error:', err);
-      const message = `*NOVA MATRÍCULA - CEC ENGENHARIA*%0A%0A*Nome:* ${formData.name}%0A*Curso:* ${formData.course}%0A*Pagamento:* ${formData.paymentMethod}`;
-      window.open(`https://api.whatsapp.com/send?phone=5521965554180&text=${message}`, '_blank');
-      setPaymentInfo({ success: true, message: "Redirecionando para o WhatsApp..." });
+      const errMsg = err.message || '';
+      
+      // Se for erro de validação amigável da nossa Edge Function, exibe alerta e não abre WhatsApp
+      if (errMsg.includes('CPF') || errMsg.includes('CNPJ') || errMsg.includes('inválido') || errMsg.includes('documento')) {
+        alert(errMsg);
+      } else {
+        // Contingência do WhatsApp para erros inesperados
+        const message = `*NOVA MATRÍCULA - CEC ENGENHARIA*%0A%0A*Nome:* ${formData.name}%0A*Curso:* ${formData.course}%0A*Pagamento:* ${formData.paymentMethod}`;
+        window.open(`https://api.whatsapp.com/send?phone=5521965554180&text=${message}`, '_blank');
+        setPaymentInfo({ success: true, message: "Redirecionando para o WhatsApp..." });
+      }
     } finally {
       setIsSubmitting(false);
     }

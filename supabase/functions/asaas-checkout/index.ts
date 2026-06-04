@@ -6,6 +6,62 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function validateCPF(cpf: string): boolean {
+  const clean = cpf.replace(/\D/g, '')
+  if (clean.length !== 11) return false
+  if (/^(\d)\1+$/.test(clean)) return false
+  
+  let sum = 0
+  let remainder
+  for (let i = 1; i <= 9; i++) {
+    sum += parseInt(clean.substring(i - 1, i)) * (11 - i)
+  }
+  remainder = (sum * 10) % 11
+  if (remainder === 10 || remainder === 11) remainder = 0
+  if (remainder !== parseInt(clean.substring(9, 10))) return false
+  
+  sum = 0
+  for (let i = 1; i <= 10; i++) {
+    sum += parseInt(clean.substring(i - 1, i)) * (12 - i)
+  }
+  remainder = (sum * 10) % 11
+  if (remainder === 10 || remainder === 11) remainder = 0
+  if (remainder !== parseInt(clean.substring(10, 11))) return false
+  
+  return true
+}
+
+function validateCNPJ(cnpj: string): boolean {
+  const clean = cnpj.replace(/\D/g, '')
+  if (clean.length !== 14) return false
+  if (/^(\d)\1+$/.test(clean)) return false
+  
+  let size = clean.length - 2
+  let numbers = clean.substring(0, size)
+  const digits = clean.substring(size)
+  let sum = 0
+  let pos = size - 7
+  for (let i = size; i >= 1; i--) {
+    sum += parseInt(numbers.charAt(size - i)) * pos--
+    if (pos < 2) pos = 9
+  }
+  let result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+  if (result !== parseInt(digits.charAt(0))) return false
+  
+  size = size + 1
+  numbers = clean.substring(0, size)
+  sum = 0
+  pos = size - 7
+  for (let i = size; i >= 1; i--) {
+    sum += parseInt(numbers.charAt(size - i)) * pos--
+    if (pos < 2) pos = 9
+  }
+  result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+  if (result !== parseInt(digits.charAt(1))) return false
+  
+  return true
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -54,19 +110,53 @@ serve(async (req) => {
     const billingType = billingTypeMap[paymentMethod] || 'UNDEFINED'
 
     // 3. Criar ou Buscar Cliente no Asaas
-    const customerReq = await fetch(`${ASAAS_URL}/customers?cpfCnpj=${cpf}`, {
-      headers: { 'access_token': ASAAS_API_KEY }
-    })
-    const customerRes = await customerReq.json()
+    const cleanCpf = cpf ? cpf.replace(/\D/g, '') : ''
+    const isCpfValid = (cleanCpf.length === 11 && validateCPF(cleanCpf)) || (cleanCpf.length === 14 && validateCNPJ(cleanCpf))
+    const cleanPhone = phone ? phone.replace(/\D/g, '') : ''
+    const isPhoneValid = (cleanPhone.length === 10 || cleanPhone.length === 11) && !/^(\d)\1+$/.test(cleanPhone)
+
+    if (!isCpfValid) {
+      throw new Error('CPF ou CNPJ inválido. Por favor, insira um documento válido para prosseguir com o pagamento.')
+    }
+
     let customerId = ''
 
-    if (customerRes.data && customerRes.data.length > 0) {
-      customerId = customerRes.data[0].id
-    } else {
+    // Se tiver um CPF válido, tentamos buscar se o cliente já existe
+    if (isCpfValid) {
+      const customerReq = await fetch(`${ASAAS_URL}/customers?cpfCnpj=${cleanCpf}`, {
+        headers: { 'access_token': ASAAS_API_KEY }
+      })
+      const customerRes = await customerReq.json()
+      if (customerRes.data && customerRes.data.length > 0) {
+        customerId = customerRes.data[0].id
+      }
+    }
+
+    // Se não encontrou ou não tem CPF válido, criamos um novo cliente no Asaas
+    if (!customerId) {
+      const customerData = {
+        name: name || 'Aluno CEC',
+        email: email || ''
+      }
+
+      if (isCpfValid) {
+        customerData.cpfCnpj = cleanCpf
+      }
+      if (isPhoneValid) {
+        customerData.phone = cleanPhone
+        customerData.mobilePhone = cleanPhone
+      }
+      if (cep) {
+        customerData.postalCode = cep.replace(/\D/g, '')
+      }
+      if (addressNumber) {
+        customerData.addressNumber = addressNumber
+      }
+
       const newCustomerReq = await fetch(`${ASAAS_URL}/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'access_token': ASAAS_API_KEY },
-        body: JSON.stringify({ name, cpfCnpj: cpf, email, phone, mobilePhone: phone, addressNumber, postalCode: cep })
+        body: JSON.stringify(customerData)
       })
       const newCustomerRes = await newCustomerReq.json()
       if (newCustomerRes.errors) throw new Error(newCustomerRes.errors[0].description)
