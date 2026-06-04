@@ -66,6 +66,135 @@ export default function Financeiro() {
     // Modal de Zoom do Comprovante
     const [selectedReceipt, setSelectedReceipt] = useState(null)
 
+    // Inscrições Pendentes do Site
+    const [siteEnrollments, setSiteEnrollments] = useState([])
+    const [loadingEnrollments, setLoadingEnrollments] = useState(false)
+    const [checkingAsaasId, setCheckingAsaasId] = useState(null)
+    const [asaasPaymentInfo, setAsaasPaymentInfo] = useState(null)
+    const [showAsaasDetailsModal, setShowAsaasDetailsModal] = useState(false)
+    const [processingEnrollmentId, setProcessingEnrollmentId] = useState(null)
+
+    const fetchSiteEnrollments = async () => {
+        setLoadingEnrollments(true)
+        try {
+            const { data, error } = await supabase
+                .from('enrollments')
+                .select('*')
+                .eq('status', 'pending_payment')
+                .order('created_at', { ascending: false })
+            if (error) throw error
+            setSiteEnrollments(data || [])
+        } catch (err) {
+            console.warn('Erro ao buscar inscrições pendentes do site:', err.message)
+        } finally {
+            setLoadingEnrollments(false)
+        }
+    }
+
+    const handleCheckAsaasStatus = async (enrollment) => {
+        setCheckingAsaasId(enrollment.id)
+        setAsaasPaymentInfo(null)
+        try {
+            const response = await asaasRequest(`/payments?externalReference=${enrollment.id}`)
+            if (response && response.data && response.data.length > 0) {
+                const payment = response.data[0]
+                setAsaasPaymentInfo({
+                    found: true,
+                    id: payment.id,
+                    status: payment.status,
+                    billingType: payment.billingType,
+                    value: payment.value,
+                    invoiceUrl: payment.invoiceUrl,
+                    dueDate: payment.dueDate,
+                    paymentDate: payment.paymentDate,
+                    clientName: payment.clientName || enrollment.name,
+                    enrollment: enrollment
+                })
+            } else {
+                setAsaasPaymentInfo({
+                    found: false,
+                    enrollment: enrollment
+                })
+            }
+            setShowAsaasDetailsModal(true)
+        } catch (error) {
+            console.error('Erro ao verificar status no Asaas:', error)
+            alert('Falha ao consultar API do Asaas: ' + error.message)
+        } finally {
+            setCheckingAsaasId(null)
+        }
+    }
+
+    const handleApproveEnrollment = async (enrollmentId, asaasPaymentId = null) => {
+        if (!confirm('Deseja realmente aprovar esta matrícula manualmente? Isso criará a conta do aluno e liberará o acesso ao LMS.')) {
+            return
+        }
+
+        setProcessingEnrollmentId(enrollmentId)
+        try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+            if (!supabaseUrl) throw new Error('URL do Supabase não configurada no ambiente.')
+
+            const functionUrl = `${supabaseUrl}/functions/v1/asaas-webhook`
+
+            const payload = {
+                event: 'PAYMENT_RECEIVED',
+                payment: {
+                    externalReference: enrollmentId,
+                    id: asaasPaymentId || `manual_approve_${Date.now()}`
+                }
+            }
+
+            console.log('[Financeiro] Enviando aprovação manual para a Edge Function:', functionUrl, payload)
+
+            const response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                throw new Error(errorText || `Erro HTTP ${response.status}`)
+            }
+
+            alert('Matrícula aprovada e processada com sucesso!')
+            setShowAsaasDetailsModal(false)
+            await fetchData()
+        } catch (error) {
+            console.error('Erro ao aprovar matrícula manualmente:', error)
+            alert('Falha ao processar a aprovação da matrícula: ' + error.message)
+        } finally {
+            setProcessingEnrollmentId(null)
+        }
+    }
+
+    const handleWhatsAppSiteCharge = (enrollment, invoiceUrl = null) => {
+        if (!enrollment.phone) {
+            alert('Este aluno não possui número de telefone cadastrado.')
+            return
+        }
+
+        const cleanPhone = enrollment.phone.replace(/\D/g, '')
+        const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+
+        let message = `Olá, ${enrollment.name}! Tudo bem?\n\n`
+        message += `Vimos que você iniciou sua inscrição no curso *${enrollment.course_name}* no site da C&C Engenharia e Capacitação, mas o pagamento não foi concluído.\n\n`
+        
+        if (invoiceUrl) {
+            message += `Você pode acessar o link do Asaas para finalizar o pagamento de forma segura:\n${invoiceUrl}\n\n`
+        } else {
+            message += `Gostaríamos de saber se teve alguma dificuldade com o pagamento ou se restou alguma dúvida sobre o curso. Podemos te ajudar a concluir a sua inscrição?\n\n`
+        }
+        
+        message += `Qualquer dúvida, basta nos responder por aqui!\nEquipe C&C Engenharia.`
+
+        const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
+        window.open(url, '_blank')
+    }
+
     const formatMoney = (value) => {
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
     }
@@ -73,6 +202,8 @@ export default function Financeiro() {
     const fetchData = async () => {
         setLoading(true)
         try {
+            // Chamar busca de inscrições pendentes em paralelo
+            fetchSiteEnrollments()
             // 1. Buscar Alunos
             const { data: stdData } = await supabase
                 .from('students')
@@ -639,6 +770,12 @@ export default function Financeiro() {
                 <AlertCircle size={16} /> Inadimplência
                 {delinquentPayments.length > 0 && (
                     <span style={{ backgroundColor: 'var(--danger)', color: 'white', fontSize: '0.7rem', padding: '1px 6px', borderRadius: '999px', fontWeight: 'bold' }}>{delinquentPayments.length}</span>
+                )}
+            </button>
+            <button className={`btn ${activeTab === 'site_checkout' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('site_checkout')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem' }}>
+                <FilePlus size={16} /> Inscrições Pendentes (Site)
+                {siteEnrollments.length > 0 && (
+                    <span style={{ backgroundColor: 'var(--primary)', color: 'white', fontSize: '0.7rem', padding: '1px 6px', borderRadius: '999px', fontWeight: 'bold' }}>{siteEnrollments.length}</span>
                 )}
             </button>
             <button className={`btn ${activeTab === 'expenses' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('expenses')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem' }}>
@@ -1323,6 +1460,136 @@ export default function Financeiro() {
         </div>
     )
 
+    // 🌐 TAB 7: INSCRIÇÕES PENDENTES (SITE)
+    const renderSiteCheckoutTab = () => {
+        return (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid var(--primary)', backgroundColor: '#EFF6FF' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#1E40AF', fontWeight: '600' }}>Inscrições Pendentes (Site)</span>
+                        <h2 style={{ fontSize: '2rem', fontWeight: '700', color: '#1E40AF', margin: '0.25rem 0' }}>{siteEnrollments.length}</h2>
+                        <span style={{ fontSize: '0.75rem', color: '#1E40AF' }}>Alunos que iniciaram o checkout no site e não finalizaram</span>
+                    </div>
+                    <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid #10B981', backgroundColor: '#ECFDF5' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#065F46', fontWeight: '600' }}>Oportunidade Comercial</span>
+                        <h2 style={{ fontSize: '1.6rem', fontWeight: '700', color: '#065F46', margin: '0.25rem 0' }}>Recuperação de Vendas</h2>
+                        <span style={{ fontSize: '0.75rem', color: '#065F46' }}>Consulte o Asaas e ofereça ajuda pelo WhatsApp</span>
+                    </div>
+                </div>
+
+                <div className="card" style={{ padding: '2rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                        <div>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Lista de Checkouts Abandonados / Pendentes</h3>
+                            <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>Relação das pré-matrículas aguardando pagamento.</p>
+                        </div>
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={fetchSiteEnrollments} 
+                            disabled={loadingEnrollments}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                        >
+                            {loadingEnrollments ? 'Carregando...' : '🔄 Atualizar Lista'}
+                        </button>
+                    </div>
+
+                    {loadingEnrollments ? (
+                        <p style={{ textAlign: 'center', padding: '2rem' }}>Buscando inscrições pendentes...</p>
+                    ) : siteEnrollments.length === 0 ? (
+                        <div style={{ padding: '3rem', textAlign: 'center', color: '#1E40AF', backgroundColor: '#EFF6FF', borderRadius: 'var(--radius-md)', border: '1px dashed #BFDBFE' }}>
+                            🎉 <strong>Nenhum checkout pendente!</strong> Todas as inscrições iniciadas no site foram concluídas ou processadas.
+                        </div>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Aluno / CPF</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Curso</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Data da Inscrição</th>
+                                        <th style={{ padding: '0.75rem 1rem' }}>Método Escolhido</th>
+                                        <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {siteEnrollments.map((e) => (
+                                        <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
+                                            <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                                {e.name}
+                                                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                                                    CPF: {e.cpf || 'Não cadastrado'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>
+                                                {e.course_name}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                {new Date(e.created_at).toLocaleDateString('pt-BR')} {new Date(e.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                <span style={{ backgroundColor: '#F3F4F6', color: '#374151', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                                                    {e.payment_method || 'Não selecionado'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                    <button 
+                                                        className="btn btn-secondary" 
+                                                        onClick={() => handleCheckAsaasStatus(e)}
+                                                        disabled={checkingAsaasId === e.id}
+                                                        style={{ 
+                                                            fontSize: '0.8rem', 
+                                                            padding: '0.4rem 0.8rem',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        {checkingAsaasId === e.id ? 'Consultando...' : '🔍 Consultar Asaas'}
+                                                    </button>
+                                                    <button 
+                                                        className="btn btn-primary" 
+                                                        onClick={() => handleWhatsAppSiteCharge(e)}
+                                                        style={{ 
+                                                            backgroundColor: '#25D366', 
+                                                            borderColor: '#25D366', 
+                                                            fontSize: '0.8rem', 
+                                                            padding: '0.4rem 0.8rem', 
+                                                            color: 'white',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <Send size={12} /> WhatsApp
+                                                    </button>
+                                                    <button 
+                                                        className="btn btn-danger" 
+                                                        onClick={() => handleApproveEnrollment(e.id)}
+                                                        disabled={processingEnrollmentId === e.id}
+                                                        style={{ 
+                                                            backgroundColor: 'var(--success)', 
+                                                            borderColor: 'var(--success)', 
+                                                            fontSize: '0.8rem', 
+                                                            padding: '0.4rem 0.8rem',
+                                                            color: 'white'
+                                                        }}
+                                                    >
+                                                        {processingEnrollmentId === e.id ? 'Aprovando...' : 'Aprovar'}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -1370,6 +1637,7 @@ export default function Financeiro() {
             {activeTab === 'pix' && renderPixTab()}
             {activeTab === 'split' && renderSplitTab()}
             {activeTab === 'nf' && renderNfTab()}
+            {activeTab === 'site_checkout' && renderSiteCheckoutTab()}
 
             {/* Modal de Zoom do Comprovante */}
             {selectedReceipt && (
@@ -1461,6 +1729,212 @@ export default function Financeiro() {
                                 style={{ fontSize: '0.85rem', marginLeft: 'auto' }}
                             >
                                 Fechar Visualização
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Detalhes da Cobrança Asaas */}
+            {showAsaasDetailsModal && asaasPaymentInfo && (
+                <div style={{ 
+                    position: 'fixed', 
+                    top: 0, 
+                    left: 0, 
+                    right: 0, 
+                    bottom: 0, 
+                    backgroundColor: 'rgba(0,0,0,0.6)', 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    zIndex: 9999, 
+                    padding: '2rem' 
+                }}>
+                    <div className="card animate-scale-up" style={{ 
+                        backgroundColor: 'white', 
+                        padding: '2rem', 
+                        maxWidth: '550px', 
+                        width: '100%', 
+                        borderRadius: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.25rem',
+                        position: 'relative'
+                    }}>
+                        <button 
+                            onClick={() => setShowAsaasDetailsModal(false)}
+                            style={{ position: 'absolute', right: '15px', top: '15px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                        >
+                            <X size={20} />
+                        </button>
+                        
+                        <h4 style={{ fontWeight: '700', fontSize: '1.2rem', margin: 0, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            Status no Asaas
+                        </h4>
+
+                        <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                            <p style={{ margin: '0 0 6px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                <strong>Aluno:</strong> {asaasPaymentInfo.enrollment.name}
+                            </p>
+                            <p style={{ margin: '0 0 6px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                <strong>Curso:</strong> {asaasPaymentInfo.enrollment.course_name}
+                            </p>
+                            <p style={{ margin: '0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                <strong>E-mail:</strong> {asaasPaymentInfo.enrollment.email} | <strong>Tel:</strong> {asaasPaymentInfo.enrollment.phone}
+                            </p>
+                        </div>
+
+                        {asaasPaymentInfo.found ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F9FAFB', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Status da Cobrança:</span>
+                                    <span style={{ 
+                                        padding: '0.3rem 0.75rem', 
+                                        borderRadius: '999px', 
+                                        fontSize: '0.8rem', 
+                                        fontWeight: '700', 
+                                        backgroundColor: ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(asaasPaymentInfo.status) ? '#D1FAE5' : asaasPaymentInfo.status === 'OVERDUE' ? '#FEE2E2' : '#FEF3C7', 
+                                        color: ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(asaasPaymentInfo.status) ? '#065F46' : asaasPaymentInfo.status === 'OVERDUE' ? '#991B1B' : '#92400E' 
+                                    }}>
+                                        {asaasPaymentInfo.status === 'PENDING' ? 'PENDENTE ⏳' : 
+                                         ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(asaasPaymentInfo.status) ? 'PAGO ✅' : 
+                                         asaasPaymentInfo.status === 'OVERDUE' ? 'VENCIDO 🚨' : asaasPaymentInfo.status}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
+                                    <div style={{ backgroundColor: '#F9FAFB', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                        <span style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '2px' }}>Valor:</span>
+                                        <strong>{formatMoney(asaasPaymentInfo.value)}</strong>
+                                    </div>
+                                    <div style={{ backgroundColor: '#F9FAFB', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                        <span style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '2px' }}>Método:</span>
+                                        <strong>{asaasPaymentInfo.billingType}</strong>
+                                    </div>
+                                    <div style={{ backgroundColor: '#F9FAFB', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                        <span style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '2px' }}>Vencimento:</span>
+                                        <strong>{new Date(asaasPaymentInfo.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>
+                                    </div>
+                                    <div style={{ backgroundColor: '#F9FAFB', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                        <span style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '2px' }}>ID Asaas:</span>
+                                        <strong style={{ fontSize: '0.75rem', fontFamily: 'monospace', wordBreak: 'break-all' }}>{asaasPaymentInfo.id}</strong>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                    {asaasPaymentInfo.invoiceUrl && (
+                                        <a 
+                                            href={asaasPaymentInfo.invoiceUrl} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            className="btn btn-primary"
+                                            style={{ 
+                                                flex: 1, 
+                                                textAlign: 'center', 
+                                                fontSize: '0.85rem', 
+                                                padding: '0.6rem',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            🔗 Abrir Link da Fatura
+                                        </a>
+                                    )}
+                                    <button 
+                                        className="btn btn-primary" 
+                                        onClick={() => handleWhatsAppSiteCharge(asaasPaymentInfo.enrollment, asaasPaymentInfo.invoiceUrl)}
+                                        style={{ 
+                                            backgroundColor: '#25D366', 
+                                            borderColor: '#25D366', 
+                                            color: 'white',
+                                            fontSize: '0.85rem',
+                                            padding: '0.6rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        <Send size={14} /> Cobrar por WhatsApp
+                                    </button>
+                                </div>
+
+                                {['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(asaasPaymentInfo.status) && (
+                                    <div style={{ marginTop: '0.5rem', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.85rem', color: '#047857', fontWeight: '600', textAlign: 'center' }}>
+                                            ⚠️ Este pagamento está PAGO no Asaas, mas a matrícula ainda não foi processada localmente.
+                                        </span>
+                                        <button 
+                                            className="btn btn-primary" 
+                                            onClick={() => handleApproveEnrollment(asaasPaymentInfo.enrollment.id, asaasPaymentInfo.id)}
+                                            disabled={processingEnrollmentId === asaasPaymentInfo.enrollment.id}
+                                            style={{ 
+                                                backgroundColor: 'var(--success)', 
+                                                borderColor: 'var(--success)', 
+                                                fontSize: '0.85rem',
+                                                width: '100%',
+                                                padding: '0.5rem'
+                                            }}
+                                        >
+                                            {processingEnrollmentId === asaasPaymentInfo.enrollment.id ? 'Aprovando...' : 'Sincronizar & Dar Baixa Local'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div style={{ padding: '1.25rem', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', color: '#92400E', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                                    ⚠️ <strong>Nenhuma cobrança encontrada no Asaas para esta inscrição.</strong><br/><br/>
+                                    Isso significa que o aluno preencheu os dados cadastrais no site, mas desistiu ou fechou a página antes de escolher a forma de pagamento (cartão, pix ou boleto) e gerar a cobrança.<br/><br/>
+                                    <strong>Recomendação comercial:</strong> Entre em contato via WhatsApp para entender o motivo do abandono e auxiliá-lo a concluir o pagamento.
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <button 
+                                        className="btn btn-primary" 
+                                        onClick={() => handleWhatsAppSiteCharge(asaasPaymentInfo.enrollment)}
+                                        style={{ 
+                                            backgroundColor: '#25D366', 
+                                            borderColor: '#25D366', 
+                                            color: 'white',
+                                            fontSize: '0.85rem',
+                                            flex: 1,
+                                            padding: '0.6rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        <Send size={14} /> Entrar em contato via WhatsApp
+                                    </button>
+                                    <button 
+                                        className="btn btn-primary" 
+                                        onClick={() => handleApproveEnrollment(asaasPaymentInfo.enrollment.id)}
+                                        disabled={processingEnrollmentId === asaasPaymentInfo.enrollment.id}
+                                        style={{ 
+                                            backgroundColor: 'var(--success)', 
+                                            borderColor: 'var(--success)', 
+                                            fontSize: '0.85rem',
+                                            flex: 1,
+                                            padding: '0.6rem'
+                                        }}
+                                    >
+                                        {processingEnrollmentId === asaasPaymentInfo.enrollment.id ? 'Aprovando...' : 'Aprovar Matrícula (Manual)'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                            <button 
+                                className="btn btn-secondary" 
+                                onClick={() => setShowAsaasDetailsModal(false)}
+                                style={{ fontSize: '0.85rem' }}
+                            >
+                                Fechar
                             </button>
                         </div>
                     </div>

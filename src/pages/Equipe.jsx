@@ -133,7 +133,24 @@ export default function Equipe() {
                 console.warn('Erro ao ler tabela staff:', staffErr)
             }
 
-            // 3. Mesclar as duas listas
+            // 3. Carregar qualificações do Supabase (PR-127) antes da mesclagem
+            let qualData = []
+            try {
+                const { data: qData, error: qualError } = await supabase
+                    .from('instructor_qualifications')
+                    .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
+                
+                if (!qualError) {
+                    qualData = qData || []
+                } else {
+                    console.warn('Erro ao carregar qualificações no fetchStaff:', qualError.message)
+                }
+            } catch (qualErr) {
+                console.warn('Erro ao carregar qualificações (usando fallbacks):', qualErr)
+            }
+            setQualifications(qualData)
+
+            // 4. Mesclar as listas de colaboradores
             const mergedList = []
             const addedUserIds = new Set()
             
@@ -176,6 +193,32 @@ export default function Equipe() {
                             is_active: u.is_active !== false,
                             permissions: u.permissions || null
                         })
+                        addedUserIds.add(u.id)
+                    }
+                })
+            }
+
+            // Para cada qualificação de instrutor, se o instrutor (user_id) NÃO está na lista, adiciona-o como colaborador
+            if (qualData && qualData.length > 0) {
+                qualData.forEach(q => {
+                    const instUser = q.users
+                    const userId = q.user_id
+                    if (userId && !addedUserIds.has(userId) && instUser) {
+                        mergedList.push({
+                            id: userId,
+                            user_id: userId,
+                            name: instUser.full_name,
+                            cpf: instUser.cpf || '—',
+                            role: 'instrutor',
+                            email: instUser.email,
+                            phone: instUser.phone || '—',
+                            admission_date: '',
+                            salary: 2500.00,
+                            has_platform_access: true,
+                            is_active: true,
+                            permissions: { has_erp_access: true }
+                        })
+                        addedUserIds.add(userId)
                     }
                 })
             }
@@ -190,17 +233,6 @@ export default function Equipe() {
                 { id: 'mock-staff-2', name: 'Ana Paula Souza', cpf: '444.444.444-44', role: 'administrativo', email: 'ana.admin@cec.com.br', phone: '(21) 95555-4444', admission_date: '2026-05-20', salary: 3000.00, has_platform_access: false, is_active: true, user_id: null }
             ]
             setStaffList(defaultStaffMock)
-        }
-
-        // Carregar as qualificações PR-127 para instrutores
-        try {
-            const { data: qualData } = await supabase
-                .from('instructor_qualifications')
-                .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
-            
-            setQualifications(qualData || [])
-        } catch (qualErr) {
-            console.warn('Erro ao carregar qualificações (usando fallbacks):', qualErr)
         }
         setLoading(false)
     }
