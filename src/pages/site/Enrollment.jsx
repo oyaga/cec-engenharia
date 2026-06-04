@@ -408,6 +408,14 @@ const Enrollment = () => {
                   </div>
                 )}
 
+                <div className="enroll-deadline-notice">
+                  <div className="notice-header">
+                    <Info size={18} className="notice-icon" />
+                    <strong>Aviso Importante: Prazo de Conclusão</strong>
+                  </div>
+                  <p>Ao se matricular, você declara estar ciente de que tem o prazo máximo e improrrogável de <strong>6 meses</strong> para a conclusão de todo o curso (incluindo as aulas teóricas EAD e as aulas práticas presenciais).</p>
+                </div>
+
                 <div className="terms-agreement-box">
                   <div className="agreement-header">
                     <button type="button" className="btn-site-primary btn-open-manual" onClick={() => setShowManual(true)}>
@@ -509,6 +517,12 @@ const Enrollment = () => {
 
         .price-summary { background: #f1f5f9; padding: 1.25rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .price-summary strong { font-size: 1.25rem; color: var(--primary-dark); }
+
+        .enroll-deadline-notice { background: #fff5f5; padding: 1.25rem; border-radius: 1rem; border: 1px solid #fee2e2; margin-bottom: 1.5rem; color: #991b1b; font-size: 0.85rem; line-height: 1.4; }
+        .notice-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .notice-icon { color: #ef4444; flex-shrink: 0; }
+        .enroll-deadline-notice p { margin: 0; font-weight: 500; }
+        .enroll-deadline-notice strong { color: #7f1d1d; }
 
         .terms-agreement-box { background: #fffbeb; padding: 1.5rem; border-radius: 1rem; border: 1px solid #fde68a; margin-bottom: 2rem; color: #78350f; }
         .btn-open-manual { width: 100%; justify-content: center; margin-bottom: 1rem; }

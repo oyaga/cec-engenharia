@@ -674,6 +674,27 @@ export default function AreaAluno() {
     }
   };
 
+  // Aceitar termo de 6 meses
+  const handleAcceptTerms = async () => {
+    if (!studentId) return;
+
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({ terms_accepted: true })
+        .eq('id', studentId);
+
+      if (error) throw error;
+
+      // Atualiza o estado local para fechar o modal imediatamente
+      setStudentData(prev => prev ? { ...prev, terms_accepted: true } : null);
+      alert('Obrigado! Termo de compromisso aceito com sucesso.');
+    } catch (err) {
+      console.error('Erro ao aceitar termo de compromisso:', err);
+      alert('Não foi possível registrar o seu aceite. Por favor, tente novamente.');
+    }
+  };
+
   // Baixar Certificado Conquistado (Gera PDF Client-side)
   const handleDownloadPDF = (cert) => {
     const studentObj = {
@@ -2145,6 +2166,42 @@ export default function AreaAluno() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ width: '48px', height: '48px', border: '4px solid var(--primary-light)', borderTopColor: 'var(--primary)', borderRadius: '50%' }} className="animate-spin" />
         <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: '600' }}>Carregando Portal C&C...</span>
+      </div>
+    );
+  }
+
+  // Se não aceitou o termo de compromisso de 6 meses, exibe o termo impeditivo
+  if (studentData && studentData.terms_accepted === false) {
+    return (
+      <div className="animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', padding: '1rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div className="card text-center" style={{ maxWidth: '600px', width: '100%', padding: '3.5rem 2.5rem', border: '1px solid #fee2e2', backgroundColor: '#fff8f8', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05)', boxSizing: 'border-box' }}>
+          <div style={{ display: 'inline-flex', padding: '1.25rem', backgroundColor: '#fee2e2', borderRadius: '50%', color: '#ef4444', marginBottom: '1.5rem' }}>
+            <AlertCircle size={40} />
+          </div>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#991b1b', margin: 0 }}>Atenção: Prazo de Conclusão</h2>
+          <p style={{ color: '#7f1d1d', marginBottom: '2rem', fontSize: '1.05rem', lineHeight: '1.6', fontWeight: 600, marginTop: '0.5rem' }}>
+            Antes de acessar o seu portal, você precisa declarar ciência e concordância com os prazos limites da instituição.
+          </p>
+          
+          <div style={{ backgroundColor: 'white', border: '1px solid #fee2e2', borderRadius: '16px', padding: '1.5rem', textAlign: 'left', marginBottom: '2.5rem', color: '#4b5563', fontSize: '0.95rem', lineHeight: '1.6' }}>
+            <p style={{ margin: 0 }}>
+              Você terá o prazo máximo e improrrogável de <strong>6 (seis) meses</strong>, contados a partir da data de matrícula, para concluir integralmente todas as etapas do curso:
+            </p>
+            <ul style={{ margin: '0.75rem 0 0 0', paddingLeft: '1.25rem' }}>
+              <li><strong>Parte Teórica:</strong> Aulas online gravadas e testes no portal EAD.</li>
+              <li><strong>Parte Prática:</strong> Aulas práticas presença nos laboratórios.</li>
+              <li><strong>Avaliação Final:</strong> Provas técnicas necessárias para emissão do certificado.</li>
+            </ul>
+          </div>
+
+          <button 
+            className="btn btn-primary" 
+            style={{ width: '100%', padding: '1rem', fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', borderRadius: '12px' }} 
+            onClick={handleAcceptTerms}
+          >
+            <CheckCircle size={20} /> Estou ciente e de acordo
+          </button>
+        </div>
       </div>
     );
   }
