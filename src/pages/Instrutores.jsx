@@ -281,7 +281,7 @@ export default function Instrutores() {
                 if (error) throw error
             }
 
-            alert('Instrutor cadastrado e qualificações enviadas para aprovação do Coordenador!')
+            alert(`Instrutor cadastrado com sucesso e qualificações enviadas para aprovação!\n\nDados de Acesso Provisórios para o Portal:\nE-mail: ${prForm.email}\nSenha: ${passwordToSave}\n\nPor favor, copie e envie estas credenciais para o instrutor.`);
             setShowWizard(false)
             fetchInitialData()
         } catch (err) {
