@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
     image_url TEXT, -- Para os prints enviados pelo admin
     status TEXT DEFAULT 'pending', -- approved, pending, rejected
     type TEXT DEFAULT 'text', -- text, screenshot
+    rating INTEGER DEFAULT 5, -- Nota de avaliação em estrelas
     admin_description TEXT, -- Descrição breve do admin para os prints
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
