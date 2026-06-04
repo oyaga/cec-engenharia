@@ -1,7 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
+  // Tratar requisição preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   try {
     const payload = await req.json()
     
@@ -12,7 +22,7 @@ serve(async (req) => {
 
       if (!enrollmentId) {
         console.error("No externalReference found on payment:", payment.id)
-        return new Response('OK', { status: 200 }) // Return 200 so Asaas doesn't retry
+        return new Response('OK', { status: 200, headers: corsHeaders }) // Return 200 so Asaas doesn't retry
       }
 
       // Initialize Supabase Client with SERVICE_ROLE key to bypass RLS
@@ -30,7 +40,7 @@ serve(async (req) => {
       if (enrollError || !enrollment) throw new Error("Enrollment not found")
 
       // Se já foi processada, ignorar
-      if (enrollment.status === 'processed') return new Response('Already processed', { status: 200 })
+      if (enrollment.status === 'processed') return new Response('Already processed', { status: 200, headers: corsHeaders })
 
       // 2. Criar Usuário no Auth
       const cpfPassword = enrollment.cpf ? enrollment.cpf.replace(/\D/g, '') : 'mudar123'
@@ -101,12 +111,12 @@ serve(async (req) => {
         });
       }
 
-      return new Response('Processed successfully', { status: 200 })
+      return new Response('Processed successfully', { status: 200, headers: corsHeaders })
     }
 
-    return new Response('Ignored event', { status: 200 })
+    return new Response('Ignored event', { status: 200, headers: corsHeaders })
   } catch (error) {
     console.error("Webhook Error:", error.message)
-    return new Response(error.message, { status: 500 }) // Return 500 so Asaas retries later
+    return new Response(error.message, { status: 500, headers: corsHeaders }) // Return 500 so Asaas retries later
   }
 })
