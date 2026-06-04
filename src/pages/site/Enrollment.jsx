@@ -19,6 +19,8 @@ const Enrollment = () => {
   const coursesList = courses_section.courses || [];
   const manual = content.manual_do_aluno || { title: 'Manual do Aluno', content: 'Carregando...' };
   const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const hasUrlCourse = params.get('course') !== null;
   
   const [formData, setFormData] = useState({
     name: '',
@@ -174,10 +176,26 @@ const Enrollment = () => {
 
   const getSelectedPrice = () => {
     if (!selectedClass) return 'Sob Consulta';
-    if (formData.paymentMethod === 'pix') return selectedClass.price_cash;
-    if (formData.paymentMethod === 'credit_card') return selectedClass.price_card_10x;
-    if (formData.paymentMethod === 'boleto') return selectedClass.price_installments_3x;
-    return '0.00';
+    let val = 0;
+    if (formData.paymentMethod === 'pix') val = selectedClass.price_cash;
+    else if (formData.paymentMethod === 'credit_card') val = selectedClass.price_card_10x;
+    else if (formData.paymentMethod === 'boleto') val = selectedClass.price_installments_3x;
+    
+    // Se o preço estiver cadastrado como decimal por engano (ex: 3.8 em vez de 3800)
+    if (val > 0 && val < 100) {
+      val = val * 1000;
+    }
+    return val;
+  };
+
+  const formatPrice = (price) => {
+    if (price === 'Sob Consulta' || price === null || price === undefined || isNaN(Number(price))) {
+      return 'Sob Consulta';
+    }
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(Number(price));
   };
 
   return (
@@ -293,7 +311,12 @@ const Enrollment = () => {
 
                 <div className="input-group">
                   <label><BookOpen size={16} /> Escolha a Formação</label>
-                  <select required value={formData.course} onChange={(e) => setFormData({...formData, course: e.target.value})}>
+                  <select 
+                    required 
+                    value={formData.course} 
+                    onChange={(e) => setFormData({...formData, course: e.target.value})}
+                    disabled={hasUrlCourse}
+                  >
                     <option value="">Selecione um curso...</option>
                     {coursesList.map(course => <option key={course.id} value={course.title}>{course.title}</option>)}
                   </select>
@@ -320,7 +343,7 @@ const Enrollment = () => {
                 {formData.course && (
                   <div className="price-summary">
                     <span>Investimento Total:</span>
-                    {loadingPrice ? <div className="loading-small"></div> : <strong>R$ {getSelectedPrice()}</strong>}
+                    {loadingPrice ? <div className="loading-small"></div> : <strong>{formatPrice(getSelectedPrice())}</strong>}
                   </div>
                 )}
 
