@@ -198,9 +198,11 @@ const Testimonials = () => {
                     ></textarea>
                     <small>{formData.content.length}/300 caracteres</small>
                   </div>
-                  <div className="modal-footer">
-                    <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>Cancelar</button>
-                    <button type="submit" className="btn-save" disabled={submitStatus === 'sending'}>
+                  <div className="testimonial-modal-footer">
+                    <button type="button" className="btn-site-outline" onClick={() => setShowModal(false)}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn-site-primary" disabled={submitStatus === 'sending'}>
                       {submitStatus === 'sending' ? 'Enviando...' : 'Enviar Avaliação'}
                     </button>
                   </div>
@@ -210,155 +212,6 @@ const Testimonials = () => {
           </div>
         )}
       </AnimatePresence>
-
-      <style>{`
-        .testimonials-section {
-          background: #f8fafc;
-          position: relative;
-          overflow: hidden;
-        }
-        .testimonials-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-          gap: 2rem;
-          margin-top: 3rem;
-        }
-        .testimonial-card {
-          background: white;
-          padding: 2rem;
-          border-radius: 1.5rem;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          border: 1px solid #e2e8f0;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          transition: all 0.3s ease;
-        }
-        .card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-        }
-        .quote-icon {
-          color: var(--primary);
-          opacity: 0.2;
-          width: 32px;
-          height: 32px;
-        }
-        .testimonial-text {
-          font-style: italic;
-          color: var(--text-main);
-          line-height: 1.6;
-          margin-bottom: 1.5rem;
-        }
-        .card-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          padding-top: 1.5rem;
-          border-top: 1px solid #f1f5f9;
-        }
-        .user-info strong {
-          display: block;
-          color: var(--primary-dark);
-          font-size: 1rem;
-        }
-        .user-info span {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-        }
-        .date {
-          font-size: 0.75rem;
-          color: #94a3b8;
-        }
-
-        /* Screenshot Mode */
-        .card-screenshot {
-          padding: 0;
-          overflow: hidden;
-        }
-        .screenshot-container {
-          position: relative;
-        }
-        .screenshot-img {
-          width: 100%;
-          height: auto;
-          display: block;
-          border-bottom: 4px solid var(--primary);
-        }
-        .screenshot-info {
-          padding: 1.5rem;
-          background: white;
-          display: flex;
-          gap: 0.75rem;
-        }
-        .quote-icon-small {
-          color: var(--primary);
-          min-width: 16px;
-        }
-        .screenshot-info p {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: var(--primary-dark);
-          margin: 0;
-        }
-
-        /* Add Card */
-        .add-testimonial-card {
-          background: rgba(0, 75, 73, 0.03);
-          border: 2px dashed #cbd5e1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          text-align: center;
-        }
-        .icon-plus {
-          color: var(--primary);
-          margin-bottom: 1rem;
-        }
-
-        /* Modal Styles */
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(4px);
-          z-index: 10000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-        }
-        .modal-content {
-          background: white;
-          width: 100%;
-          max-width: 500px;
-          border-radius: 2rem;
-          padding: 2.5rem;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-          max-height: 90vh;
-          overflow-y: auto;
-        }
-        .form-group { margin-bottom: 1.5rem; }
-        .form-group label { display: block; font-weight: 700; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .form-group input, .form-group textarea {
-          width: 100%;
-          padding: 0.75rem 1rem;
-          border: 1px solid #e2e8f0;
-          border-radius: 12px;
-          outline: none;
-        }
-        .modal-footer { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem; }
-        .btn-cancel { background: #f1f5f9; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; cursor: pointer; }
-        .btn-save { background: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; cursor: pointer; }
-        .success-msg { text-align: center; padding: 2rem 0; }
-
-        @media (max-width: 640px) {
-          .testimonials-grid { grid-template-columns: 1fr; }
-        }
-      `}</style>
     </section>
   );
 };
