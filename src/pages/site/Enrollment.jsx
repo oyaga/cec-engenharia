@@ -326,7 +326,7 @@ const Enrollment = () => {
 
                 <div className="terms-agreement-box">
                   <div className="agreement-header">
-                    <button type="button" className="btn-open-manual" onClick={() => setShowManual(true)}>
+                    <button type="button" className="btn-site-primary btn-open-manual" onClick={() => setShowManual(true)}>
                       <FileText size={16} /> Ler Manual do Aluno (Obrigatório)
                     </button>
                   </div>
@@ -426,15 +426,15 @@ const Enrollment = () => {
         .price-summary { background: #f1f5f9; padding: 1.25rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .price-summary strong { font-size: 1.25rem; color: var(--primary-dark); }
 
-        .terms-agreement-box { background: #fffbeb; padding: 1.5rem; border-radius: 1rem; border: 1px solid #fef3c7; margin-bottom: 2rem; }
-        .btn-open-manual { background: var(--primary); color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 1rem; width: 100%; justify-content: center; }
-        .checkbox-label { display: flex; align-items: flex-start; gap: 0.75rem; font-size: 0.85rem; cursor: pointer; }
-        .checkbox-label.disabled { opacity: 0.5; cursor: not-allowed; }
-        .read-warning { font-size: 0.7rem; color: #b45309; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.25rem; }
+        .terms-agreement-box { background: #fffbeb; padding: 1.5rem; border-radius: 1rem; border: 1px solid #fde68a; margin-bottom: 2rem; color: #78350f; }
+        .btn-open-manual { width: 100%; justify-content: center; margin-bottom: 1rem; }
+        .checkbox-label { display: flex; align-items: flex-start; gap: 0.75rem; font-size: 0.85rem; cursor: pointer; color: #78350f; }
+        .checkbox-label.disabled { opacity: 0.6; cursor: not-allowed; }
+        .read-warning { font-size: 0.75rem; color: #b45309; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.25rem; font-weight: 600; }
 
         /* MODAL MANUAL */
         .modal-overlay-manual { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 2rem; }
-        .manual-modal { background: white; width: 100%; max-width: 700px; height: 80vh; border-radius: 1.5rem; display: flex; flexDirection: column; overflow: hidden; position: relative; }
+        .manual-modal { background: white; width: 100%; max-width: 700px; height: 80vh; border-radius: 1.5rem; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .manual-header { padding: 1.5rem 2rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .manual-body { flex: 1; overflow-y: auto; padding: 2rem; background: #fafafa; }
         .manual-content-text { font-size: 0.95rem; line-height: 1.6; color: #334155; }
