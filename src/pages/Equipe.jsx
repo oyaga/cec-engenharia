@@ -106,48 +106,90 @@ export default function Equipe() {
             const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
             setCurrentUserProfile(profile)
 
-            // 1. Tentar carregar da tabela staff com permissões
-            const { data: staffData, error: staffError } = await supabase
-                .from('staff')
-                .select('*, users(permissions)')
-                .order('name', { ascending: true })
+            // 1. Carregar registros da tabela users que sejam administrativos (não-alunos/student)
+            const { data: usersData, error: usersError } = await supabase
+                .from('users')
+                .select('*')
+                .not('role', 'eq', 'aluno')
+                .not('role', 'eq', 'student')
+                .order('full_name', { ascending: true })
 
-            if (staffError) throw staffError
+            if (usersError) console.warn('Erro ao carregar usuários:', usersError.message)
 
-            setStaffList(staffData || [])
-        } catch (err) {
-            console.warn('Erro ao carregar tabela staff (usando fallback resiliente de emulação local):', err)
-            
-            // Fallback Resiliente: Se der erro, ler da tabela users do Supabase e enriquecer com mocks locais
+            // 2. Carregar registros da tabela staff
+            let staffData = []
             try {
-                const { data: usersData } = await supabase.from('users').select('*').order('full_name', { ascending: true })
+                const { data: sData, error: staffError } = await supabase
+                    .from('staff')
+                    .select('*, users(permissions)')
+                    .order('name', { ascending: true })
                 
-                const defaultStaffMock = [
-                    { id: 'mock-staff-1', name: 'Maria Costa', cpf: '222.222.222-22', role: 'financeiro', email: 'maria.costa@cec.com.br', phone: '(21) 97777-6666', admission_date: '2026-05-10', salary: 3500.00, has_platform_access: false, is_active: true, user_id: null },
-                    { id: 'mock-staff-2', name: 'Ana Paula Souza', cpf: '444.444.444-44', role: 'administrativo', email: 'ana.admin@cec.com.br', phone: '(21) 95555-4444', admission_date: '2026-05-20', salary: 3000.00, has_platform_access: false, is_active: true, user_id: null }
-                ]
-
-                if (usersData && usersData.length > 0) {
-                    const formattedUsers = usersData.map(u => ({
-                        id: u.id,
-                        user_id: u.id,
-                        name: u.full_name,
-                        cpf: u.cpf || '—',
-                        role: u.role,
-                        email: u.email,
-                        phone: u.phone || '—',
-                        admission_date: u.admission_date || '2026-05-15',
-                        salary: u.role === 'admin' ? 8500.00 : (u.role === 'coordenador' ? 4500.00 : 2500.00),
-                        has_platform_access: u.permissions?.has_erp_access !== false,
-                        is_active: u.is_active !== false
-                    }))
-                    setStaffList([...formattedUsers, ...defaultStaffMock])
+                if (!staffError) {
+                    staffData = sData || []
                 } else {
-                    setStaffList(defaultStaffMock)
+                    console.warn('Tabela staff não retornou dados ou deu erro:', staffError.message)
                 }
-            } catch (userErr) {
-                console.error('Erro total de carregamento:', userErr)
+            } catch (staffErr) {
+                console.warn('Erro ao ler tabela staff:', staffErr)
             }
+
+            // 3. Mesclar as duas listas
+            const mergedList = []
+            const addedUserIds = new Set()
+            
+            // Adiciona todos os registros do staffData
+            staffData.forEach(s => {
+                mergedList.push({
+                    id: s.id,
+                    user_id: s.user_id,
+                    name: s.name,
+                    cpf: s.cpf || '—',
+                    role: s.role,
+                    email: s.email,
+                    phone: s.phone || '—',
+                    admission_date: s.admission_date || '',
+                    salary: s.salary || 0,
+                    has_platform_access: s.has_platform_access,
+                    is_active: s.is_active,
+                    permissions: s.users?.permissions || s.permissions || null
+                })
+                if (s.user_id) {
+                    addedUserIds.add(s.user_id)
+                }
+            })
+
+            // Para cada usuário do usersData que possui cargo administrativo e NÃO está na tabela staff, adiciona na lista
+            if (usersData && usersData.length > 0) {
+                usersData.forEach(u => {
+                    if (!addedUserIds.has(u.id)) {
+                        mergedList.push({
+                            id: u.id, // Usamos o próprio id do user como id temporário do staff
+                            user_id: u.id,
+                            name: u.full_name,
+                            cpf: u.cpf || '—',
+                            role: u.role,
+                            email: u.email,
+                            phone: u.phone || '—',
+                            admission_date: u.admission_date || '',
+                            salary: u.role === 'admin' ? 8500.00 : (u.role === 'coordenador' ? 4500.00 : 2500.00),
+                            has_platform_access: true,
+                            is_active: u.is_active !== false,
+                            permissions: u.permissions || null
+                        })
+                    }
+                })
+            }
+
+            setStaffList(mergedList)
+        } catch (err) {
+            console.warn('Erro geral ao carregar colaboradores (usando fallback local):', err)
+            
+            // Fallback Resiliente local
+            const defaultStaffMock = [
+                { id: 'mock-staff-1', name: 'Maria Costa', cpf: '222.222.222-22', role: 'financeiro', email: 'maria.costa@cec.com.br', phone: '(21) 97777-6666', admission_date: '2026-05-10', salary: 3500.00, has_platform_access: false, is_active: true, user_id: null },
+                { id: 'mock-staff-2', name: 'Ana Paula Souza', cpf: '444.444.444-44', role: 'administrativo', email: 'ana.admin@cec.com.br', phone: '(21) 95555-4444', admission_date: '2026-05-20', salary: 3000.00, has_platform_access: false, is_active: true, user_id: null }
+            ]
+            setStaffList(defaultStaffMock)
         }
 
         // Carregar as qualificações PR-127 para instrutores
@@ -247,6 +289,8 @@ export default function Equipe() {
             if (editingStaffId) {
                 // MODO EDIÇÃO / ATUALIZAÇÃO
                 const isMock = editingStaffId.toString().startsWith('mock-')
+                const targetStaff = staffList.find(s => s.id === editingStaffId)
+
                 const staffPayload = {
                     name: formData.name,
                     cpf: formData.cpf,
@@ -255,20 +299,24 @@ export default function Equipe() {
                     phone: formData.phone || null,
                     admission_date: formData.admission_date || null,
                     salary: formData.salary ? parseFloat(formData.salary) : null,
-                    has_platform_access: formData.has_platform_access
+                    has_platform_access: formData.has_platform_access,
+                    user_id: targetStaff?.user_id || null
                 }
 
                 if (!isMock) {
-                    // 1. Atualizar na tabela staff do Supabase
+                    // Se o targetStaff possui um ID diferente do user_id, indica que já existe na tabela staff
+                    if (targetStaff && targetStaff.id !== targetStaff.user_id) {
+                        staffPayload.id = targetStaff.id
+                    }
+
+                    // 1. Atualizar ou inserir na tabela staff do Supabase
                     const { error: staffUpdateError } = await supabase
                         .from('staff')
-                        .update(staffPayload)
-                        .eq('id', editingStaffId)
+                        .upsert(staffPayload, { onConflict: targetStaff?.id !== targetStaff?.user_id ? 'id' : 'user_id' })
 
                     if (staffUpdateError) throw staffUpdateError
 
                     // 2. Se possuir user_id, atualizar também na tabela users pública
-                    const targetStaff = staffList.find(s => s.id === editingStaffId)
                     if (targetStaff && targetStaff.user_id) {
                         const { error: dbUserError } = await supabase
                             .from('users')

@@ -99,7 +99,7 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                         } else if (profile?.role === 'instrutor') {
                             window.location.replace('/professor')
                             return
-                        } else if (['admin', 'coordenador', 'atendente'].includes(profile?.role)) {
+                        } else {
                             window.location.replace('/dashboard')
                             return
                         }
@@ -163,10 +163,8 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                                         window.location.replace('/meus-cursos')
                                     } else if (currentUserProfile?.role === 'instrutor') {
                                         window.location.replace('/professor')
-                                    } else if (['admin', 'coordenador', 'atendente'].includes(currentUserProfile?.role)) {
-                                        window.location.replace('/dashboard')
                                     } else {
-                                        window.location.replace('/')
+                                        window.location.replace('/dashboard')
                                     }
                                 }}
                                 className="btn btn-primary"
