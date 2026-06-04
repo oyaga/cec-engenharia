@@ -130,10 +130,22 @@ const Enrollment = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar intenção de matrícula no Supabase
-      const { data: enrollment, error } = await supabase
+      // Gerar UUID localmente de forma segura
+      const enrollmentId = (() => {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          return crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      })();
+
+      // 1. Salvar intenção de matrícula no Supabase (apenas insert, sem select para evitar erro de privilégio de leitura RLS da role anon)
+      const { error: insertError } = await supabase
         .from('enrollments')
         .insert([{
+          id: enrollmentId,
           name: formData.name,
           social_name: formData.social_name,
           phone: formData.phone,
@@ -142,16 +154,16 @@ const Enrollment = () => {
           payment_method: formData.paymentMethod,
           status: 'pending_payment',
           turma_id: selectedClass?.id || null
-        }])
-        .select()
-        .single();
+        }]);
+
+      if (insertError) throw new Error(insertError.message);
 
       // 2. Chamar a Edge Function do Supabase para gerar cobrança no Asaas
       const { data: result, error: funcError } = await supabase.functions.invoke('asaas-checkout', {
         body: {
           ...formData,
           price: getSelectedPrice(),
-          enrollmentId: enrollment?.id || 'NO_ID',
+          enrollmentId: enrollmentId,
           turmaId: selectedClass?.id || null
         }
       });
