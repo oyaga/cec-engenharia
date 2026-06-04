@@ -77,16 +77,24 @@ serve(async (req) => {
       }
 
       if (userId) {
-        // 3. Buscar a próxima turma disponível para este curso
-        const today = new Date().toISOString().split('T')[0];
-        const { data: nextClass } = await supabase
-          .from('classes')
-          .select('id')
-          .ilike('course_name', `%${enrollment.course_name}%`)
-          .gte('start_date', today)
-          .order('start_date', { ascending: true })
-          .limit(1)
-          .single();
+        // 3. Definir a turma: prioriza a turma_id escolhida no site, com fallback para a próxima disponível
+        let finalTurmaId = enrollment.turma_id;
+        
+        if (!finalTurmaId) {
+          const today = new Date().toISOString().split('T')[0];
+          const { data: nextClass } = await supabase
+            .from('classes')
+            .select('id')
+            .ilike('course_name', `%${enrollment.course_name}%`)
+            .gte('start_date', today)
+            .order('start_date', { ascending: true })
+            .limit(1)
+            .single();
+          
+          if (nextClass) {
+            finalTurmaId = nextClass.id;
+          }
+        }
 
         // 4. Atualizar public.users e public.students
         await supabase.from('users').upsert({
@@ -104,7 +112,7 @@ serve(async (req) => {
           cpf: enrollment.cpf,
           requires_password_change: true,
           has_lms_access: true, // Libera acesso EAD automaticamente
-          turma_id: nextClass?.id || null // Vincula à turma se encontrada
+          turma_id: finalTurmaId || null
         };
 
         await supabase.from('students').upsert(studentData, { onConflict: 'cpf' });
@@ -113,7 +121,20 @@ serve(async (req) => {
         await supabase.from('enrollments').update({ status: 'processed' }).eq('id', enrollmentId);
 
         // 5. Enviar E-mail de Boas Vindas / Convite
-        const welcomeMsg = `Sua matrícula no curso ${enrollment.course_name} foi confirmada! ${nextClass ? 'Você foi vinculado à próxima turma.' : ''} Sua senha inicial é o seu CPF (apenas números).`;
+        // Buscar informações da turma para o e-mail de boas-vindas se vinculada
+        let classNameText = '';
+        if (finalTurmaId) {
+          const { data: classData } = await supabase
+            .from('classes')
+            .select('name')
+            .eq('id', finalTurmaId)
+            .single();
+          if (classData) {
+            classNameText = ` na turma ${classData.name}`;
+          }
+        }
+
+        const welcomeMsg = `Sua matrícula no curso ${enrollment.course_name}${classNameText} foi confirmada! Sua senha inicial é o seu CPF (apenas números).`;
         
         await supabase.auth.admin.inviteUserByEmail(enrollment.email, {
           data: { 
