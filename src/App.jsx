@@ -1,36 +1,39 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { EditProvider } from './context/EditContext'
-import Layout from './components/Layout'
-import StudentLayout from './components/StudentLayout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Alunos from './pages/Alunos'
-import Turmas from './pages/Turmas'
-import Financeiro from './pages/Financeiro'
-import Professor from './pages/Professor'
-import Auditoria from './pages/Auditoria'
-import ConfigDocs from './pages/ConfigDocs'
-import ConfigAsaas from './pages/ConfigAsaas'
-import Equipe from './pages/Equipe'
-import Relatorios from './pages/Relatorios'
-import LMSAdmin from './pages/LMSAdmin'
-import AreaAluno from './pages/AreaAluno'
-import LessonPlayer from './pages/LessonPlayer'
-import ExamView from './pages/ExamView'
-import ResetPassword from './pages/ResetPassword'
-import MeuPerfil from './pages/MeuPerfil'
-import OuvidoriaAdmin from './pages/OuvidoriaAdmin'
-import TestimonialsAdmin from './pages/TestimonialsAdmin'
-import LeadsAdmin from './pages/LeadsAdmin'
 import ScrollToTop from './components/ScrollToTop'
-import AdminUsers from './pages/AdminUsers'
-import Instrutores from './pages/Instrutores'
 import ValidarCertificado from './pages/ValidarCertificado'
-import Cursos from './pages/Cursos'
-import Matriculas from './pages/Matriculas'
-import Comunicados from './pages/Comunicados'
-import Certificados from './pages/Certificados'
+
+// Lazy loaded layout and components (reduces main bundle payload by splitting admin code)
+const Layout = lazy(() => import('./components/Layout'))
+const StudentLayout = lazy(() => import('./components/StudentLayout'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Alunos = lazy(() => import('./pages/Alunos'))
+const Turmas = lazy(() => import('./pages/Turmas'))
+const Financeiro = lazy(() => import('./pages/Financeiro'))
+const Professor = lazy(() => import('./pages/Professor'))
+const Auditoria = lazy(() => import('./pages/Auditoria'))
+const ConfigDocs = lazy(() => import('./pages/ConfigDocs'))
+const ConfigAsaas = lazy(() => import('./pages/ConfigAsaas'))
+const Equipe = lazy(() => import('./pages/Equipe'))
+const Relatorios = lazy(() => import('./pages/Relatorios'))
+const LMSAdmin = lazy(() => import('./pages/LMSAdmin'))
+const AreaAluno = lazy(() => import('./pages/AreaAluno'))
+const LessonPlayer = lazy(() => import('./pages/LessonPlayer'))
+const ExamView = lazy(() => import('./pages/ExamView'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const MeuPerfil = lazy(() => import('./pages/MeuPerfil'))
+const OuvidoriaAdmin = lazy(() => import('./pages/OuvidoriaAdmin'))
+const TestimonialsAdmin = lazy(() => import('./pages/TestimonialsAdmin'))
+const LeadsAdmin = lazy(() => import('./pages/LeadsAdmin'))
+const AdminUsers = lazy(() => import('./pages/AdminUsers'))
+const Instrutores = lazy(() => import('./pages/Instrutores'))
+const Cursos = lazy(() => import('./pages/Cursos'))
+const Matriculas = lazy(() => import('./pages/Matriculas'))
+const Comunicados = lazy(() => import('./pages/Comunicados'))
+const Certificados = lazy(() => import('./pages/Certificados'))
 
 // Public Site Pages
 import Home from './pages/site/Home'
@@ -90,7 +93,35 @@ function App() {
       <EditProvider>
         <Router>
           <ScrollToTop />
-          <Routes>
+          <Suspense fallback={
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100vh',
+              fontFamily: 'sans-serif',
+              gap: '1rem',
+              backgroundColor: '#0f172a',
+              color: '#ffffff'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '4px solid rgba(255,255,255,0.1)',
+                borderTopColor: '#10b981',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <span>Carregando painel...</span>
+              <style>{`
+                @keyframes spin {
+                  to { transform: rotate(360deg); }
+                }
+              `}</style>
+            </div>
+          }>
+            <Routes>
             {/* ROTAS DE ACESSO - PRIORIDADE MÁXIMA */}
             <Route path="/webdesigner" element={<Login title="Acesso Webdesigner - Editor do Site" isWebdesigner={true} redirectTo="/" />} />
             <Route path="/login" element={<Login title="Portal Educacional" />} />
@@ -178,6 +209,7 @@ function App() {
             {/* Rota Pega-Tudo: Se não bater em nada, manda para o site principal */}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
+          </Suspense>
         </Router>
       </EditProvider>
     </AuthProvider>

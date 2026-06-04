@@ -104,9 +104,9 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
   const renderMedia = (url, style, customSettings) => {
     if (!url) return null;
     
-    // Só adiciona timestamp se NÃO for um link temporário (blob:)
+    // Só adiciona timestamp se NÃO for um link temporário (blob:) e se estiver em modo de edição
     const isBlob = url.startsWith('blob:');
-    const finalUrl = isBlob ? url : (url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`);
+    const finalUrl = (isBlob || !isEditing) ? url : (url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`);
     
     console.log(`[renderMedia] Renderizando SRC:`, finalUrl);
 
@@ -127,6 +127,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
           loop={shouldLoop} 
           playsInline 
           controls={showControls}
+          preload="auto"
         />
       );
     }

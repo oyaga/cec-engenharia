@@ -17,6 +17,30 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/asaas-production/, '')
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('jspdf')) {
+              return 'vendor-pdf';
+            }
+            if (id.includes('recharts')) {
+              return 'vendor-charts';
+            }
+            if (id.includes('@supabase')) {
+              return 'vendor-supabase';
+            }
+            if (id.includes('framer-motion')) {
+              return 'vendor-motion';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
   }
 })
 
