@@ -63,7 +63,26 @@ export default function Equipe() {
         salary: '',
         has_platform_access: true,
         password: '', // Senha provisória para quem tem acesso
-        is_active: true
+        is_active: true,
+        permissions: {
+            access_dashboard: true,
+            access_alunos: false,
+            access_matriculas: false,
+            access_leads: false,
+            access_turmas: false,
+            access_cursos: false,
+            access_financeiro: false,
+            access_relatorios: false,
+            access_instrutores: false,
+            access_certificados: false,
+            access_auditoria: false,
+            access_ouvidoria: false,
+            access_equipe: false,
+            access_lms: false,
+            access_comunicados: false,
+            access_config: false,
+            access_config_asaas: false
+        }
     })
     
     const [errorMsg, setErrorMsg] = useState('')
@@ -87,10 +106,10 @@ export default function Equipe() {
             const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
             setCurrentUserProfile(profile)
 
-            // 1. Tentar carregar da tabela staff
+            // 1. Tentar carregar da tabela staff com permissões
             const { data: staffData, error: staffError } = await supabase
                 .from('staff')
-                .select('*')
+                .select('*, users(permissions)')
                 .order('name', { ascending: true })
 
             if (staffError) throw staffError
@@ -181,6 +200,27 @@ export default function Equipe() {
     // Função de carregar dados para edição
     const handleEditStaff = (staff) => {
         setEditingStaffId(staff.id)
+        
+        const userPermissions = staff.users?.permissions || staff.permissions || {
+            access_dashboard: true,
+            access_alunos: false,
+            access_matriculas: false,
+            access_leads: false,
+            access_turmas: false,
+            access_cursos: false,
+            access_financeiro: false,
+            access_relatorios: false,
+            access_instrutores: false,
+            access_certificados: false,
+            access_auditoria: false,
+            access_ouvidoria: false,
+            access_equipe: false,
+            access_lms: false,
+            access_comunicados: false,
+            access_config: false,
+            access_config_asaas: false
+        }
+
         setFormData({
             name: staff.name || '',
             cpf: staff.cpf || '',
@@ -191,7 +231,8 @@ export default function Equipe() {
             salary: staff.salary || '',
             has_platform_access: staff.has_platform_access ?? true,
             password: '', // Deixa em branco para edição (não mexe na senha na edição)
-            is_active: staff.is_active ?? true
+            is_active: staff.is_active ?? true,
+            permissions: userPermissions
         })
         setShowModal(true)
     }
@@ -237,7 +278,11 @@ export default function Equipe() {
                                 role: formData.role,
                                 cpf: formData.cpf,
                                 phone: formData.phone,
-                                admission_date: formData.admission_date || null
+                                admission_date: formData.admission_date || null,
+                                permissions: {
+                                    has_erp_access: true,
+                                    ...formData.permissions
+                                }
                             })
                             .eq('id', targetStaff.user_id)
 
@@ -268,7 +313,7 @@ export default function Equipe() {
                                 role: formData.role,
                                 permissions: {
                                     has_erp_access: true,
-                                    manage_leads: true
+                                    ...formData.permissions
                                 }
                             }
                         }
@@ -289,7 +334,10 @@ export default function Equipe() {
                             phone: formData.phone,
                             admission_date: formData.admission_date || null,
                             is_active: true,
-                            permissions: { has_erp_access: true }
+                            permissions: {
+                                has_erp_access: true,
+                                ...formData.permissions
+                            }
                         }, { onConflict: 'id' })
 
                         if (dbUserError) console.warn('Erro ao inserir/atualizar na tabela users:', dbUserError.message)
@@ -378,7 +426,26 @@ export default function Equipe() {
             salary: '',
             has_platform_access: true,
             password: '',
-            is_active: true
+            is_active: true,
+            permissions: {
+                access_dashboard: true,
+                access_alunos: false,
+                access_matriculas: false,
+                access_leads: false,
+                access_turmas: false,
+                access_cursos: false,
+                access_financeiro: false,
+                access_relatorios: false,
+                access_instrutores: false,
+                access_certificados: false,
+                access_auditoria: false,
+                access_ouvidoria: false,
+                access_equipe: false,
+                access_lms: false,
+                access_comunicados: false,
+                access_config: false,
+                access_config_asaas: false
+            }
         })
         setEditingStaffId(null)
     }
@@ -1093,6 +1160,91 @@ export default function Equipe() {
                                             <input type="password" required={formData.has_platform_access && !editingStaffId} minLength={6} className="form-control" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Mínimo 6 caracteres" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                                         </div>
                                     )}
+
+                                    {/* SEÇÃO DE PERMISSÕES GRANULARES */}
+                                    <div style={{ 
+                                        padding: '1rem', 
+                                        backgroundColor: '#f8fafc', 
+                                        borderRadius: '8px', 
+                                        border: '1px solid var(--border-color)', 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        gap: '0.75rem' 
+                                    }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                            <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)' }}>Permissões de Módulos</span>
+                                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Escolha quais módulos o colaborador poderá acessar no painel.</span>
+                                        </div>
+                                        
+                                        <div style={{ 
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(2, 1fr)', 
+                                            gap: '0.5rem', 
+                                            maxHeight: '220px', 
+                                            overflowY: 'auto', 
+                                            paddingRight: '0.25rem',
+                                            marginTop: '0.25rem' 
+                                        }}>
+                                            {[
+                                                { key: 'access_dashboard', label: 'Painel / Dashboard' },
+                                                { key: 'access_alunos', label: 'Alunos' },
+                                                { key: 'access_matriculas', label: 'Matrículas' },
+                                                { key: 'access_leads', label: 'Leads de Contato' },
+                                                { key: 'access_turmas', label: 'Turmas' },
+                                                { key: 'access_cursos', label: 'Cursos' },
+                                                { key: 'access_financeiro', label: 'Financeiro' },
+                                                { key: 'access_relatorios', label: 'Relatórios' },
+                                                { key: 'access_instrutores', label: 'Instrutores (PR-127)' },
+                                                { key: 'access_certificados', label: 'Certificados' },
+                                                { key: 'access_auditoria', label: 'Auditoria' },
+                                                { key: 'access_ouvidoria', label: 'Ouvidoria' },
+                                                { key: 'access_equipe', label: 'Equipe / Funcionários' },
+                                                { key: 'access_lms', label: 'Plataforma EAD' },
+                                                { key: 'access_comunicados', label: 'Comunicados' },
+                                                { key: 'access_config', label: 'Configurações' },
+                                                { key: 'access_config_asaas', label: 'Config. Asaas' }
+                                            ].map(item => (
+                                                <label 
+                                                    key={item.key} 
+                                                    style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '0.4rem', 
+                                                        fontSize: '0.78rem', 
+                                                        fontWeight: '500', 
+                                                        color: '#334155',
+                                                        cursor: 'pointer',
+                                                        padding: '0.35rem 0.5rem',
+                                                        borderRadius: '6px',
+                                                        backgroundColor: '#ffffff',
+                                                        border: '1px solid #e2e8f0',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                    className="permission-item-hover"
+                                                >
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={formData.permissions?.[item.key] === true}
+                                                        onChange={e => setFormData({
+                                                            ...formData,
+                                                            permissions: {
+                                                                ...formData.permissions,
+                                                                [item.key]: e.target.checked
+                                                            }
+                                                        })}
+                                                        style={{ cursor: 'pointer' }}
+                                                    />
+                                                    <span>{item.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <style>{`
+                                            .permission-item-hover:hover {
+                                                background-color: #f1f5f9 !important;
+                                                border-color: #cbd5e1 !important;
+                                            }
+                                        `}</style>
+                                    </div>
                                 </div>
                             )}
 

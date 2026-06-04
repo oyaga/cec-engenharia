@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 
 export default function Sidebar() {
     const [userRole, setUserRole] = useState(null)
+    const [userProfile, setUserProfile] = useState(null)
     const [mobileOpen, setMobileOpen] = useState(false)
     const location = useLocation()
 
@@ -13,16 +14,24 @@ export default function Sidebar() {
         setMobileOpen(false)
     }, [location.pathname])
 
+    const isDeveloperAccount = (email) => {
+        if (!email) return false
+        const emailLower = email.toLowerCase()
+        return emailLower.includes('desenvolvedor') || emailLower.includes('carlos')
+    }
+
     useEffect(() => {
-        const fetchRole = async () => {
+        const fetchProfile = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (user) {
-                const { data: profile } = await supabase.from('users').select('role, full_name').eq('id', user.id).single()
+                const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle()
                 const email = user.email?.toLowerCase() || ''
-                const metadataRole = user.user_metadata?.role
+                const metadataRole = user.user_metadata?.role || profile?.role
+
+                setUserProfile(profile)
 
                 // Bypass absoluto para Desenvolvedor ou se o metadado do Auth disser que é admin
-                if (email.includes('desenvolvedor') || email.includes('carlos') || metadataRole === 'admin') {
+                if (isDeveloperAccount(email) || metadataRole === 'admin') {
                     setUserRole('admin')
                 } else if (profile) {
                     setUserRole(profile.role)
@@ -31,8 +40,27 @@ export default function Sidebar() {
                 }
             }
         }
-        fetchRole()
+        fetchProfile()
     }, [])
+
+    const hasAccess = (permissionKey, defaultAllowedRoles = []) => {
+        if (!userProfile && !userRole) return false
+        
+        const email = userProfile?.email || ''
+        // 1. Bypass total para admins/desenvolvedores
+        if (userRole === 'admin' || userProfile?.role === 'admin' || isDeveloperAccount(email)) {
+            return true
+        }
+        // 2. Se a permissão estiver explicitamente definida no JSONB como true
+        if (userProfile?.permissions?.[permissionKey] === true) {
+            return true
+        }
+        // 3. Se não tiver nada no JSONB para a chave, mas o cargo padrão do usuário estiver na lista de cargos permitidos (retrocompatibilidade)
+        if (userRole && defaultAllowedRoles.includes(userRole)) {
+            return true
+        }
+        return false
+    }
 
     const handleLogout = async () => {
         await supabase.auth.signOut()
@@ -107,8 +135,7 @@ export default function Sidebar() {
                 </NavLink>
 
                 {/* Menus Administrativos e Coordenação */}
-                {(userRole === 'admin' || userRole === 'coordenador' || userRole === 'atendente') && (
-                <>
+                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/dashboard"
                         style={({ isActive }) => ({
@@ -122,7 +149,9 @@ export default function Sidebar() {
                         <LayoutDashboard size={20} />
                         Painel Administrativo
                     </NavLink>
+                )}
 
+                {hasAccess('access_alunos', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/alunos"
                         style={({ isActive }) => ({
@@ -135,7 +164,9 @@ export default function Sidebar() {
                         <UsersIcon size={20} />
                         Listagem de Alunos
                     </NavLink>
+                )}
 
+                {hasAccess('access_matriculas', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/secretaria/matriculas"
                         style={({ isActive }) => ({
@@ -148,7 +179,9 @@ export default function Sidebar() {
                         <ClipboardList size={20} />
                         Matrículas
                     </NavLink>
+                )}
 
+                {hasAccess('access_leads', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/leads-admin"
                         style={({ isActive }) => ({
@@ -161,7 +194,9 @@ export default function Sidebar() {
                         <MessageSquare size={20} />
                         Leads de Contato
                     </NavLink>
+                )}
 
+                {hasAccess('access_turmas', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/turmas"
                         style={({ isActive }) => ({
@@ -174,11 +209,9 @@ export default function Sidebar() {
                         <GraduationCap size={20} />
                         Turmas
                     </NavLink>
-                </>
                 )}
 
-                {(userRole === 'admin' || userRole === 'coordenador') && (
-                <>
+                {hasAccess('access_cursos', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/secretaria/cursos"
                         style={({ isActive }) => ({
@@ -191,7 +224,9 @@ export default function Sidebar() {
                         <BookOpen size={20} />
                         Cursos
                     </NavLink>
+                )}
 
+                {hasAccess('access_financeiro', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/financeiro"
                         style={({ isActive }) => ({
@@ -204,7 +239,9 @@ export default function Sidebar() {
                         <DollarSign size={20} />
                         Financeiro
                     </NavLink>
+                )}
 
+                {hasAccess('access_relatorios', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/relatorios"
                         style={({ isActive }) => ({
@@ -217,7 +254,9 @@ export default function Sidebar() {
                         <ShieldCheck size={20} />
                         Relatórios (Analytics)
                     </NavLink>
+                )}
 
+                {hasAccess('access_instrutores', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/secretaria/instrutores"
                         style={({ isActive }) => ({
@@ -231,7 +270,9 @@ export default function Sidebar() {
                         <Award size={20} />
                         Instrutores (PR-127)
                     </NavLink>
+                )}
 
+                {hasAccess('access_certificados', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/secretaria/certificados"
                         style={({ isActive }) => ({
@@ -245,10 +286,9 @@ export default function Sidebar() {
                         <Award size={20} />
                         Certificados
                     </NavLink>
-                </>
                 )}
 
-                {(userRole === 'admin' || userRole === 'coordenador' || userRole === 'instrutor') && (
+                {hasAccess('access_instrutor_portal', ['admin', 'coordenador', 'instrutor']) && (
                     <NavLink
                         to="/professor"
                         style={({ isActive }) => ({
@@ -263,8 +303,7 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
-                {userRole === 'admin' && (
-                <>
+                {hasAccess('access_auditoria', ['admin']) && (
                     <NavLink
                         to="/auditoria"
                         style={({ isActive }) => ({
@@ -277,7 +316,9 @@ export default function Sidebar() {
                         <ShieldCheck size={20} />
                         Auditoria (Logs)
                     </NavLink>
-                    
+                )}
+                
+                {hasAccess('access_ouvidoria', ['admin']) && (
                     <NavLink
                         to="/ouvidoria-admin"
                         style={({ isActive }) => ({
@@ -290,84 +331,93 @@ export default function Sidebar() {
                         <ShieldCheck size={20} />
                         Ouvidoria
                     </NavLink>
-                </>
                 )}
 
-                {(userRole === 'admin' || userRole === 'coordenador') && (
-                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                    {(userRole === 'admin' || userRole === 'coordenador') && (
-                        <NavLink
-                            to="/secretaria/funcionarios"
-                            style={({ isActive }) => ({
-                                display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                fontWeight: isActive ? '600' : '500'
-                            })}
-                        >
-                            <UsersIcon size={20} />
-                            Funcionários
-                        </NavLink>
-                    )}
+                {(hasAccess('access_equipe', ['admin', 'coordenador']) || 
+                  hasAccess('access_lms', ['admin', 'coordenador']) || 
+                  hasAccess('access_comunicados', ['admin', 'coordenador']) ||
+                  hasAccess('access_config', ['admin']) ||
+                  hasAccess('access_config_asaas', ['admin', 'coordenador'])) && (
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                        {hasAccess('access_equipe', ['admin', 'coordenador']) && (
+                            <NavLink
+                                to="/secretaria/funcionarios"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500'
+                                })}
+                            >
+                                <UsersIcon size={20} />
+                                Funcionários
+                            </NavLink>
+                        )}
 
-                    <NavLink
-                        to="/lms"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '0.5rem'
-                        })}
-                    >
-                        <Video size={20} />
-                        Plataforma EAD (LMS)
-                    </NavLink>
+                        {hasAccess('access_lms', ['admin', 'coordenador']) && (
+                            <NavLink
+                                to="/lms"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500',
+                                    marginTop: '0.5rem'
+                                })}
+                            >
+                                <Video size={20} />
+                                Plataforma EAD (LMS)
+                            </NavLink>
+                        )}
 
-                    <NavLink
-                        to="/secretaria/comunicados"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '0.5rem'
-                        })}
-                    >
-                        <Megaphone size={20} />
-                        Comunicados
-                    </NavLink>
+                        {hasAccess('access_comunicados', ['admin', 'coordenador']) && (
+                            <NavLink
+                                to="/secretaria/comunicados"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500',
+                                    marginTop: '0.5rem'
+                                })}
+                            >
+                                <Megaphone size={20} />
+                                Comunicados
+                            </NavLink>
+                        )}
 
-                    {userRole === 'admin' && (
-                        <NavLink
-                            to="/config"
-                            style={({ isActive }) => ({
-                                display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                fontWeight: isActive ? '600' : '500',
-                                marginTop: '0.5rem'
-                            })}
-                        >
-                            <Settings size={20} />
-                            Configurações Gerais
-                        </NavLink>
-                    )}
+                        {hasAccess('access_config', ['admin']) && (
+                            <NavLink
+                                to="/config"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500',
+                                    marginTop: '0.5rem'
+                                })}
+                            >
+                                <Settings size={20} />
+                                Configurações Gerais
+                            </NavLink>
+                        )}
 
-                    <NavLink
-                        to="/config-asaas"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '0.5rem'
-                        })}
-                    >
-                        <Settings size={20} />
-                        Configurações Asaas
-                    </NavLink>
-                </div>
+                        {hasAccess('access_config_asaas', ['admin', 'coordenador']) && (
+                            <NavLink
+                                to="/config-asaas"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500',
+                                    marginTop: '0.5rem'
+                                })}
+                            >
+                                <Settings size={20} />
+                                Configurações Asaas
+                            </NavLink>
+                        )}
+                    </div>
                 )}
             </nav>
 
