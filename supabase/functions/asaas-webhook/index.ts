@@ -54,13 +54,25 @@ serve(async (req) => {
       let userId = authUser?.user?.id
       
       if (authError) {
-        // Se o usuário já existe (ex: comprou outro curso), tentamos buscar o ID dele
-        if (authError.message.includes('already registered')) {
+        // Se der erro de criação, tentamos ativamente obter o ID do usuário existente pelo email
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', enrollment.email)
+          .maybeSingle()
+        
+        if (dbUser) {
+          userId = dbUser.id
+        } else {
+          // Se não achou na tabela public.users, tenta buscar na lista do Auth
           const { data: existingUsers } = await supabase.auth.admin.listUsers()
           const foundUser = existingUsers?.users?.find(u => u.email === enrollment.email)
-          if (foundUser) userId = foundUser.id
-        } else {
-          throw authError
+          if (foundUser) {
+            userId = foundUser.id
+          } else {
+            // Se realmente não achou o ID do usuário em lugar nenhum, lança o erro original de criação
+            throw authError
+          }
         }
       }
 
