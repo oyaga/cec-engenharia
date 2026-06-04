@@ -279,8 +279,8 @@ export default function Equipe() {
                     if (authData?.user) {
                         createdUserId = authData.user.id
                         
-                        // Inserir na tabela users pública
-                        const { error: dbUserError } = await supabase.from('users').insert([{
+                        // Inserir/Atualizar na tabela users pública (upsert evita conflitos com a trigger auth)
+                        const { error: dbUserError } = await supabase.from('users').upsert({
                             id: createdUserId,
                             email: formData.email,
                             full_name: formData.name,
@@ -290,9 +290,9 @@ export default function Equipe() {
                             admission_date: formData.admission_date || null,
                             is_active: true,
                             permissions: { has_erp_access: true }
-                        }])
+                        }, { onConflict: 'id' })
 
-                        if (dbUserError) console.warn('Erro ao inserir na tabela users:', dbUserError.message)
+                        if (dbUserError) console.warn('Erro ao inserir/atualizar na tabela users:', dbUserError.message)
                     }
                 }
 

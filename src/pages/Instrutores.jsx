@@ -243,8 +243,8 @@ export default function Instrutores() {
             if (!authError && authData?.user) {
                 instructorUserId = authData.user.id
                 
-                // Salvar em public.users
-                await supabase.from('users').insert([{
+                // Salvar/Atualizar em public.users (upsert evita conflito com trigger auth)
+                await supabase.from('users').upsert({
                     id: instructorUserId,
                     email: prForm.email,
                     full_name: prForm.full_name,
@@ -253,7 +253,7 @@ export default function Instrutores() {
                     phone: prForm.phone,
                     is_active: true,
                     permissions: { has_erp_access: true }
-                }])
+                }, { onConflict: 'id' })
             }
 
             // 2. Salvar Habilitações em instructor_qualifications do Supabase
