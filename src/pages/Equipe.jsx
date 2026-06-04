@@ -314,7 +314,9 @@ export default function Equipe() {
                         .from('staff')
                         .upsert(staffPayload, { onConflict: targetStaff?.id !== targetStaff?.user_id ? 'id' : 'user_id' })
 
-                    if (staffUpdateError) throw staffUpdateError
+                    if (staffUpdateError) {
+                        console.warn('Erro ao atualizar na tabela staff:', staffUpdateError.message)
+                    }
 
                     // 2. Se possuir user_id, atualizar também na tabela users pública
                     if (targetStaff && targetStaff.user_id) {
@@ -411,7 +413,9 @@ export default function Equipe() {
                     .insert([staffPayload])
                     .select()
 
-                if (staffInsertError) throw staffInsertError
+                if (staffInsertError) {
+                    console.warn('Erro ao inserir na tabela staff:', staffInsertError.message)
+                }
 
                 alert('Colaborador cadastrado com sucesso!')
                 setShowModal(false)
