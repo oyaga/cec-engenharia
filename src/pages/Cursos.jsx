@@ -836,16 +836,7 @@ export default function Cursos() {
                                     />
                                 </div>
 
-                                <div>
-                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#94a3b8', marginBottom: '0.35rem' }}>⚙️ ID Produto Asaas (Sprint B)</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Preencher quando Asaas estiver configurado"
-                                        value={form.asaas_product_id}
-                                        onChange={e => setForm(prev => ({ ...prev, asaas_product_id: e.target.value }))}
-                                        style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px dashed #cbd5e1', outline: 'none', fontSize: '0.875rem', backgroundColor: '#fafafa' }}
-                                    />
-                                </div>
+
                             </div>
 
                             <div>
