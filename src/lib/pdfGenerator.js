@@ -318,7 +318,11 @@ function generateClassReportPDF(doc, classData) {
             yPos += 10
         }
 
-        doc.text(st.full_name || 'Desconhecido', 15, yPos)
+        let nameText = st.full_name || 'Desconhecido'
+        if (st.status === 'cancelada') {
+            nameText += ' (Cancelado)'
+        }
+        doc.text(nameText, 15, yPos)
         doc.text(st.cpf || 'Não Informado', 100, yPos)
 
         if (includeGrades) {
@@ -341,7 +345,7 @@ function generateClassReportPDF(doc, classData) {
         doc.text(faltas.toString(), 190, yPos)
 
         // Status Manual
-        doc.text(st.manual_signed ? 'Entregue' : 'Pendente', 230, yPos)
+        doc.text(st.status === 'cancelada' ? 'Cancelado' : (st.manual_signed ? 'Entregue' : 'Pendente'), 230, yPos)
 
         yPos += 10
         doc.setDrawColor(200)

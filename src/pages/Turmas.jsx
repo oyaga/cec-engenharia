@@ -646,7 +646,7 @@ export default function Turmas() {
         const { data, error } = await supabase
             .from('students')
             .select(`
-                id, full_name, cpf, manual_signed, has_lms_access, is_online_only,
+                id, full_name, cpf, manual_signed, has_lms_access, is_online_only, status,
                 attendance_records ( status ),
                 academic_records ( theoretical_grade, practical_grade, final_status )
             `)
@@ -875,21 +875,51 @@ export default function Turmas() {
                                 </thead>
                                 <tbody>
                                     {classStudents.map(st => (
-                                        <tr key={st.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                            <td style={{ padding: '0.75rem', fontWeight: 500 }}>{st.full_name}</td>
-                                            <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{st.cpf}</td>
-                                            <td style={{ padding: '0.75rem' }}>{st.manual_signed ? 'Sim' : 'Não'}</td>
-                                            <td style={{ padding: '0.75rem' }}>
-                                                <button 
-                                                    onClick={() => toggleStudentEad(st.id, st.has_lms_access)}
-                                                    className={`btn ${st.has_lms_access ? 'btn-success' : 'btn-secondary'}`}
-                                                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
-                                                >
-                                                    {st.has_lms_access ? 'Ativado' : 'Inativo'}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                         <tr key={st.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: st.status === 'cancelada' ? 0.65 : 1, backgroundColor: st.status === 'cancelada' ? '#FFF5F5' : 'transparent' }}>
+                                             <td style={{ padding: '0.75rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                 {st.full_name}
+                                                 {st.status === 'cancelada' && (
+                                                     <span style={{ 
+                                                         padding: '0.15rem 0.5rem', 
+                                                         borderRadius: '999px', 
+                                                         fontSize: '0.7rem', 
+                                                         fontWeight: 600, 
+                                                         backgroundColor: '#FEE2E2', 
+                                                         color: '#991B1B', 
+                                                         border: '1px solid #FCA5A5' 
+                                                     }}>
+                                                         Cancelado
+                                                     </span>
+                                                 )}
+                                             </td>
+                                             <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{st.cpf}</td>
+                                             <td style={{ padding: '0.75rem' }}>{st.manual_signed ? 'Sim' : 'Não'}</td>
+                                             <td style={{ padding: '0.75rem' }}>
+                                                 {st.status === 'cancelada' ? (
+                                                     <span style={{ 
+                                                         padding: '0.25rem 0.75rem', 
+                                                         fontSize: '0.75rem', 
+                                                         fontWeight: 600,
+                                                         color: '#dc2626', 
+                                                         backgroundColor: '#fee2e2',
+                                                         borderRadius: '6px',
+                                                         display: 'inline-block',
+                                                         border: '1px solid #fca5a5'
+                                                     }}>
+                                                         Bloqueado (Cancelado)
+                                                     </span>
+                                                 ) : (
+                                                     <button 
+                                                         onClick={() => toggleStudentEad(st.id, st.has_lms_access)}
+                                                         className={`btn ${st.has_lms_access ? 'btn-success' : 'btn-secondary'}`}
+                                                         style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                                                     >
+                                                         {st.has_lms_access ? 'Ativado' : 'Inativo'}
+                                                     </button>
+                                                 )}
+                                             </td>
+                                         </tr>
+                                     ))}
                                     {classStudents.length === 0 && (
                                         <tr><td colSpan="3" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum aluno matriculado nesta turma ainda.</td></tr>
                                     )}
