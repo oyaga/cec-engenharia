@@ -410,8 +410,8 @@ export default function Turmas() {
         const newClass = {
             name: formData.name,
             course_name: formData.course_name,
-            start_date: (formData.is_immediate_start || !formData.start_date) ? null : formData.start_date,
-            predicted_end_date: (formData.is_immediate_start || !formData.predicted_end_date) ? null : formData.predicted_end_date,
+            start_date: formData.is_immediate_start ? null : (formData.is_past_class ? formData.actual_start_date : (formData.start_date || null)),
+            predicted_end_date: formData.is_immediate_start ? null : (formData.is_past_class ? formData.actual_end_date : (formData.predicted_end_date || null)),
             schedule: formData.schedule,
             duration: formData.duration,
             lms_course_id: finalLmsId,
@@ -1151,13 +1151,13 @@ export default function Turmas() {
                         <label className="form-label">
                             {formData.schedule === 'Aula prática - Final de semana' ? 'Data da Aula Prática (Sábado ou Domingo)' : 'Data de Início Programado'}
                         </label>
-                        <input type="date" className="form-control" name="start_date" value={formData.start_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
+                        <input type="date" className="form-control" name="start_date" value={formData.start_date} onChange={handleFormChange} disabled={formData.is_immediate_start || formData.is_past_class} />
                     </div>
                     <div className="form-group">
                         <label className="form-label">
                             {formData.schedule === 'Aula prática - Final de semana' ? 'Previsão de Término (Sábado ou Domingo)' : 'Previsão de Término'}
                         </label>
-                        <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
+                        <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start || formData.is_past_class} />
                     </div>
 
                     {formData.is_past_class && (
