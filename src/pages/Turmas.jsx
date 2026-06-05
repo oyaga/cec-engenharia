@@ -86,14 +86,14 @@ export default function Turmas() {
             if (data) {
                 // Filtrar para aceitar apenas instrutores com habilitação ativa
                 const filtered = data.filter(u => activeIds.includes(u.id));
-                
+
                 if (filtered.length > 0) {
                     setAvailableInstructors(filtered);
                 } else {
                     // Fallback reativo amigável com indicação visual para auditoria de testes
-                    setAvailableInstructors(data.map(u => ({ 
-                        ...u, 
-                        full_name: `⚠️ ${u.full_name} (Sem Habilitação Ativa para ${requiredMethod})` 
+                    setAvailableInstructors(data.map(u => ({
+                        ...u,
+                        full_name: `⚠️ ${u.full_name} (Sem Habilitação Ativa para ${requiredMethod})`
                     })));
                 }
             }
@@ -183,7 +183,7 @@ export default function Turmas() {
 
     const generateNextClassName = (existingClasses) => {
         const yearSuffix = new Date().getFullYear().toString().slice(-2) // Ex: "26" p/ 2026
-        
+
         // Filtrar apenas as turmas que seguem o padrão TXX/YY para o ano atual
         const currentYearClasses = existingClasses.filter(c => {
             const parts = c.name.split('/')
@@ -202,7 +202,7 @@ export default function Turmas() {
 
         const maxNumber = numbers.length > 0 ? Math.max(...numbers) : 0
         const nextNumber = (maxNumber + 1).toString().padStart(2, '0')
-        
+
         return `T${nextNumber}/${yearSuffix}`
     }
 
@@ -264,7 +264,7 @@ export default function Turmas() {
             .select('role')
             .eq('id', session.user.id)
             .single()
-        
+
         if (!error && data) {
             setUserProfile(data)
         }
@@ -399,7 +399,7 @@ export default function Turmas() {
                 }])
                 .select()
                 .single()
-            
+
             if (courseError) {
                 alert('Erro ao criar curso EAD: ' + courseError.message)
                 return
@@ -410,8 +410,8 @@ export default function Turmas() {
         const newClass = {
             name: formData.name,
             course_name: formData.course_name,
-            start_date: formData.is_immediate_start ? null : (formData.is_past_class ? formData.actual_start_date : (formData.start_date || null)),
-            predicted_end_date: formData.is_immediate_start ? null : (formData.is_past_class ? formData.actual_end_date : (formData.predicted_end_date || null)),
+            start_date: (formData.is_immediate_start || !formData.start_date) ? null : formData.start_date,
+            predicted_end_date: (formData.is_immediate_start || !formData.predicted_end_date) ? null : formData.predicted_end_date,
             schedule: formData.schedule,
             duration: formData.duration,
             lms_course_id: finalLmsId,
@@ -442,7 +442,7 @@ export default function Turmas() {
             } else {
                 alert('Turma criada com sucesso na Nuvem!')
                 setView('list')
-                setFormData({ 
+                setFormData({
                     name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '',
                     price_cash: '', price_card_10x: '', price_installments_3x: '',
                     is_immediate_start: false,
@@ -486,10 +486,10 @@ export default function Turmas() {
     }
 
     const handleNewClass = () => {
-        setFormData({ 
-            name: generateNextClassName(classes), 
-            course_name: 'Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)', 
-            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '136', 
+        setFormData({
+            name: generateNextClassName(classes),
+            course_name: 'Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)',
+            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '136',
             lms_course_id: '',
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
@@ -528,7 +528,7 @@ export default function Turmas() {
                 if (!window.confirm(`Esta turma possui ${linkedStudents.length} aluno(s) com matrícula cancelada vinculados a ela.\n\nAo excluir a turma, esses históricos serão desvinculados automaticamente (a turma deles ficará em branco).\n\nDeseja prosseguir com a exclusão da turma?`)) {
                     return
                 }
-                
+
                 // Desvincular alunos antes de deletar a turma para evitar violação de FK
                 const { error: updateError } = await supabase
                     .from('students')
@@ -566,8 +566,8 @@ export default function Turmas() {
         setView('list')
         setIsEditing(false)
         setEditingId(null)
-        setFormData({ 
-            name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '', 
+        setFormData({
+            name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '',
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
             address: '',
@@ -627,7 +627,7 @@ export default function Turmas() {
             .from('students')
             .update({ has_lms_access: !currentStatus })
             .eq('id', studentId)
-        
+
         if (error) alert('Erro ao atualizar acesso EAD')
         else {
             setClassStudents(prev => prev.map(s => s.id === studentId ? { ...s, has_lms_access: !currentStatus } : s))
@@ -721,139 +721,139 @@ export default function Turmas() {
                     {classes
                         .filter(t => showPast || !t.actualEndDate)
                         .map(turma => (
-                        <div key={turma.id} className="card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>{turma.name}</h3>
-                                    <p className="text-secondary" style={{ fontSize: '0.875rem' }}>Curso: {turma.course}</p>
+                            <div key={turma.id} className="card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>{turma.name}</h3>
+                                        <p className="text-secondary" style={{ fontSize: '0.875rem' }}>Curso: {turma.course}</p>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                                        <span style={{
+                                            backgroundColor: '#DBEAFE', color: '#1E40AF', padding: '0.25rem 0.75rem',
+                                            borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
+                                            display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                        }}>
+                                            <Users size={14} /> {turma.studentsCount} Alunos
+                                        </span>
+                                        {(userProfile?.role === 'admin' || userProfile?.role === 'coordenador' || userProfile?.role === 'atendente') && (
+                                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                                <button className="btn btn-secondary" style={{ padding: '0.25rem', height: 'auto' }} onClick={() => handleEditClass(turma)} title="Editar Turma">
+                                                    <Edit size={14} />
+                                                </button>
+                                                <button className="btn btn-secondary" style={{ padding: '0.25rem', height: 'auto', color: 'var(--danger)' }} onClick={() => handleDeleteClass(turma.id, turma.name)} title="Excluir Turma">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                                    <span style={{
-                                        backgroundColor: '#DBEAFE', color: '#1E40AF', padding: '0.25rem 0.75rem',
-                                        borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
-                                        display: 'flex', alignItems: 'center', gap: '0.5rem'
-                                    }}>
-                                        <Users size={14} /> {turma.studentsCount} Alunos
-                                    </span>
-                                    {(userProfile?.role === 'admin' || userProfile?.role === 'coordenador' || userProfile?.role === 'atendente') && (
-                                        <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                            <button className="btn btn-secondary" style={{ padding: '0.25rem', height: 'auto' }} onClick={() => handleEditClass(turma)} title="Editar Turma">
-                                                <Edit size={14} />
+
+                                {turma.duration && (
+                                    <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                                        {turma.isImmediateStart ? (
+                                            <div style={{ flex: 1, textAlign: 'center', padding: '0.5rem', backgroundColor: '#ECFDF5', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                                                <p style={{ fontWeight: 600, color: '#065F46', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                                    <Clock size={16} /> Início Imediato (Sem datas fixas)
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <CalendarIcon size={16} className="text-primary" />
+                                                    <div>
+                                                        <p style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Início (Previsto vs Real)</p>
+                                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                                            <p className="text-muted" style={{ textDecoration: turma.actualStartDate ? 'line-through' : 'none' }}>
+                                                                {turma.startDate ? new Date(turma.startDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                                                            </p>
+                                                            {turma.actualStartDate && (
+                                                                <span style={{ color: '#065F46', fontWeight: 600 }}>{new Date(turma.actualStartDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <Clock size={16} className={turma.actualEndDate ? "text-success" : "text-warning"} />
+                                                    <div>
+                                                        <p style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Término ({turma.actualEndDate ? 'Real / Fechado' : 'Previsão'})</p>
+                                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                                            <p className="text-muted" style={{ textDecoration: turma.actualEndDate ? 'line-through' : 'none' }}>
+                                                                {turma.predictedEndDate ? new Date(turma.predictedEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                                                            </p>
+                                                            {turma.actualEndDate && (
+                                                                <span style={{ color: '#065F46', fontWeight: 600 }}>{new Date(turma.actualEndDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {turma.duration && !turma.actualStartDate && (
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button className="btn" style={{ flex: 3, justifyContent: 'center', backgroundColor: '#ECFDF5', color: '#065F46', borderColor: '#A7F3D0' }} onClick={() => handleStartClass(turma.id, turma.name)}>
+                                                <CalendarIcon size={16} /> Marcar Início Oficial
                                             </button>
-                                            <button className="btn btn-secondary" style={{ padding: '0.25rem', height: 'auto', color: 'var(--danger)' }} onClick={() => handleDeleteClass(turma.id, turma.name)} title="Excluir Turma">
-                                                <Trash2 size={14} />
-                                            </button>
+                                            {(turma.startDate && new Date(turma.startDate + 'T00:00:00') < new Date().setHours(0, 0, 0, 0)) && (
+                                                <button className="btn" title="Adiar Início" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }} onClick={() => handleDelayClass(turma.id, turma.name)}>
+                                                    <Clock size={16} /> Adiar
+                                                </button>
+                                            )}
                                         </div>
                                     )}
-                                </div>
-                            </div>
-
-                            {turma.duration && (
-                            <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
-                                {turma.isImmediateStart ? (
-                                    <div style={{ flex: 1, textAlign: 'center', padding: '0.5rem', backgroundColor: '#ECFDF5', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
-                                        <p style={{ fontWeight: 600, color: '#065F46', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                            <Clock size={16} /> Início Imediato (Sem datas fixas)
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <CalendarIcon size={16} className="text-primary" />
-                                            <div>
-                                                <p style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Início (Previsto vs Real)</p>
-                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                                                    <p className="text-muted" style={{ textDecoration: turma.actualStartDate ? 'line-through' : 'none' }}>
-                                                        {turma.startDate ? new Date(turma.startDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                                                    </p>
-                                                    {turma.actualStartDate && (
-                                                        <span style={{ color: '#065F46', fontWeight: 600 }}>{new Date(turma.actualStartDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <Clock size={16} className={turma.actualEndDate ? "text-success" : "text-warning"} />
-                                            <div>
-                                                <p style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Término ({turma.actualEndDate ? 'Real / Fechado' : 'Previsão'})</p>
-                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                                                    <p className="text-muted" style={{ textDecoration: turma.actualEndDate ? 'line-through' : 'none' }}>
-                                                        {turma.predictedEndDate ? new Date(turma.predictedEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                                                    </p>
-                                                    {turma.actualEndDate && (
-                                                        <span style={{ color: '#065F46', fontWeight: 600 }}>{new Date(turma.actualEndDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            )}
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {turma.duration && !turma.actualStartDate && (
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <button className="btn" style={{ flex: 3, justifyContent: 'center', backgroundColor: '#ECFDF5', color: '#065F46', borderColor: '#A7F3D0' }} onClick={() => handleStartClass(turma.id, turma.name)}>
-                                            <CalendarIcon size={16} /> Marcar Início Oficial
+                                    {(turma.actualStartDate && !turma.actualEndDate) && (
+                                        <button className="btn" style={{ justifyContent: 'center', backgroundColor: '#FEF2F2', color: '#991B1B', borderColor: '#FECACA' }} onClick={() => handleEndClass(turma.id, turma.name)}>
+                                            <Clock size={16} /> Encerrar e Fechar Turma
                                         </button>
-                                        {(turma.startDate && new Date(turma.startDate + 'T00:00:00') < new Date().setHours(0,0,0,0)) && (
-                                            <button className="btn" title="Adiar Início" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }} onClick={() => handleDelayClass(turma.id, turma.name)}>
-                                                <Clock size={16} /> Adiar
-                                            </button>
-                                        )}
+                                    )}
+                                    {turma.actualEndDate && (
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            {turma.evaluationUrl ? (
+                                                <a href={turma.evaluationUrl} target="_blank" rel="noreferrer" className="btn" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F0FDF4', color: '#166534', borderColor: '#BBF7D0', textDecoration: 'none', fontSize: '0.85rem' }}>
+                                                    <FileText size={16} /> Ver Avaliação
+                                                </a>
+                                            ) : (
+                                                <label className="btn" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F8FAFC', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                    <UploadCloud size={16} /> Anexar Avaliação (PDF)
+                                                    <input type="file" hidden accept=".pdf" onChange={(e) => handleEvalUpload(turma.id, e.target.files[0])} />
+                                                </label>
+                                            )}
+                                        </div>
+                                    )}
+                                    {turma.instructors && turma.instructors.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                                            {turma.instructors.map(inst => (
+                                                <span key={inst.id} style={{
+                                                    fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                                                    borderRadius: '999px',
+                                                    backgroundColor: inst.role === 'titular' ? '#ECFDF5' : '#FEF3C7',
+                                                    color: inst.role === 'titular' ? '#065F46' : '#92400E',
+                                                    border: `1px solid ${inst.role === 'titular' ? '#A7F3D0' : '#FDE68A'}`,
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                                }}>
+                                                    <GraduationCap size={11} />
+                                                    {inst.user?.full_name} ({inst.role})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleOpenClassStudents(turma)}>
+                                            <Users size={16} /> Alunos
+                                        </button>
+                                        <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
+                                            <LogIn size={16} /> Fichário
+                                        </button>
+                                        <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F0F9FF', color: '#0369A1', borderColor: '#BAE6FD' }} onClick={() => openInstructorModal(turma)}>
+                                            <GraduationCap size={16} /> Instrutores
+                                        </button>
                                     </div>
-                                )}
-                                 {(turma.actualStartDate && !turma.actualEndDate) && (
-                                    <button className="btn" style={{ justifyContent: 'center', backgroundColor: '#FEF2F2', color: '#991B1B', borderColor: '#FECACA' }} onClick={() => handleEndClass(turma.id, turma.name)}>
-                                        <Clock size={16} /> Encerrar e Fechar Turma
-                                    </button>
-                                )}
-                                {turma.actualEndDate && (
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        {turma.evaluationUrl ? (
-                                            <a href={turma.evaluationUrl} target="_blank" rel="noreferrer" className="btn" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F0FDF4', color: '#166534', borderColor: '#BBF7D0', textDecoration: 'none', fontSize: '0.85rem' }}>
-                                                <FileText size={16} /> Ver Avaliação
-                                            </a>
-                                        ) : (
-                                            <label className="btn" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F8FAFC', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem' }}>
-                                                <UploadCloud size={16} /> Anexar Avaliação (PDF)
-                                                <input type="file" hidden accept=".pdf" onChange={(e) => handleEvalUpload(turma.id, e.target.files[0])} />
-                                            </label>
-                                        )}
-                                    </div>
-                                )}
-                                {turma.instructors && turma.instructors.length > 0 && (
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                                        {turma.instructors.map(inst => (
-                                            <span key={inst.id} style={{
-                                                fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-                                                borderRadius: '999px',
-                                                backgroundColor: inst.role === 'titular' ? '#ECFDF5' : '#FEF3C7',
-                                                color: inst.role === 'titular' ? '#065F46' : '#92400E',
-                                                border: `1px solid ${inst.role === 'titular' ? '#A7F3D0' : '#FDE68A'}`,
-                                                display: 'flex', alignItems: 'center', gap: '0.3rem'
-                                            }}>
-                                                <GraduationCap size={11} />
-                                                {inst.user?.full_name} ({inst.role})
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                    <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleOpenClassStudents(turma)}>
-                                        <Users size={16} /> Alunos
-                                    </button>
-                                    <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
-                                        <LogIn size={16} /> Fichário
-                                    </button>
-                                    <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center', backgroundColor: '#F0F9FF', color: '#0369A1', borderColor: '#BAE6FD' }} onClick={() => openInstructorModal(turma)}>
-                                        <GraduationCap size={16} /> Instrutores
-                                    </button>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
 
                     <div className="card" onClick={handleNewClass} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '2px dashed var(--border-color)', color: 'var(--text-muted)', cursor: 'pointer' }}>
                         <BookOpen size={48} style={{ opacity: 0.5, marginBottom: '1rem' }} />
@@ -902,51 +902,51 @@ export default function Turmas() {
                                 </thead>
                                 <tbody>
                                     {classStudents.map(st => (
-                                         <tr key={st.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: st.status === 'cancelada' ? 0.65 : 1, backgroundColor: st.status === 'cancelada' ? '#FFF5F5' : 'transparent' }}>
-                                             <td style={{ padding: '0.75rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                 {st.full_name}
-                                                 {st.status === 'cancelada' && (
-                                                     <span style={{ 
-                                                         padding: '0.15rem 0.5rem', 
-                                                         borderRadius: '999px', 
-                                                         fontSize: '0.7rem', 
-                                                         fontWeight: 600, 
-                                                         backgroundColor: '#FEE2E2', 
-                                                         color: '#991B1B', 
-                                                         border: '1px solid #FCA5A5' 
-                                                     }}>
-                                                         Cancelado
-                                                     </span>
-                                                 )}
-                                             </td>
-                                             <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{st.cpf}</td>
-                                             <td style={{ padding: '0.75rem' }}>{st.manual_signed ? 'Sim' : 'Não'}</td>
-                                             <td style={{ padding: '0.75rem' }}>
-                                                 {st.status === 'cancelada' ? (
-                                                     <span style={{ 
-                                                         padding: '0.25rem 0.75rem', 
-                                                         fontSize: '0.75rem', 
-                                                         fontWeight: 600,
-                                                         color: '#dc2626', 
-                                                         backgroundColor: '#fee2e2',
-                                                         borderRadius: '6px',
-                                                         display: 'inline-block',
-                                                         border: '1px solid #fca5a5'
-                                                     }}>
-                                                         Bloqueado (Cancelado)
-                                                     </span>
-                                                 ) : (
-                                                     <button 
-                                                         onClick={() => toggleStudentEad(st.id, st.has_lms_access)}
-                                                         className={`btn ${st.has_lms_access ? 'btn-success' : 'btn-secondary'}`}
-                                                         style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
-                                                     >
-                                                         {st.has_lms_access ? 'Ativado' : 'Inativo'}
-                                                     </button>
-                                                 )}
-                                             </td>
-                                         </tr>
-                                     ))}
+                                        <tr key={st.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: st.status === 'cancelada' ? 0.65 : 1, backgroundColor: st.status === 'cancelada' ? '#FFF5F5' : 'transparent' }}>
+                                            <td style={{ padding: '0.75rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                {st.full_name}
+                                                {st.status === 'cancelada' && (
+                                                    <span style={{
+                                                        padding: '0.15rem 0.5rem',
+                                                        borderRadius: '999px',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 600,
+                                                        backgroundColor: '#FEE2E2',
+                                                        color: '#991B1B',
+                                                        border: '1px solid #FCA5A5'
+                                                    }}>
+                                                        Cancelado
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{st.cpf}</td>
+                                            <td style={{ padding: '0.75rem' }}>{st.manual_signed ? 'Sim' : 'Não'}</td>
+                                            <td style={{ padding: '0.75rem' }}>
+                                                {st.status === 'cancelada' ? (
+                                                    <span style={{
+                                                        padding: '0.25rem 0.75rem',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 600,
+                                                        color: '#dc2626',
+                                                        backgroundColor: '#fee2e2',
+                                                        borderRadius: '6px',
+                                                        display: 'inline-block',
+                                                        border: '1px solid #fca5a5'
+                                                    }}>
+                                                        Bloqueado (Cancelado)
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => toggleStudentEad(st.id, st.has_lms_access)}
+                                                        className={`btn ${st.has_lms_access ? 'btn-success' : 'btn-secondary'}`}
+                                                        style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                                                    >
+                                                        {st.has_lms_access ? 'Ativado' : 'Inativo'}
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
                                     {classStudents.length === 0 && (
                                         <tr><td colSpan="3" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum aluno matriculado nesta turma ainda.</td></tr>
                                     )}
@@ -1075,12 +1075,12 @@ export default function Turmas() {
                     </div>
                     <div className="form-group">
                         <label className="form-label">Nome do Curso / Treinamento</label>
-                        <input 
-                            list="course-options" 
-                            className="form-control" 
-                            name="course_name" 
-                            value={formData.course_name} 
-                            onChange={handleFormChange} 
+                        <input
+                            list="course-options"
+                            className="form-control"
+                            name="course_name"
+                            value={formData.course_name}
+                            onChange={handleFormChange}
                             placeholder="Digite ou selecione o curso"
                         />
                         <datalist id="course-options">
@@ -1100,11 +1100,11 @@ export default function Turmas() {
                     </div>
                     <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '1.5rem' }}>
                         <label className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                            <input 
-                                type="checkbox" 
-                                name="is_immediate_start" 
-                                checked={formData.is_immediate_start} 
-                                onChange={handleFormChange} 
+                            <input
+                                type="checkbox"
+                                name="is_immediate_start"
+                                checked={formData.is_immediate_start}
+                                onChange={handleFormChange}
                                 style={{ width: '1.25rem', height: '1.25rem' }}
                             />
                             Turma de Início Imediato?
@@ -1114,11 +1114,11 @@ export default function Turmas() {
 
                     <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '1.5rem' }}>
                         <label className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                            <input 
-                                type="checkbox" 
-                                name="is_past_class" 
-                                checked={formData.is_past_class} 
-                                onChange={handleFormChange} 
+                            <input
+                                type="checkbox"
+                                name="is_past_class"
+                                checked={formData.is_past_class}
+                                onChange={handleFormChange}
                                 style={{ width: '1.25rem', height: '1.25rem' }}
                             />
                             Esta turma já aconteceu (Histórica/Passada)?
@@ -1135,11 +1135,11 @@ export default function Turmas() {
                             </select>
                             {!formData.lms_course_id && (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap', backgroundColor: '#F0F9FF', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-                                    <input 
-                                        type="checkbox" 
-                                        name="create_lms_integration" 
-                                        checked={formData.create_lms_integration} 
-                                        onChange={handleFormChange} 
+                                    <input
+                                        type="checkbox"
+                                        name="create_lms_integration"
+                                        checked={formData.create_lms_integration}
+                                        onChange={handleFormChange}
                                     />
                                     Criar Curso EAD Automático?
                                 </label>
@@ -1151,13 +1151,13 @@ export default function Turmas() {
                         <label className="form-label">
                             {formData.schedule === 'Aula prática - Final de semana' ? 'Data da Aula Prática (Sábado ou Domingo)' : 'Data de Início Programado'}
                         </label>
-                        <input type="date" className="form-control" name="start_date" value={formData.start_date} onChange={handleFormChange} disabled={formData.is_immediate_start || formData.is_past_class} />
+                        <input type="date" className="form-control" name="start_date" value={formData.start_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
                     </div>
                     <div className="form-group">
                         <label className="form-label">
                             {formData.schedule === 'Aula prática - Final de semana' ? 'Previsão de Término (Sábado ou Domingo)' : 'Previsão de Término'}
                         </label>
-                        <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start || formData.is_past_class} />
+                        <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
                     </div>
 
                     {formData.is_past_class && (
@@ -1189,25 +1189,25 @@ export default function Turmas() {
                     <div className="form-group"><label className="form-label">Carga Horária (Duração)</label><input type="text" className="form-control" name="duration" value={formData.duration} onChange={handleFormChange} placeholder="Ex: 80 horas" /></div>
                     <div className="form-group" style={{ gridColumn: 'span 2' }}>
                         <label className="form-label">Endereço da Aula Prática (Sede ou Local Externo)</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            name="address" 
-                            value={formData.address} 
-                            onChange={handleFormChange} 
-                            placeholder="Ex: Sede C&C - Rio de Janeiro/RJ ou local externo" 
+                        <input
+                            type="text"
+                            className="form-control"
+                            name="address"
+                            value={formData.address}
+                            onChange={handleFormChange}
+                            placeholder="Ex: Sede C&C - Rio de Janeiro/RJ ou local externo"
                         />
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Deixe em branco para usar o endereço padrão (Sede C&C - Rio de Janeiro/RJ).</span>
                     </div>
                     <div className="form-group">
                         <label className="form-label">Preço À Vista (R$)</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            name="price_cash" 
-                            value={formData.price_cash} 
-                            onChange={handleFormChange} 
-                            placeholder="Ex: 3300.00" 
+                        <input
+                            type="text"
+                            className="form-control"
+                            name="price_cash"
+                            value={formData.price_cash}
+                            onChange={handleFormChange}
+                            placeholder="Ex: 3300.00"
                             onKeyDown={(e) => {
                                 if (['e', 'E', '+', '-', '*'].includes(e.key)) e.preventDefault();
                             }}
@@ -1215,13 +1215,13 @@ export default function Turmas() {
                     </div>
                     <div className="form-group">
                         <label className="form-label">Preço Cartão (10x s/ juros)</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            name="price_card_10x" 
-                            value={formData.price_card_10x} 
-                            onChange={handleFormChange} 
-                            placeholder="Ex: 3800.00" 
+                        <input
+                            type="text"
+                            className="form-control"
+                            name="price_card_10x"
+                            value={formData.price_card_10x}
+                            onChange={handleFormChange}
+                            placeholder="Ex: 3800.00"
                             onKeyDown={(e) => {
                                 if (['e', 'E', '+', '-', '*'].includes(e.key)) e.preventDefault();
                             }}
@@ -1229,13 +1229,13 @@ export default function Turmas() {
                     </div>
                     <div className="form-group">
                         <label className="form-label">Preço Boleto (3x)</label>
-                        <input 
-                            type="text" 
-                            className="form-control" 
-                            name="price_installments_3x" 
-                            value={formData.price_installments_3x} 
-                            onChange={handleFormChange} 
-                            placeholder="Ex: 3750.00" 
+                        <input
+                            type="text"
+                            className="form-control"
+                            name="price_installments_3x"
+                            value={formData.price_installments_3x}
+                            onChange={handleFormChange}
+                            placeholder="Ex: 3750.00"
                             onKeyDown={(e) => {
                                 if (['e', 'E', '+', '-', '*'].includes(e.key)) e.preventDefault();
                             }}
@@ -1257,11 +1257,11 @@ export default function Turmas() {
                         <label className="form-label">
                             {formData.instructor_payment_type === 'fixed' ? 'Valor do Pagamento (R$)' : 'Percentual de Rateio (%)'}
                         </label>
-                        <input 
-                            type="number" 
-                            className="form-control" 
-                            name="instructor_payment_value" 
-                            value={formData.instructor_payment_value} 
+                        <input
+                            type="number"
+                            className="form-control"
+                            name="instructor_payment_value"
+                            value={formData.instructor_payment_value}
                             onChange={handleFormChange}
                             placeholder={formData.instructor_payment_type === 'fixed' ? "Ex: 1500" : "Ex: 50"}
                         />
@@ -1288,9 +1288,9 @@ export default function Turmas() {
                         <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>{dateModalConfig.title}</h3>
                         <div className="form-group">
                             <label className="form-label">{dateModalConfig.label}</label>
-                            <input 
-                                type="date" 
-                                className="form-control" 
+                            <input
+                                type="date"
+                                className="form-control"
                                 value={modalDateValue}
                                 onChange={e => setModalDateValue(e.target.value)}
                             />

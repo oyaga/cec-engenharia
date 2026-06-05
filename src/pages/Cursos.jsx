@@ -210,6 +210,14 @@ export default function Cursos() {
         setSaving(true)
         setErrorMsg('')
 
+        // Calcula o default_value automaticamente baseando-se nos preços detalhados
+        const calculatedDefaultValue = parseFloat(form.price_pix) || 
+                                     parseFloat(form.price_card) || 
+                                     parseFloat(form.price_boleto) || 
+                                     parseFloat(form.price_financing) || 
+                                     parseFloat(form.default_value) || 
+                                     0.0
+
         try {
             // Mapeamento padrão seguro para o Supabase
             const payload = {
@@ -225,7 +233,7 @@ export default function Cursos() {
                 // Update
                 if (selectedCourse.id.toString().startsWith('mock-')) {
                     // Atualizar apenas na memória local para fins de teste em mocks
-                    const updated = courses.map(c => c.id === selectedCourse.id ? { ...c, ...form } : c)
+                    const updated = courses.map(c => c.id === selectedCourse.id ? { ...c, ...form, default_value: calculatedDefaultValue } : c)
                     setCourses(updated)
                 } else {
                     // Update Supabase
@@ -237,7 +245,7 @@ export default function Cursos() {
                             practical_hours: parseFloat(form.practical_hours) || 0,
                             min_attendance: parseFloat(form.min_attendance) || 75,
                             min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: parseFloat(form.default_value) || 0.0,
+                            default_value: calculatedDefaultValue,
                             max_instructors: parseInt(form.max_instructors) || 8,
                             status: form.status,
                             price_card: parseFloat(form.price_card) || null,
@@ -256,7 +264,10 @@ export default function Cursos() {
                         console.warn('Salvando com fallback padrão seguro (colunas extras ausentes)...')
                         const { error: fallbackErr } = await supabase
                             .from('lms_courses')
-                            .update(payload)
+                            .update({
+                                ...payload,
+                                default_value: calculatedDefaultValue
+                            })
                             .eq('id', selectedCourse.id)
                         
                         if (fallbackErr) throw fallbackErr
@@ -268,7 +279,8 @@ export default function Cursos() {
                     // Inserir apenas na memória local para ambiente mock
                     const mockNew = {
                         id: 'mock-' + Date.now(),
-                        ...form
+                        ...form,
+                        default_value: calculatedDefaultValue
                     }
                     setCourses([mockNew, ...courses])
                 } else {
@@ -281,7 +293,7 @@ export default function Cursos() {
                             practical_hours: parseFloat(form.practical_hours) || 0,
                             min_attendance: parseFloat(form.min_attendance) || 75,
                             min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: parseFloat(form.default_value) || 0.0,
+                            default_value: calculatedDefaultValue,
                             max_instructors: parseInt(form.max_instructors) || 8,
                             status: form.status,
                             price_card: parseFloat(form.price_card) || null,
@@ -299,7 +311,10 @@ export default function Cursos() {
                         console.warn('Criando com fallback padrão seguro (colunas extras ausentes)...')
                         const { error: fallbackErr } = await supabase
                             .from('lms_courses')
-                            .insert([payload])
+                            .insert([{
+                                ...payload,
+                                default_value: calculatedDefaultValue
+                            }])
                         
                         if (fallbackErr) throw fallbackErr
                     }
@@ -671,21 +686,7 @@ export default function Cursos() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Valor Padrão (R$) *</label>
-                                    <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
-                                        <input 
-                                            type="number" 
-                                            step="0.01"
-                                            value={form.default_value}
-                                            onChange={e => setForm(prev => ({ ...prev, default_value: parseFloat(e.target.value) || 0 }))}
-                                            required
-                                            style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
-                                        />
-                                    </div>
-                                </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <div>
                                     <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Max de Instrutores Habilitados</label>
                                     <input 
