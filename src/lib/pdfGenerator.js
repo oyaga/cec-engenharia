@@ -322,8 +322,17 @@ function generateClassReportPDF(doc, classData) {
         doc.text(st.cpf || 'Não Informado', 100, yPos)
 
         if (includeGrades) {
-            // Conta as notas (Mock por enquanto já que a lógica de avaliações virá depois)
-            const finalGrade = (st.academic_records && st.academic_records.length > 0) ? (st.academic_records[0].grade || 'Pendente') : 'Pendente'
+            let finalGrade = 'Pendente'
+            if (st.academic_records && st.academic_records.length > 0) {
+                const rec = st.academic_records[0]
+                if (rec.theoretical_grade !== null && rec.theoretical_grade !== undefined && rec.practical_grade !== null && rec.practical_grade !== undefined) {
+                    finalGrade = ((Number(rec.theoretical_grade) + Number(rec.practical_grade)) / 2).toFixed(1)
+                } else if (rec.theoretical_grade !== null && rec.theoretical_grade !== undefined) {
+                    finalGrade = Number(rec.theoretical_grade).toFixed(1)
+                } else if (rec.practical_grade !== null && rec.practical_grade !== undefined) {
+                    finalGrade = Number(rec.practical_grade).toFixed(1)
+                }
+            }
             doc.text(finalGrade.toString(), 150, yPos)
         }
 

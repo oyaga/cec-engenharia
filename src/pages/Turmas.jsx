@@ -648,7 +648,7 @@ export default function Turmas() {
             .select(`
                 id, full_name, cpf, manual_signed, has_lms_access, is_online_only,
                 attendance_records ( status ),
-                academic_records ( grade, final_status )
+                academic_records ( theoretical_grade, practical_grade, final_status )
             `)
             .eq('turma_id', turma.id)
             .order('full_name', { ascending: true })
