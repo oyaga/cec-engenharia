@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { generateDocument } from '../lib/pdfGenerator'
-import { Search, Plus, Filter, Eye, Printer, FileText, FileBadge, Award, UploadCloud, Paperclip, Lock, Unlock, BookOpen, CheckSquare, Activity, Key, Clock, X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Search, Plus, Filter, Eye, Printer, FileText, FileBadge, Award, UploadCloud, Paperclip, Lock, Unlock, BookOpen, CheckSquare, Activity, Key, Clock, X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
     createOrFindCustomer,
@@ -36,7 +36,11 @@ export default function Alunos() {
         status: 'ativa',
         payment_status: 'pendente',
         past_theoretical_grade: '',
-        past_practical_grade: ''
+        past_practical_grade: '',
+        cancellation_reason: 'arrependimento_7_dias',
+        refund_value: '',
+        cancellation_note: '',
+        cancellation_date: ''
     })
 
     const [showAuthModal, setShowAuthModal] = useState(false)
@@ -701,7 +705,11 @@ export default function Alunos() {
             has_lms_access: formData.has_lms_access,
             requires_password_change: !isEditing, // Travar troca de senha no primeiro login se for novo aluno
             status: formData.is_past_enrollment ? 'concluída' : formData.status,
-            payment_status: formData.is_past_enrollment ? 'pago' : formData.payment_status
+            payment_status: formData.is_past_enrollment ? 'pago' : formData.payment_status,
+            cancellation_date: formData.status === 'cancelada' ? (formData.cancellation_date || new Date().toISOString().split('T')[0]) : null,
+            refund_value: formData.status === 'cancelada' && formData.refund_value !== '' ? parseFloat(formData.refund_value) : 0,
+            cancellation_reason: formData.status === 'cancelada' ? formData.cancellation_reason : null,
+            cancellation_note: formData.status === 'cancelada' ? formData.cancellation_note : null
         }
 
         let result;
@@ -733,6 +741,29 @@ export default function Alunos() {
                             grade: parseFloat(formData.past_practical_grade),
                             date: new Date().toISOString().split('T')[0]
                         }])
+                    }
+
+                    // Registrar estorno financeiro se houver valor reembolsado
+                    if (formData.status === 'cancelada' && parseFloat(formData.refund_value) > 0) {
+                        const { data: existingRefunds } = await supabase
+                            .from('financial_records')
+                            .select('id')
+                            .eq('student_id', savedStudent.id)
+                            .eq('type', 'despesa')
+                            .eq('category', 'estorno')
+                            .limit(1)
+
+                        if (!existingRefunds || existingRefunds.length === 0) {
+                            await supabase.from('financial_records').insert([{
+                                student_id: savedStudent.id,
+                                type: 'despesa',
+                                category: 'estorno',
+                                amount: parseFloat(formData.refund_value),
+                                description: `Reembolso de cancelamento - Motivo: ${formData.cancellation_reason === 'arrependimento_7_dias' ? 'Arrependimento em até 7 dias' : 'Desistência após 7 dias'}`,
+                                status: 'pago',
+                                date: new Date().toISOString()
+                            }])
+                        }
                     }
                 }
                 alert('Dados atualizados com sucesso!')
@@ -839,7 +870,11 @@ export default function Alunos() {
             status: 'ativa',
             payment_status: 'pendente',
             past_theoretical_grade: '',
-            past_practical_grade: ''
+            past_practical_grade: '',
+            cancellation_reason: 'arrependimento_7_dias',
+            refund_value: '',
+            cancellation_note: '',
+            cancellation_date: ''
         })
         setIsEditing(null)
         setDiscountUnlocked(false)
@@ -886,10 +921,28 @@ export default function Alunos() {
             status: s.status || 'ativa',
             payment_status: s.payment_status || 'pendente',
             past_theoretical_grade: teoricaGrade,
-            past_practical_grade: praticaGrade
+            past_practical_grade: praticaGrade,
+            cancellation_reason: s.cancellation_reason || 'arrependimento_7_dias',
+            refund_value: s.refund_value !== null && s.refund_value !== undefined ? s.refund_value : '',
+            cancellation_note: s.cancellation_note || '',
+            cancellation_date: s.cancellation_date || ''
         })
         setIsEditing(s.id)
         setView('add')
+    }
+
+    const handleDeleteStudent = async (student) => {
+        if (!window.confirm(`Tem certeza absoluta de que deseja EXCLUIR permanentemente o(a) aluno(a) "${student.name}" e todas as suas informações associadas (históricos, presenças, notas e movimentações)?\n\nEsta ação não poderá ser desfeita.`)) return;
+
+        try {
+            const { error } = await supabase.from('students').delete().eq('id', student.originalData.id);
+            if (error) throw error;
+            alert('Aluno excluído com sucesso!');
+            fetchStudents();
+        } catch (err) {
+            console.error('Erro ao excluir aluno:', err);
+            alert('Erro ao excluir aluno: ' + err.message);
+        }
     }
 
     const handleDownloadManual = async () => {
@@ -1140,6 +1193,7 @@ export default function Alunos() {
                                         </span>
                                     </td>
                                     <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                                        <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Excluir Aluno" onClick={() => handleDeleteStudent(s)}><Trash2 size={16} color="#ef4444" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Resetar Senha (CPF)" onClick={() => handleResetPassword(s)}><Key size={16} color="#ef4444" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Auditoria de Horas (LMS)" onClick={() => { setView(s); fetchStudentTimeLogs(s.originalData.id); }}><Activity size={16} color="#0EA5E9" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Certificado" onClick={() => handleDownloadCertificate(s)}><Award size={16} color="#eab308" /></button>
@@ -1352,6 +1406,55 @@ export default function Alunos() {
                                 <option value="cancelado">Cancelado</option>
                             </select>
                         </div>
+
+                        {formData.status === 'cancelada' && (
+                            <div className="card animate-slide-up" style={{ gridColumn: 'span 2', marginTop: '1rem', padding: '1.25rem', border: '1px solid #fee2e2', backgroundColor: '#fef2f2', borderRadius: '8px' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#991b1b', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <AlertTriangle size={16} /> Dados de Desistência e Reembolso
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Motivo do Cancelamento</label>
+                                        <select 
+                                            className="form-control" 
+                                            name="cancellation_reason" 
+                                            value={formData.cancellation_reason || 'arrependimento_7_dias'} 
+                                            onChange={handleFormChange}
+                                            style={{ borderColor: '#fca5a5' }}
+                                        >
+                                            <option value="arrependimento_7_dias">Direito de Arrependimento (Até 7 dias - Estorno 100%)</option>
+                                            <option value="desistencia_apos_7_dias">Desistência após 7 dias (Estorno Parcial/Variável)</option>
+                                            <option value="outro">Outro Motivo</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Valor Estornado/Reembolsado (R$)</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.01" 
+                                            className="form-control" 
+                                            name="refund_value" 
+                                            value={formData.refund_value} 
+                                            onChange={handleFormChange}
+                                            placeholder="0.00"
+                                            style={{ borderColor: '#fca5a5' }}
+                                        />
+                                    </div>
+                                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                                        <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Observações do Cancelamento</label>
+                                        <textarea 
+                                            className="form-control" 
+                                            name="cancellation_note" 
+                                            value={formData.cancellation_note || ''} 
+                                            onChange={handleFormChange}
+                                            placeholder="Detalhes sobre a devolução do dinheiro, conta bancária, protocolo, etc."
+                                            rows="3"
+                                            style={{ borderColor: '#fca5a5', width: '100%', borderRadius: '6px', padding: '0.5rem', backgroundColor: '#ffffff' }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
