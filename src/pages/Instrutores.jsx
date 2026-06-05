@@ -6,6 +6,45 @@ import {
   Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX 
 } from 'lucide-react'
 
+const MOCK_QUALIFICATIONS = [
+    {
+        id: 'mock-qual-1',
+        user_id: 'mock-inst-1',
+        method: 'CD-CL',
+        qualification_type: 'snqc',
+        training_hours: 4,
+        training_date: '2026-05-10',
+        status: 'ativo',
+        valid_until: '2029-05-15',
+        created_at: new Date().toISOString(),
+        users: { full_name: 'Dr. Carlos Mendonça', email: 'carlos.mendonca@cec.com.br', cpf: '123.456.789-00', phone: '(21) 98888-1111' }
+    },
+    {
+        id: 'mock-qual-2',
+        user_id: 'mock-inst-2',
+        method: 'CD-MC',
+        qualification_type: 'experience',
+        training_hours: 8,
+        training_date: '2026-04-12',
+        status: 'pendente_aprovacao',
+        valid_until: null,
+        created_at: new Date().toISOString(),
+        users: { full_name: 'Prof.ª Roberta Costa', email: 'roberta.costa@cec.com.br', cpf: '987.654.321-11', phone: '(21) 97777-2222' }
+    },
+    {
+        id: 'mock-qual-3',
+        user_id: 'mock-inst-3',
+        method: 'CD-TO',
+        qualification_type: 'snqc',
+        training_hours: 4,
+        training_date: '2025-05-15',
+        status: 'vencido',
+        valid_until: '2026-05-15',
+        created_at: new Date().toISOString(),
+        users: { full_name: 'Insp. Marcos Silva', email: 'marcos.silva@cec.com.br', cpf: '456.789.123-22', phone: '(21) 96666-3333' }
+    }
+]
+
 export default function Instrutores() {
     const [qualifications, setQualifications] = useState([])
     const [loading, setLoading] = useState(true)
@@ -68,77 +107,77 @@ export default function Instrutores() {
                 .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
             
             if (qualError) throw qualError
-            setQualifications(qualData || [])
+
+            if (qualData && qualData.length > 0) {
+                setQualifications(qualData)
+                await fetchCapacities(qualData)
+            } else {
+                setQualifications(MOCK_QUALIFICATIONS)
+                await fetchCapacities(MOCK_QUALIFICATIONS)
+            }
         } catch (err) {
             console.warn('Erro ao carregar qualificações (usando emulador local):', err)
-            
-            // Fallback Resiliente de Qualificações de Teste
-            setQualifications([
-                {
-                    id: 'mock-qual-1',
-                    user_id: 'mock-inst-1',
-                    method: 'CD-CL',
-                    qualification_type: 'snqc',
-                    training_hours: 4,
-                    training_date: '2026-05-10',
-                    status: 'ativo',
-                    valid_until: '2029-05-15',
-                    created_at: new Date().toISOString(),
-                    users: { full_name: 'Dr. Carlos Mendonça', email: 'carlos.mendonca@cec.com.br', cpf: '123.456.789-00', phone: '(21) 98888-1111' }
-                },
-                {
-                    id: 'mock-qual-2',
-                    user_id: 'mock-inst-2',
-                    method: 'CD-MC',
-                    qualification_type: 'experience',
-                    training_hours: 8,
-                    training_date: '2026-04-12',
-                    status: 'pendente_aprovacao',
-                    valid_until: null,
-                    created_at: new Date().toISOString(),
-                    users: { full_name: 'Prof.ª Roberta Costa', email: 'roberta.costa@cec.com.br', cpf: '987.654.321-11', phone: '(21) 97777-2222' }
-                },
-                {
-                    id: 'mock-qual-3',
-                    user_id: 'mock-inst-3',
-                    method: 'CD-TO',
-                    qualification_type: 'snqc',
-                    training_hours: 4,
-                    training_date: '2025-05-15',
-                    status: 'vencido',
-                    valid_until: '2026-05-15',
-                    created_at: new Date().toISOString(),
-                    users: { full_name: 'Insp. Marcos Silva', email: 'marcos.silva@cec.com.br', cpf: '456.789.123-22', phone: '(21) 96666-3333' }
-                }
-            ])
+            setQualifications(MOCK_QUALIFICATIONS)
+            await fetchCapacities(MOCK_QUALIFICATIONS)
         }
-
-        // Carregar contagem de ativos por método
-        fetchCapacities()
         setLoading(false)
     }
 
-    const fetchCapacities = async () => {
-        setLoadingQualifyCapacities(true)
+    const fetchCapacities = async (customQuals = null) => {
+        setLoadingCapacities(true)
         try {
-            const { data } = await supabase
-                .from('instructor_qualifications')
-                .select('method')
-                .eq('status', 'ativo')
-
             const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
-            if (data) {
-                data.forEach(item => {
-                    if (counts[item.method] !== undefined) counts[item.method]++
+            
+            if (customQuals) {
+                customQuals.forEach(item => {
+                    if (item.status === 'ativo' && counts[item.method] !== undefined) {
+                        counts[item.method]++
+                    }
                 })
+            } else {
+                // Se não foi passado dados, fazemos a consulta no banco de dados.
+                // Mas antes, vamos verificar se ela está totalmente vazia.
+                const { count, error: countError } = await supabase
+                    .from('instructor_qualifications')
+                    .select('*', { count: 'exact', head: true })
+                
+                if (countError) throw countError
+
+                if (count > 0) {
+                    const { data, error } = await supabase
+                        .from('instructor_qualifications')
+                        .select('method')
+                        .eq('status', 'ativo')
+                    
+                    if (error) throw error
+                    
+                    if (data) {
+                        data.forEach(item => {
+                            if (counts[item.method] !== undefined) counts[item.method]++
+                        })
+                    }
+                } else {
+                    // Se a tabela está vazia, usa os mocks ativos
+                    MOCK_QUALIFICATIONS.forEach(item => {
+                        if (item.status === 'ativo' && counts[item.method] !== undefined) {
+                            counts[item.method]++
+                        }
+                    })
+                }
             }
             setCapacities(counts)
         } catch (err) {
             console.error('Erro ao buscar capacidades:', err)
-            // Mock Capacities
-            setCapacities({ 'CD-MC': 1, 'CD-CL': 1, 'CD-TO': 0 })
+            // Fallback para capacidades dos mocks
+            const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
+            MOCK_QUALIFICATIONS.forEach(item => {
+                if (item.status === 'ativo' && counts[item.method] !== undefined) {
+                    counts[item.method]++
+                }
+            })
+            setCapacities(counts)
         } finally {
-            setLoadingQualifyCapacities(false)
+            setLoadingCapacities(false)
         }
     }
 
