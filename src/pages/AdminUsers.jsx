@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, createTempClient } from '../lib/supabaseClient';
 import { Plus, Trash2, RefreshCw, ShieldCheck, User, Eye, EyeOff, AlertCircle, CheckCircle, Award } from 'lucide-react';
 import AdminToolbar from '../components/AdminToolbar';
 import { useEdit } from '../context/EditContext';
@@ -65,7 +65,8 @@ const AdminUsers = () => {
     setStatus(null);
     setSaving(true);
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const tempClient = createTempClient();
+      const { data, error } = await tempClient.auth.signUp({
         email: form.email,
         password: form.password,
         options: { data: { role: 'webdesigner' } }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, createTempClient } from '../lib/supabase'
 import { 
   Users, Shield, Plus, RefreshCw, Trash2, 
   UserX, UserCheck2, Lock, Edit3, DollarSign, 
@@ -386,7 +386,8 @@ export default function Equipe() {
                         throw new Error('E-mail de acesso e senha são obrigatórios para colaboradores com acesso à plataforma.')
                     }
 
-                    const { data: authData, error: authError } = await supabase.auth.signUp({
+                    const tempClient = createTempClient()
+                    const { data: authData, error: authError } = await tempClient.auth.signUp({
                         email: formData.email,
                         password: formData.password,
                         options: {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, createTempClient } from '../lib/supabaseClient';
 import { UserPlus, ArrowLeft, ShieldCheck, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
 
@@ -34,7 +34,8 @@ const ManageUsers = () => {
     try {
       // Usaremos signUp para registrar o novo usuário
       // Importante: No painel do Supabase, Email Confirmation deve estar OFF
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const tempClient = createTempClient();
+      const { data, error: signUpError } = await tempClient.auth.signUp({
         email,
         password,
         options: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, createTempClient } from '../lib/supabase'
 import { 
   GraduationCap, Award, Calendar, ShieldCheck, Search, Plus, 
   Trash2, FileText, CheckCircle, AlertTriangle, AlertCircle, Eye, 
@@ -268,7 +268,8 @@ export default function Instrutores() {
             const uniqueId = Date.now()
             const passwordToSave = 'CEC@inst_' + Math.floor(1000 + Math.random() * 9000)
 
-            const { data: authData, error: authError } = await supabase.auth.signUp({
+            const tempClient = createTempClient()
+            const { data: authData, error: authError } = await tempClient.auth.signUp({
                 email: prForm.email,
                 password: passwordToSave,
                 options: {
