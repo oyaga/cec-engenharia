@@ -31,7 +31,12 @@ export default function Alunos() {
         cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '',
         how_knew: 'WhatsApp', how_knew_other: '',
         base_value: '', discount_value: '', manual_signed: false,
-        payment_method: 'À Vista (PIX/Dinheiro)'
+        payment_method: 'À Vista (PIX/Dinheiro)',
+        is_past_enrollment: false,
+        status: 'ativa',
+        payment_status: 'pendente',
+        past_theoretical_grade: '',
+        past_practical_grade: ''
     })
 
     const [showAuthModal, setShowAuthModal] = useState(false)
@@ -527,7 +532,7 @@ export default function Alunos() {
 
             const { data: stdData, error } = await supabase
                 .from('students')
-                .select('*, classes(name, course_name)')
+                .select('*, classes(name, course_name), student_evaluations(*)')
                 .order('created_at', { ascending: false })
 
             if (error) throw error
@@ -538,7 +543,7 @@ export default function Alunos() {
                 name: s.full_name || 'Sem Nome',
                 cpf: s.cpf || ' --- ',
                 class: s.classes ? s.classes.name : 'Sem Turma',
-                status: 'Ativo',
+                status: s.status || 'Ativo',
                 photo: s.doc_photo_url,
                 originalData: s
             }))
@@ -694,15 +699,42 @@ export default function Alunos() {
             manual_signed: formData.manual_signed,
             payment_method: formData.payment_method,
             has_lms_access: formData.has_lms_access,
-            requires_password_change: !isEditing // Travar troca de senha no primeiro login se for novo aluno
+            requires_password_change: !isEditing, // Travar troca de senha no primeiro login se for novo aluno
+            status: formData.is_past_enrollment ? 'concluída' : formData.status,
+            payment_status: formData.is_past_enrollment ? 'pago' : formData.payment_status
         }
 
         let result;
         if (isEditing) {
-            result = await supabase.from('students').update(studentPayload).eq('id', isEditing)
+            result = await supabase.from('students').update(studentPayload).eq('id', isEditing).select().single()
             if (result.error) {
                 alert('Erro ao salvar no Supabase: ' + result.error.message)
             } else {
+                const savedStudent = result.data
+                if (savedStudent) {
+                    // Atualização de notas de exames no histórico
+                    await supabase.from('student_evaluations').delete().eq('student_id', savedStudent.id)
+                    
+                    if (formData.past_theoretical_grade) {
+                        await supabase.from('student_evaluations').insert([{
+                            student_id: savedStudent.id,
+                            class_id: formData.turma_id || null,
+                            exam_type: 'TEORICA',
+                            grade: parseFloat(formData.past_theoretical_grade),
+                            date: new Date().toISOString().split('T')[0]
+                        }])
+                    }
+
+                    if (formData.past_practical_grade) {
+                        await supabase.from('student_evaluations').insert([{
+                            student_id: savedStudent.id,
+                            class_id: formData.turma_id || null,
+                            exam_type: 'PRATICA',
+                            grade: parseFloat(formData.past_practical_grade),
+                            date: new Date().toISOString().split('T')[0]
+                        }])
+                    }
+                }
                 alert('Dados atualizados com sucesso!')
                 resetForm()
                 setView('list')
@@ -712,59 +744,84 @@ export default function Alunos() {
             result = await supabase.from('students').insert([studentPayload]).select().single()
             if (result.error) {
                 alert('Erro ao salvar no Supabase: ' + result.error.message)
-            } else if (result.data && formData.email) {
-                // Automação de Login: Criar conta via Edge Function para não deslogar a Atendente/Admin
-                try {
-                    const { data: { session } } = await supabase.auth.getSession()
-                    
-                    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${session?.access_token}`
-                        },
-                        body: JSON.stringify({
-                            email: formData.email,
-                            name: formData.full_name,
-                            cpf: formData.cpf,
-                            phone: formData.phone,
-                            password: generatedPassword
-                        })
-                    })
-                    
-                    if (response.ok) {
-                        const authData = await response.json()
-                        // Vincular user_id ao registro do aluno
-                        await supabase.from('students').update({ user_id: authData.userId }).eq('id', result.data.id)
+            } else if (result.data) {
+                const savedStudent = result.data
+
+                // Inserção de notas de exames no histórico
+                if (formData.past_theoretical_grade) {
+                    await supabase.from('student_evaluations').insert([{
+                        student_id: savedStudent.id,
+                        class_id: formData.turma_id || null,
+                        exam_type: 'TEORICA',
+                        grade: parseFloat(formData.past_theoretical_grade),
+                        date: new Date().toISOString().split('T')[0]
+                    }])
+                }
+
+                if (formData.past_practical_grade) {
+                    await supabase.from('student_evaluations').insert([{
+                        student_id: savedStudent.id,
+                        class_id: formData.turma_id || null,
+                        exam_type: 'PRATICA',
+                        grade: parseFloat(formData.past_practical_grade),
+                        date: new Date().toISOString().split('T')[0]
+                    }])
+                }
+
+                if (formData.email) {
+                    // Automação de Login: Criar conta via Edge Function para não deslogar a Atendente/Admin
+                    try {
+                        const { data: { session } } = await supabase.auth.getSession()
                         
-                        // Guardar credenciais e abrir o modal de sucesso
-                        setCredentials({
-                            name: formData.full_name,
-                            email: formData.email,
-                            password: generatedPassword,
-                            phone: formData.phone
+                        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${session?.access_token}`
+                            },
+                            body: JSON.stringify({
+                                email: formData.email,
+                                name: formData.full_name,
+                                cpf: formData.cpf,
+                                phone: formData.phone,
+                                password: generatedPassword
+                            })
                         })
-                        setShowCredentialsModal(true)
-                    } else {
-                        const errorData = await response.json()
-                        console.error("Erro ao criar login no Auth:", errorData)
-                        alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + (errorData.error || response.statusText))
+                        
+                        if (response.ok) {
+                            const authData = await response.json()
+                            // Vincular user_id ao registro do aluno
+                            await supabase.from('students').update({ user_id: authData.userId }).eq('id', result.data.id)
+                            
+                            // Guardar credenciais e abrir o modal de sucesso
+                            setCredentials({
+                                name: formData.full_name,
+                                email: formData.email,
+                                password: generatedPassword,
+                                phone: formData.phone
+                            })
+                            setShowCredentialsModal(true)
+                        } else {
+                            const errorData = await response.json()
+                            console.error("Erro ao criar login no Auth:", errorData)
+                            alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + (errorData.error || response.statusText))
+                            resetForm()
+                            setView('list')
+                            fetchStudents()
+                        }
+                    } catch (err) {
+                        console.error("Erro de rede ao chamar função:", err)
+                        alert("O aluno foi matriculado, mas houve um erro de rede ao criar o login.")
                         resetForm()
                         setView('list')
                         fetchStudents()
                     }
-                } catch (err) {
-                    console.error("Erro de rede ao chamar função:", err)
-                    alert("O aluno foi matriculado, mas houve um erro de rede ao criar o login.")
+                } else {
+                    alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
                     resetForm()
                     setView('list')
                     fetchStudents()
                 }
-            } else {
-                alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
-                resetForm()
-                setView('list')
-                fetchStudents()
             }
         }
     }
@@ -777,14 +834,29 @@ export default function Alunos() {
             how_knew: 'WhatsApp', how_knew_other: '',
             base_value: '', discount_value: '', manual_signed: false,
             payment_method: 'À Vista (PIX/Dinheiro)',
-            has_lms_access: false
+            has_lms_access: false,
+            is_past_enrollment: false,
+            status: 'ativa',
+            payment_status: 'pendente',
+            past_theoretical_grade: '',
+            past_practical_grade: ''
         })
         setIsEditing(null)
         setDiscountUnlocked(false)
     }
 
-    const handleEdit = (student) => {
+    const handleEdit = async (student) => {
         const s = student.originalData
+        
+        // Buscar notas de exames para carregar no form se for histórico
+        const { data: evals } = await supabase
+            .from('student_evaluations')
+            .select('*')
+            .eq('student_id', s.id)
+            
+        const teoricaGrade = evals?.find(e => e.exam_type === 'TEORICA')?.grade || ''
+        const praticaGrade = evals?.find(e => e.exam_type === 'PRATICA')?.grade || ''
+
         setFormData({
             full_name: s.full_name || '',
             cpf: s.cpf || '',
@@ -809,7 +881,12 @@ export default function Alunos() {
             base_value: s.base_value || '',
             discount_value: s.discount_value || '',
             manual_signed: s.manual_signed || false,
-            payment_method: s.payment_method || 'À Vista (PIX/Dinheiro)'
+            payment_method: s.payment_method || 'À Vista (PIX/Dinheiro)',
+            is_past_enrollment: s.status === 'concluída',
+            status: s.status || 'ativa',
+            payment_status: s.payment_status || 'pendente',
+            past_theoretical_grade: teoricaGrade,
+            past_practical_grade: praticaGrade
         })
         setIsEditing(s.id)
         setView('add')
@@ -1058,8 +1135,8 @@ export default function Alunos() {
                                     <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{s.cpf}</td>
                                     <td style={{ padding: '1rem' }}>{s.class}</td>
                                     <td style={{ padding: '1rem' }}>
-                                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: s.status === 'Ativo' ? '#D1FAE5' : '#FEE2E2', color: s.status === 'Ativo' ? '#065F46' : '#991B1B' }}>
-                                            {s.status}
+                                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: (s.status === 'Ativo' || s.status === 'ativa') ? '#D1FAE5' : s.status === 'concluída' ? '#E0F2FE' : '#FEE2E2', color: (s.status === 'Ativo' || s.status === 'ativa') ? '#065F46' : s.status === 'concluída' ? '#0369A1' : '#991B1B' }}>
+                                            {s.status === 'ativa' || s.status === 'Ativo' ? 'Ativo' : s.status === 'concluída' ? 'Concluída' : s.status === 'cancelada' ? 'Cancelado' : s.status}
                                         </span>
                                     </td>
                                     <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
@@ -1202,6 +1279,81 @@ export default function Alunos() {
                         {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.course_name}</option>)}
                     </select>
                 </div>
+            </div>
+
+            <div className="card" style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>6. Configurações Históricas (Turmas Passadas)</h3>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                    <input 
+                        type="checkbox" 
+                        id="is_past_enrollment" 
+                        checked={formData.is_past_enrollment} 
+                        onChange={(e) => setFormData({ 
+                            ...formData, 
+                            is_past_enrollment: e.target.checked,
+                            status: e.target.checked ? 'concluída' : 'ativa',
+                            payment_status: e.target.checked ? 'pago' : 'pendente'
+                        })} 
+                        style={{ width: '20px', height: '20px', cursor: 'pointer' }} 
+                    />
+                    <label htmlFor="is_past_enrollment" style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--primary)', fontSize: '0.9rem' }}>
+                        Matrícula Concluída / Turma Histórica?
+                    </label>
+                </div>
+
+                {formData.is_past_enrollment ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1rem' }} className="animate-fade-in">
+                        <div className="form-group">
+                            <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>Nota Teórica Final (0 a 10)</label>
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                min="0" 
+                                max="10" 
+                                className="form-control" 
+                                name="past_theoretical_grade" 
+                                value={formData.past_theoretical_grade} 
+                                onChange={handleFormChange} 
+                                placeholder="Ex: 8.5" 
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>Nota Prática Final (0 a 10)</label>
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                min="0" 
+                                max="10" 
+                                className="form-control" 
+                                name="past_practical_grade" 
+                                value={formData.past_practical_grade} 
+                                onChange={handleFormChange} 
+                                placeholder="Ex: 9.0" 
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="animate-fade-in">
+                        <div className="form-group">
+                            <label className="form-label">Status da Matrícula</label>
+                            <select className="form-control" name="status" value={formData.status} onChange={handleFormChange}>
+                                <option value="ativa">Ativo</option>
+                                <option value="concluída">Concluída</option>
+                                <option value="cancelada">Cancelado</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Status de Pagamento</label>
+                            <select className="form-control" name="payment_status" value={formData.payment_status} onChange={handleFormChange}>
+                                <option value="pendente">Pendente</option>
+                                <option value="pago">Pago</option>
+                                <option value="atrasado">Atrasado</option>
+                                <option value="cancelado">Cancelado</option>
+                            </select>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem', gap: '1rem' }}>

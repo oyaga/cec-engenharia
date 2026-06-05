@@ -37,7 +37,10 @@ export default function Turmas() {
         instructor_payment_type: 'fixed',
         instructor_payment_value: 0,
         create_lms_integration: false,
-        address: ''
+        address: '',
+        is_past_class: false,
+        actual_start_date: '',
+        actual_end_date: ''
     })
     const [lmsCourses, setLmsCourses] = useState([])
 
@@ -418,7 +421,9 @@ export default function Turmas() {
             is_immediate_start: formData.is_immediate_start || false,
             instructor_payment_type: formData.instructor_payment_type,
             instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0,
-            address: formData.address || null
+            address: formData.address || null,
+            actual_start_date: (formData.is_past_class && formData.actual_start_date) ? formData.actual_start_date : null,
+            actual_end_date: (formData.is_past_class && formData.actual_end_date) ? formData.actual_end_date : null
         }
 
         if (isEditing && editingId) {
@@ -426,7 +431,7 @@ export default function Turmas() {
             if (error) {
                 alert('Erro ao atualizar no Supabase: ' + error.message)
             } else {
-                alert('Turma updated com sucesso!')
+                alert('Turma atualizada com sucesso!')
                 finishEditing()
                 fetchClasses()
             }
@@ -444,7 +449,10 @@ export default function Turmas() {
                     instructor_payment_type: 'fixed',
                     instructor_payment_value: 0,
                     create_lms_integration: false,
-                    address: ''
+                    address: '',
+                    is_past_class: false,
+                    actual_start_date: '',
+                    actual_end_date: ''
                 })
                 fetchClasses()
             }
@@ -467,7 +475,10 @@ export default function Turmas() {
             instructor_payment_type: turma.instructor_payment_type || 'fixed',
             instructor_payment_value: turma.instructor_payment_value || 0,
             create_lms_integration: !!turma.lms_course_id,
-            address: turma.address || ''
+            address: turma.address || '',
+            is_past_class: !!(turma.actualStartDate && turma.actualEndDate),
+            actual_start_date: turma.actualStartDate || '',
+            actual_end_date: turma.actualEndDate || ''
         })
         setIsEditing(true)
         setEditingId(turma.id)
@@ -485,7 +496,10 @@ export default function Turmas() {
             instructor_payment_type: 'fixed',
             instructor_payment_value: 0,
             create_lms_integration: false,
-            address: ''
+            address: '',
+            is_past_class: false,
+            actual_start_date: '',
+            actual_end_date: ''
         })
         setIsEditing(false)
         setEditingId(null)
@@ -512,7 +526,10 @@ export default function Turmas() {
             name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '', 
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
-            address: ''
+            address: '',
+            is_past_class: false,
+            actual_start_date: '',
+            actual_end_date: ''
         })
     }
 
@@ -1020,6 +1037,19 @@ export default function Turmas() {
                         </label>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(Oculta datas de início/fim)</span>
                     </div>
+
+                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '1.5rem' }}>
+                        <label className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                            <input 
+                                type="checkbox" 
+                                name="is_past_class" 
+                                checked={formData.is_past_class} 
+                                onChange={handleFormChange} 
+                                style={{ width: '1.25rem', height: '1.25rem' }}
+                            />
+                            Esta turma já aconteceu (Histórica/Passada)?
+                        </label>
+                    </div>
                     <div style={{ gridColumn: 'span 2' }}>
                         <label className="form-label">Vincular Conteúdo Online (LMS)</label>
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -1055,6 +1085,19 @@ export default function Turmas() {
                         </label>
                         <input type="date" className="form-control" name="predicted_end_date" value={formData.predicted_end_date} onChange={handleFormChange} disabled={formData.is_immediate_start} />
                     </div>
+
+                    {formData.is_past_class && (
+                        <>
+                            <div className="form-group animate-fade-in">
+                                <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>Data Real de Início *</label>
+                                <input type="date" className="form-control" name="actual_start_date" value={formData.actual_start_date} onChange={handleFormChange} required />
+                            </div>
+                            <div className="form-group animate-fade-in">
+                                <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>Data Real de Término *</label>
+                                <input type="date" className="form-control" name="actual_end_date" value={formData.actual_end_date} onChange={handleFormChange} required />
+                            </div>
+                        </>
+                    )}
                     <div className="form-group">
                         <label className="form-label">Horários Base</label>
                         <select className="form-control" name="schedule" value={formData.schedule} onChange={handleFormChange}>
