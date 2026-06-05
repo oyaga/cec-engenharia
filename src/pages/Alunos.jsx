@@ -13,6 +13,34 @@ import {
     createFinancingPayment
 } from '../services/asaas'
 
+const formatCurrencyBRL = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    let num = typeof value === 'number' ? value : parseFloat(value.toString().replace(/[^\d,-]/g, '').replace(',', '.'));
+    if (isNaN(num)) return '';
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+const parseCurrencyBRL = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (value.indexOf(',') === -1 && value.indexOf('.') !== -1) {
+        const parsed = parseFloat(value);
+        if (!isNaN(parsed)) return parsed;
+    }
+    const cleanStr = value.replace(/[^\d,]/g, '').replace(',', '.');
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? 0 : parsed;
+}
+
+const maskCurrencyBRL = (value) => {
+    if (!value) return '';
+    if (typeof value === 'number') return formatCurrencyBRL(value);
+    let onlyDigits = value.replace(/\D/g, '');
+    if (!onlyDigits) return '';
+    let num = parseFloat(onlyDigits) / 100;
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function Alunos() {
     const { userProfile } = useAuth()
     const isGerencial = ['admin', 'coordenador'].includes(userProfile?.role)
@@ -645,6 +673,9 @@ export default function Alunos() {
         
         if (name === 'cpf') value = formatCPF(value)
         if (name === 'cep') value = value.replace(/\D/g, '').slice(0, 8)
+        if (name === 'base_value' || name === 'discount_value' || name === 'refund_value') {
+            value = maskCurrencyBRL(value)
+        }
 
         setFormData(prev => ({ ...prev, [name]: value }))
 
@@ -653,7 +684,7 @@ export default function Alunos() {
             if (data) {
                 setFormData(prev => ({ 
                     ...prev, 
-                    base_value: data.course_value || prev.base_value,
+                    base_value: data.course_value !== undefined && data.course_value !== null ? formatCurrencyBRL(data.course_value) : prev.base_value,
                     has_lms_access: !!data.lms_course_id 
                 }))
             }
@@ -698,8 +729,8 @@ export default function Alunos() {
             how_knew_other: formData.how_knew === 'Outro' ? formData.how_knew_other : null,
             parents_names: { pai: formData.pai, mae: formData.mae },
             address: { cep: formData.cep, rua: formData.rua, numero: formData.numero, bairro: formData.bairro, cidade: formData.cidade, estado: formData.estado },
-            base_value: formData.base_value ? parseFloat(formData.base_value) : 0,
-            discount_value: formData.discount_value && discountUnlocked ? parseFloat(formData.discount_value) : 0,
+            base_value: formData.base_value ? parseCurrencyBRL(formData.base_value) : 0,
+            discount_value: formData.discount_value && discountUnlocked ? parseCurrencyBRL(formData.discount_value) : 0,
             manual_signed: formData.manual_signed,
             payment_method: formData.payment_method,
             has_lms_access: formData.has_lms_access,
@@ -707,7 +738,7 @@ export default function Alunos() {
             status: formData.is_past_enrollment ? 'concluída' : formData.status,
             payment_status: formData.is_past_enrollment ? 'pago' : formData.payment_status,
             cancellation_date: formData.status === 'cancelada' ? (formData.cancellation_date || new Date().toISOString().split('T')[0]) : null,
-            refund_value: formData.status === 'cancelada' && formData.refund_value !== '' ? parseFloat(formData.refund_value) : 0,
+            refund_value: formData.status === 'cancelada' && formData.refund_value !== '' ? parseCurrencyBRL(formData.refund_value) : 0,
             cancellation_reason: formData.status === 'cancelada' ? formData.cancellation_reason : null,
             cancellation_note: formData.status === 'cancelada' ? formData.cancellation_note : null
         }
@@ -744,7 +775,7 @@ export default function Alunos() {
                     }
 
                     // Registrar estorno financeiro se houver valor reembolsado
-                    if (formData.status === 'cancelada' && parseFloat(formData.refund_value) > 0) {
+                    if (formData.status === 'cancelada' && parseCurrencyBRL(formData.refund_value) > 0) {
                         const { data: existingRefunds } = await supabase
                             .from('financial_records')
                             .select('id')
@@ -758,7 +789,7 @@ export default function Alunos() {
                                 student_id: savedStudent.id,
                                 type: 'despesa',
                                 category: 'estorno',
-                                amount: parseFloat(formData.refund_value),
+                                amount: parseCurrencyBRL(formData.refund_value),
                                 description: `Reembolso de cancelamento - Motivo: ${formData.cancellation_reason === 'arrependimento_7_dias' ? 'Arrependimento em até 7 dias' : 'Desistência após 7 dias'}`,
                                 status: 'pago',
                                 date: new Date().toISOString()
@@ -913,8 +944,8 @@ export default function Alunos() {
             turma_id: s.turma_id || '',
             how_knew: s.how_knew || 'WhatsApp',
             how_knew_other: s.how_knew_other || '',
-            base_value: s.base_value || '',
-            discount_value: s.discount_value || '',
+            base_value: s.base_value !== null && s.base_value !== undefined ? formatCurrencyBRL(s.base_value) : '',
+            discount_value: s.discount_value !== null && s.discount_value !== undefined ? formatCurrencyBRL(s.discount_value) : '',
             manual_signed: s.manual_signed || false,
             payment_method: s.payment_method || 'À Vista (PIX/Dinheiro)',
             is_past_enrollment: s.status === 'concluída',
@@ -923,7 +954,7 @@ export default function Alunos() {
             past_theoretical_grade: teoricaGrade,
             past_practical_grade: praticaGrade,
             cancellation_reason: s.cancellation_reason || 'arrependimento_7_dias',
-            refund_value: s.refund_value !== null && s.refund_value !== undefined ? s.refund_value : '',
+            refund_value: s.refund_value !== null && s.refund_value !== undefined ? formatCurrencyBRL(s.refund_value) : '',
             cancellation_note: s.cancellation_note || '',
             cancellation_date: s.cancellation_date || ''
         })
@@ -1292,13 +1323,13 @@ export default function Alunos() {
                 <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>4. Dados Financeiros & Matrícula</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1.5rem', alignItems: 'end' }}>
                     <div className="form-group">
-                        <label className="form-label">Valor do Curso Bruto (R$)</label>
-                        <input type="number" step="0.01" className="form-control" name="base_value" value={formData.base_value} onChange={handleFormChange} placeholder="Ex: 1500.00" />
+                        <label className="form-label">Valor do Curso Bruto</label>
+                        <input type="text" className="form-control" name="base_value" value={formData.base_value} onChange={handleFormChange} placeholder="R$ 0,00" />
                     </div>
                     <div className="form-group" style={{ position: 'relative' }}>
-                        <label className="form-label">Desconto Autorizado (R$)</label>
+                        <label className="form-label">Desconto Autorizado</label>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <input type="number" step="0.01" className="form-control" name="discount_value" value={formData.discount_value} onChange={handleFormChange} disabled={!discountUnlocked} placeholder={!discountUnlocked ? "Bloqueado..." : "Ex: 200.00"} />
+                            <input type="text" className="form-control" name="discount_value" value={formData.discount_value} onChange={handleFormChange} disabled={!discountUnlocked} placeholder={!discountUnlocked ? "Bloqueado..." : "R$ 0,00"} />
                             {!discountUnlocked ? (
                                 <button type="button" className="btn btn-secondary" onClick={() => handleFinancialAction('Aplicar Desconto')} title="Desbloquear Desconto" style={{ padding: '0.5rem 0.75rem' }}><Lock size={18} /></button>
                             ) : (
@@ -1428,15 +1459,14 @@ export default function Alunos() {
                                         </select>
                                     </div>
                                     <div className="form-group">
-                                        <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Valor Estornado/Reembolsado (R$)</label>
+                                        <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Valor Estornado/Reembolsado</label>
                                         <input 
-                                            type="number" 
-                                            step="0.01" 
+                                            type="text" 
                                             className="form-control" 
                                             name="refund_value" 
                                             value={formData.refund_value} 
                                             onChange={handleFormChange}
-                                            placeholder="0.00"
+                                            placeholder="R$ 0,00"
                                             style={{ borderColor: '#fca5a5' }}
                                         />
                                     </div>
