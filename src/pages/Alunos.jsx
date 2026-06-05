@@ -691,6 +691,15 @@ export default function Alunos() {
         }
     }
 
+    const handleSaveError = (error) => {
+        console.error('Erro ao salvar aluno:', error)
+        if (error.message && (error.message.includes('students_cpf_key') || error.message.includes('duplicate key value violates unique constraint'))) {
+            alert(`Erro: O CPF "${formData.cpf}" já está cadastrado para outro aluno no sistema!\n\nSe você deseja refazer este cadastro ou matricular este aluno novamente, por favor primeiro exclua o cadastro de teste antigo na listagem de alunos clicando no botão da lixeira vermelha.`);
+        } else {
+            alert('Erro ao salvar no Supabase: ' + (error.message || error));
+        }
+    }
+
     const handleSubmit = async () => {
         if (!formData.full_name || !formData.cpf) {
             alert('Por favor, preencha pelo menos Nome e CPF.')
@@ -747,7 +756,7 @@ export default function Alunos() {
         if (isEditing) {
             result = await supabase.from('students').update(studentPayload).eq('id', isEditing).select().single()
             if (result.error) {
-                alert('Erro ao salvar no Supabase: ' + result.error.message)
+                handleSaveError(result.error)
             } else {
                 const savedStudent = result.data
                 if (savedStudent) {
@@ -805,7 +814,7 @@ export default function Alunos() {
         } else {
             result = await supabase.from('students').insert([studentPayload]).select().single()
             if (result.error) {
-                alert('Erro ao salvar no Supabase: ' + result.error.message)
+                handleSaveError(result.error)
             } else if (result.data) {
                 const savedStudent = result.data
 
