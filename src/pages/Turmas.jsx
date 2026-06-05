@@ -508,21 +508,38 @@ export default function Turmas() {
 
     const handleDeleteClass = async (classId, className) => {
         try {
-            // 1. Verificar se existem alunos vinculados a esta turma
-            const { error: studentError, count } = await supabase
+            // 1. Buscar alunos vinculados a esta turma
+            const { data: linkedStudents, error: studentError } = await supabase
                 .from('students')
-                .select('id', { count: 'exact', head: true })
+                .select('id, status')
                 .eq('turma_id', classId)
 
             if (studentError) throw studentError
 
-            if (count > 0) {
-                alert(`Não é possível excluir a turma "${className}" porque existem ${count} aluno(s) matriculado(s) nela.\n\nPara prosseguir, transfira os alunos para outra turma ou remova suas matrículas primeiro.`)
+            const activeStudents = linkedStudents ? linkedStudents.filter(s => s.status !== 'cancelada') : []
+
+            if (activeStudents.length > 0) {
+                alert(`Não é possível excluir a turma "${className}" porque existem ${activeStudents.length} aluno(s) ativo(s) matriculado(s) nela.\n\nPara prosseguir, transfira os alunos para outra turma ou remova suas matrículas primeiro.`)
                 return
             }
 
-            // 2. Se não houver alunos, confirma e prossegue com a exclusão
-            if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a turma ${className}?\n\nEsta ação não pode ser desfeita.`)) return
+            // 2. Se houver apenas alunos cancelados, avisa sobre a desvinculação automática
+            if (linkedStudents && linkedStudents.length > 0) {
+                if (!window.confirm(`Esta turma possui ${linkedStudents.length} aluno(s) com matrícula cancelada vinculados a ela.\n\nAo excluir a turma, esses históricos serão desvinculados automaticamente (a turma deles ficará em branco).\n\nDeseja prosseguir com a exclusão da turma?`)) {
+                    return
+                }
+                
+                // Desvincular alunos antes de deletar a turma para evitar violação de FK
+                const { error: updateError } = await supabase
+                    .from('students')
+                    .update({ turma_id: null })
+                    .eq('turma_id', classId)
+
+                if (updateError) throw updateError
+            } else {
+                // Confirmação padrão para turma vazia
+                if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a turma "${className}"?\n\nEsta ação não pode ser desfeita.`)) return
+            }
 
             const { error: deleteError } = await supabase.from('classes').delete().eq('id', classId)
             if (deleteError) throw deleteError
