@@ -541,6 +541,16 @@ export default function Turmas() {
                 if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a turma "${className}"?\n\nEsta ação não pode ser desfeita.`)) return
             }
 
+            // Desvincular matrículas da tabela enrollments associadas a esta turma para evitar violação de FK
+            try {
+                await supabase
+                    .from('enrollments')
+                    .update({ turma_id: null })
+                    .eq('turma_id', classId)
+            } catch (e) {
+                console.warn('Erro ao desvincular tabela enrollments (coluna inexistente ou RLS):', e)
+            }
+
             const { error: deleteError } = await supabase.from('classes').delete().eq('id', classId)
             if (deleteError) throw deleteError
 
