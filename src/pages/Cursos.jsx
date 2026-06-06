@@ -794,7 +794,15 @@ export default function Cursos() {
                                             <input 
                                                 type="text" placeholder="R$ 0,00"
                                                 value={form.price_pix}
-                                                onChange={e => setForm(prev => ({ ...prev, price_pix: maskCurrencyBRL(e.target.value) }))}
+                                                onChange={e => {
+                                                    const maskedVal = maskCurrencyBRL(e.target.value)
+                                                    const pixNum = parseCurrencyBRL(maskedVal)
+                                                    const cardNum = parseCurrencyBRL(form.price_card)
+                                                    if (cardNum && pixNum) {
+                                                        setPixDiscountPercent(Math.round((1 - pixNum / cardNum) * 100))
+                                                    }
+                                                    setForm(prev => ({ ...prev, price_pix: maskedVal }))
+                                                }}
                                                 style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #86efac', outline: 'none', fontSize: '0.875rem', backgroundColor: '#f0fdf4' }}
                                             />
                                         </div>
