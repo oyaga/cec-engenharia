@@ -839,16 +839,7 @@ export default function Cursos() {
 
                             </div>
 
-                            <div>
-                                <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>URL da Imagem de Capa (Thumbnail)</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="Ex: https://images.unsplash.com/photo-..."
-                                    value={form.thumbnail_url}
-                                    onChange={e => setForm(prev => ({ ...prev, thumbnail_url: e.target.value }))}
-                                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
-                                />
-                            </div>
+
 
                             {/* BOTOES MODAL */}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
