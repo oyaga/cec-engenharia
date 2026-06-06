@@ -2,6 +2,34 @@ import { useState, useEffect } from 'react'
 import { BookOpen, Plus, Search, Edit2, Loader2, Save, X, DollarSign, Clock, Award, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
+const formatCurrencyBRL = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    let num = typeof value === 'number' ? value : parseFloat(value.toString().replace(/[^\d,-]/g, '').replace(',', '.'));
+    if (isNaN(num)) return '';
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+const parseCurrencyBRL = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (value.indexOf(',') === -1 && value.indexOf('.') !== -1) {
+        const parsed = parseFloat(value);
+        if (!isNaN(parsed)) return parsed;
+    }
+    const cleanStr = value.replace(/[^\d,]/g, '').replace(',', '.');
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? 0 : parsed;
+}
+
+const maskCurrencyBRL = (value) => {
+    if (!value) return '';
+    if (typeof value === 'number') return formatCurrencyBRL(value);
+    let onlyDigits = value.replace(/\D/g, '');
+    if (!onlyDigits) return '';
+    let num = parseFloat(onlyDigits) / 100;
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function Cursos() {
     const [courses, setCourses] = useState([])
     const [loading, setLoading] = useState(true)
@@ -182,17 +210,20 @@ export default function Cursos() {
             max_instructors: course.max_instructors,
             status: course.status,
             thumbnail_url: course.thumbnail_url,
-            price_card: course.price_card || '',
-            price_pix: course.price_pix || '',
-            price_boleto: course.price_boleto || '',
-            price_financing: course.price_financing || '',
+            price_card: course.price_card ? formatCurrencyBRL(course.price_card) : '',
+            price_pix: course.price_pix ? formatCurrencyBRL(course.price_pix) : '',
+            price_boleto: course.price_boleto ? formatCurrencyBRL(course.price_boleto) : '',
+            price_financing: course.price_financing ? formatCurrencyBRL(course.price_financing) : '',
             max_installments: course.max_installments || 10,
             financing_installments: course.financing_installments || 6,
             price_notes: course.price_notes || '',
             asaas_product_id: course.asaas_product_id || ''
         })
-        if (course.price_card && course.price_pix) {
-            setPixDiscountPercent(Math.round((1 - course.price_pix / course.price_card) * 100))
+        
+        const cardNum = parseCurrencyBRL(course.price_card)
+        const pixNum = parseCurrencyBRL(course.price_pix)
+        if (cardNum && pixNum) {
+            setPixDiscountPercent(Math.round((1 - pixNum / cardNum) * 100))
         } else {
             setPixDiscountPercent(15)
         }
@@ -210,12 +241,18 @@ export default function Cursos() {
         setSaving(true)
         setErrorMsg('')
 
+        // Faz o parse das strings com máscara para salvar valores reais no Supabase
+        const cardVal = parseCurrencyBRL(form.price_card)
+        const pixVal = parseCurrencyBRL(form.price_pix)
+        const boletoVal = parseCurrencyBRL(form.price_boleto)
+        const financingVal = parseCurrencyBRL(form.price_financing)
+
         // Calcula o default_value automaticamente baseando-se nos preços detalhados
-        const calculatedDefaultValue = parseFloat(form.price_pix) || 
-                                     parseFloat(form.price_card) || 
-                                     parseFloat(form.price_boleto) || 
-                                     parseFloat(form.price_financing) || 
-                                     parseFloat(form.default_value) || 
+        const calculatedDefaultValue = pixVal || 
+                                     cardVal || 
+                                     boletoVal || 
+                                     financingVal || 
+                                     parseCurrencyBRL(form.default_value) || 
                                      0.0
 
         try {
@@ -248,10 +285,10 @@ export default function Cursos() {
                             default_value: calculatedDefaultValue,
                             max_instructors: parseInt(form.max_instructors) || 8,
                             status: form.status,
-                            price_card: parseFloat(form.price_card) || null,
-                            price_pix: parseFloat(form.price_pix) || null,
-                            price_boleto: parseFloat(form.price_boleto) || null,
-                            price_financing: parseFloat(form.price_financing) || null,
+                            price_card: cardVal || null,
+                            price_pix: pixVal || null,
+                            price_boleto: boletoVal || null,
+                            price_financing: financingVal || null,
                             max_installments: parseInt(form.max_installments) || 10,
                             financing_installments: parseInt(form.financing_installments) || 6,
                             price_notes: form.price_notes || null,
@@ -296,10 +333,10 @@ export default function Cursos() {
                             default_value: calculatedDefaultValue,
                             max_instructors: parseInt(form.max_instructors) || 8,
                             status: form.status,
-                            price_card: parseFloat(form.price_card) || null,
-                            price_pix: parseFloat(form.price_pix) || null,
-                            price_boleto: parseFloat(form.price_boleto) || null,
-                            price_financing: parseFloat(form.price_financing) || null,
+                            price_card: cardVal || null,
+                            price_pix: pixVal || null,
+                            price_boleto: boletoVal || null,
+                            price_financing: financingVal || null,
                             max_installments: parseInt(form.max_installments) || 10,
                             financing_installments: parseInt(form.financing_installments) || 6,
                             price_notes: form.price_notes || null,
@@ -721,19 +758,20 @@ export default function Cursos() {
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
                                             <input 
-                                                type="number" step="0.01" placeholder="0.00"
+                                                type="text" placeholder="R$ 0,00"
                                                 value={form.price_card}
                                                 onChange={e => {
-                                                    const val = e.target.value
-                                                    const newPix = val && pixDiscountPercent ? (parseFloat(val) * (1 - pixDiscountPercent / 100)).toFixed(2) : form.price_pix
-                                                    setForm(prev => ({ ...prev, price_card: val, price_pix: newPix }))
+                                                    const maskedVal = maskCurrencyBRL(e.target.value)
+                                                    const numVal = parseCurrencyBRL(maskedVal)
+                                                    const newPix = numVal && pixDiscountPercent ? formatCurrencyBRL(numVal * (1 - pixDiscountPercent / 100)) : form.price_pix
+                                                    setForm(prev => ({ ...prev, price_card: maskedVal, price_pix: newPix }))
                                                 }}
                                                 style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
                                             />
                                         </div>
-                                        {form.price_card && parseInt(form.max_installments) > 0 && (
+                                        {parseCurrencyBRL(form.price_card) > 0 && parseInt(form.max_installments) > 0 && (
                                             <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                                                Simulação: até {form.max_installments}x de R$ {(parseFloat(form.price_card) / (parseInt(form.max_installments) || 10)).toFixed(2)}
+                                                Simulação: até {form.max_installments}x de {formatCurrencyBRL(parseCurrencyBRL(form.price_card) / (parseInt(form.max_installments) || 10))}
                                             </span>
                                         )}
                                     </div>
@@ -754,9 +792,9 @@ export default function Cursos() {
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
                                             <input 
-                                                type="number" step="0.01" placeholder="0.00"
+                                                type="text" placeholder="R$ 0,00"
                                                 value={form.price_pix}
-                                                onChange={e => setForm(prev => ({ ...prev, price_pix: e.target.value }))}
+                                                onChange={e => setForm(prev => ({ ...prev, price_pix: maskCurrencyBRL(e.target.value) }))}
                                                 style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #86efac', outline: 'none', fontSize: '0.875rem', backgroundColor: '#f0fdf4' }}
                                             />
                                         </div>
@@ -769,15 +807,16 @@ export default function Cursos() {
                                             onChange={e => {
                                                 const pct = parseInt(e.target.value) || 0
                                                 setPixDiscountPercent(pct)
-                                                if (form.price_card) {
-                                                    setForm(prev => ({ ...prev, price_pix: (parseFloat(prev.price_card) * (1 - pct / 100)).toFixed(2) }))
+                                                const cardNum = parseCurrencyBRL(form.price_card)
+                                                if (cardNum) {
+                                                    setForm(prev => ({ ...prev, price_pix: formatCurrencyBRL(cardNum * (1 - pct / 100)) }))
                                                 }
                                             }}
                                             style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
                                         />
-                                        {form.price_card && form.price_pix && parseFloat(form.price_card) > 0 && (
+                                        {parseCurrencyBRL(form.price_card) > 0 && parseCurrencyBRL(form.price_pix) > 0 && (parseCurrencyBRL(form.price_card) - parseCurrencyBRL(form.price_pix)) > 0 && (
                                             <span style={{ fontSize: '0.72rem', color: '#15803d', marginTop: '4px', display: 'block', fontWeight: '600' }}>
-                                                Economia de R$ {(parseFloat(form.price_card) - parseFloat(form.price_pix)).toFixed(2)} para o aluno
+                                                Economia de {formatCurrencyBRL(parseCurrencyBRL(form.price_card) - parseCurrencyBRL(form.price_pix))} para o aluno
                                             </span>
                                         )}
                                     </div>
@@ -788,9 +827,9 @@ export default function Cursos() {
                                     <div style={{ position: 'relative' }}>
                                         <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
                                         <input 
-                                            type="number" step="0.01" placeholder="0.00"
+                                            type="text" placeholder="R$ 0,00"
                                             value={form.price_boleto}
-                                            onChange={e => setForm(prev => ({ ...prev, price_boleto: e.target.value }))}
+                                            onChange={e => setForm(prev => ({ ...prev, price_boleto: maskCurrencyBRL(e.target.value) }))}
                                             style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
                                         />
                                     </div>
@@ -802,15 +841,15 @@ export default function Cursos() {
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
                                             <input 
-                                                type="number" step="0.01" placeholder="0.00"
+                                                type="text" placeholder="R$ 0,00"
                                                 value={form.price_financing}
-                                                onChange={e => setForm(prev => ({ ...prev, price_financing: e.target.value }))}
+                                                onChange={e => setForm(prev => ({ ...prev, price_financing: maskCurrencyBRL(e.target.value) }))}
                                                 style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem' }}
                                             />
                                         </div>
-                                        {form.price_financing && parseInt(form.financing_installments) > 0 && (
+                                        {parseCurrencyBRL(form.price_financing) > 0 && parseInt(form.financing_installments) > 0 && (
                                             <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                                                Simulação: até {form.financing_installments}x de R$ {(parseFloat(form.price_financing) / (parseInt(form.financing_installments) || 6)).toFixed(2)} sem juros
+                                                Simulação: até {form.financing_installments}x de {formatCurrencyBRL(parseCurrencyBRL(form.price_financing) / (parseInt(form.financing_installments) || 6))} sem juros
                                             </span>
                                         )}
                                     </div>
