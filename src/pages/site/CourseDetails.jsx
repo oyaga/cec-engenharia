@@ -51,34 +51,8 @@ const CourseDetails = () => {
     if (slug) fetchPricing();
   }, [slug]);
 
-  const handleMatricula = async (course) => {
-    try {
-      const { getAsaasSettings, createPaymentLink } = await import('../../services/asaas');
-      const settings = await getAsaasSettings();
-      
-      if (settings.api_key) {
-        if (course.asaas_payment_link) {
-          window.open(course.asaas_payment_link, '_blank');
-        } else {
-          // Criar link de pagamento
-          const link = await createPaymentLink(course);
-          
-          // Salvar link no curso para próximas vezes
-          await supabase
-            .from('lms_courses')
-            .update({ asaas_payment_link: link.url })
-            .eq('id', course.id);
-          
-          setDbPricing(prev => ({ ...prev, asaas_payment_link: link.url }));
-          window.open(link.url, '_blank');
-        }
-      } else {
-        redirectToWhatsApp(course);
-      }
-    } catch (error) {
-      console.error("Erro ao gerar link Asaas:", error);
-      redirectToWhatsApp(course);
-    }
+  const handleMatricula = (course) => {
+    navigate(`/matricular-se?course=${encodeURIComponent(course.title)}`);
   };
 
   const redirectToWhatsApp = (course) => {

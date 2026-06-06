@@ -36,17 +36,27 @@ const Enrollment = () => {
 
   const [selectedClass, setSelectedClass] = useState(null);
   const [loadingPrice, setLoadingPrice] = useState(false);
+  const [selectedCourseData, setSelectedCourseData] = useState(null);
   
   // Buscar detalhes da turma (preço e data) quando o curso mudar
   useEffect(() => {
     const fetchClassInfo = async () => {
       if (!formData.course) {
         setSelectedClass(null);
+        setSelectedCourseData(null);
         return;
       }
       
       setLoadingPrice(true);
       try {
+        // Busca os dados de preço oficial do curso
+        const { data: cData } = await supabase
+          .from('lms_courses')
+          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, default_value')
+          .eq('title', formData.course)
+          .maybeSingle();
+        setSelectedCourseData(cData || null);
+
         const today = new Date().toISOString().split('T')[0];
         
         // Tenta extrair a sigla (ex: CD-CL) ou usar partes do nome
@@ -236,11 +246,26 @@ const Enrollment = () => {
   };
 
   const getSelectedPrice = () => {
-    if (!selectedClass) return 'Sob Consulta';
     let val = 0;
-    if (formData.paymentMethod === 'pix') val = selectedClass.price_cash;
-    else if (formData.paymentMethod === 'credit_card') val = selectedClass.price_card_10x;
-    else if (formData.paymentMethod === 'boleto') val = selectedClass.price_installments_3x;
+    
+    // Tenta obter o preço da turma primeiro
+    if (selectedClass) {
+      if (formData.paymentMethod === 'pix') val = selectedClass.price_cash;
+      else if (formData.paymentMethod === 'credit_card') val = selectedClass.price_card_10x;
+      else if (formData.paymentMethod === 'boleto') val = selectedClass.price_installments_3x;
+    }
+    
+    // Fallback: se a turma estiver ausente ou sem preço definido, usa o preço oficial do curso lms_courses
+    if (!val && selectedCourseData) {
+      if (formData.paymentMethod === 'pix') val = selectedCourseData.price_pix;
+      else if (formData.paymentMethod === 'credit_card') val = selectedCourseData.price_card;
+      else if (formData.paymentMethod === 'boleto') val = selectedCourseData.price_boleto;
+      
+      // Se não houver preço específico para a forma de pagamento, usa o valor padrão do curso
+      if (!val) val = selectedCourseData.default_value;
+    }
+    
+    if (!val) return 'Sob Consulta';
     
     // Se o preço estiver cadastrado como decimal por engano (ex: 3.8 em vez de 3800)
     if (val > 0 && val < 100) {
