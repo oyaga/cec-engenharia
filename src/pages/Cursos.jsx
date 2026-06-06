@@ -296,19 +296,7 @@ export default function Cursos() {
                         })
                         .eq('id', selectedCourse.id)
                     
-                    if (error) {
-                        // Fallback de escrita seguro se colunas extras não existirem no Supabase legado
-                        console.warn('Salvando com fallback padrão seguro (colunas extras ausentes)...')
-                        const { error: fallbackErr } = await supabase
-                            .from('lms_courses')
-                            .update({
-                                ...payload,
-                                default_value: calculatedDefaultValue
-                            })
-                            .eq('id', selectedCourse.id)
-                        
-                        if (fallbackErr) throw fallbackErr
-                    }
+                    if (error) throw error
                 }
             } else {
                 // Create
@@ -344,17 +332,7 @@ export default function Cursos() {
                         }])
                         .select()
                     
-                    if (error) {
-                        console.warn('Criando com fallback padrão seguro (colunas extras ausentes)...')
-                        const { error: fallbackErr } = await supabase
-                            .from('lms_courses')
-                            .insert([{
-                                ...payload,
-                                default_value: calculatedDefaultValue
-                            }])
-                        
-                        if (fallbackErr) throw fallbackErr
-                    }
+                    if (error) throw error
                 }
             }
 
