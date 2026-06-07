@@ -131,7 +131,8 @@ export default function Sidebar() {
                     })}
                 >
                     <PlayCircle size={20} />
-                    Meus Cursos (Área do Aluno)
+                    Meus Cursos
+                    <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Área do Aluno)</span>
                 </NavLink>
 
                 {/* Menus Administrativos e Coordenação */}
@@ -148,6 +149,7 @@ export default function Sidebar() {
                     >
                         <LayoutDashboard size={20} />
                         Painel Administrativo
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Dashboard)</span>
                     </NavLink>
                 )}
 
@@ -163,6 +165,7 @@ export default function Sidebar() {
                     >
                         <UsersIcon size={20} />
                         Listagem de Alunos
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Portal do Aluno)</span>
                     </NavLink>
                 )}
 
@@ -178,6 +181,7 @@ export default function Sidebar() {
                     >
                         <ClipboardList size={20} />
                         Matrículas
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Fila / Inscrições)</span>
                     </NavLink>
                 )}
 
@@ -193,6 +197,7 @@ export default function Sidebar() {
                     >
                         <MessageSquare size={20} />
                         Leads de Contato
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Mensagens do Site)</span>
                     </NavLink>
                 )}
 
@@ -208,6 +213,7 @@ export default function Sidebar() {
                     >
                         <GraduationCap size={20} />
                         Turmas
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Calendário do Site)</span>
                     </NavLink>
                 )}
 
@@ -223,6 +229,7 @@ export default function Sidebar() {
                     >
                         <BookOpen size={20} />
                         Cursos
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Maria Antônia)</span>
                     </NavLink>
                 )}
 
@@ -238,6 +245,7 @@ export default function Sidebar() {
                     >
                         <DollarSign size={20} />
                         Financeiro
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Faturamento & Caixa)</span>
                     </NavLink>
                 )}
 
@@ -252,7 +260,8 @@ export default function Sidebar() {
                         })}
                     >
                         <ShieldCheck size={20} />
-                        Relatórios (Analytics)
+                        Relatórios
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Analytics)</span>
                     </NavLink>
                 )}
 
@@ -268,7 +277,8 @@ export default function Sidebar() {
                         })}
                     >
                         <Award size={20} />
-                        Instrutores (PR-127)
+                        Instrutores
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Abendi PR-127)</span>
                     </NavLink>
                 )}
 
@@ -285,6 +295,7 @@ export default function Sidebar() {
                     >
                         <Award size={20} />
                         Certificados
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Geração & Assinatura)</span>
                     </NavLink>
                 )}
 
@@ -300,6 +311,7 @@ export default function Sidebar() {
                     >
                         <BookOpen size={20} />
                         Portal do Instrutor
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Lançar Freq/Notas)</span>
                     </NavLink>
                 )}
 
@@ -314,7 +326,8 @@ export default function Sidebar() {
                         })}
                     >
                         <ShieldCheck size={20} />
-                        Auditoria (Logs)
+                        Auditoria
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Logs de Ações)</span>
                     </NavLink>
                 )}
                 
@@ -330,6 +343,7 @@ export default function Sidebar() {
                     >
                         <ShieldCheck size={20} />
                         Ouvidoria
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Reclamações Site)</span>
                     </NavLink>
                 )}
 
@@ -351,6 +365,7 @@ export default function Sidebar() {
                             >
                                 <UsersIcon size={20} />
                                 Funcionários
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Acessos Painel)</span>
                             </NavLink>
                         )}
 
@@ -366,7 +381,8 @@ export default function Sidebar() {
                                 })}
                             >
                                 <Video size={20} />
-                                Plataforma EAD (LMS)
+                                Plataforma EAD
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Videoaulas & Provas)</span>
                             </NavLink>
                         )}
 
@@ -383,6 +399,7 @@ export default function Sidebar() {
                             >
                                 <Megaphone size={20} />
                                 Comunicados
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Avisos no Portal)</span>
                             </NavLink>
                         )}
 
@@ -398,7 +415,8 @@ export default function Sidebar() {
                                 })}
                             >
                                 <Settings size={20} />
-                                Configurações Gerais
+                                Configurações
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Modelos PDF/Contrato)</span>
                             </NavLink>
                         )}
 
@@ -415,6 +433,7 @@ export default function Sidebar() {
                             >
                                 <Settings size={20} />
                                 Configurações Asaas
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(API Gateway)</span>
                             </NavLink>
                         )}
                     </div>
