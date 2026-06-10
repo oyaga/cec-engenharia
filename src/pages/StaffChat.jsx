@@ -37,9 +37,9 @@ export default function StaffChat() {
   }, [chatMessages, selectedContact]);
 
   // 1. Carregar contatos (colaboradores da secretaria)
-  const fetchCollaborators = async () => {
+  const fetchCollaborators = async (showLoader = false) => {
     if (!userProfile?.id) return;
-    setLoadingContacts(true);
+    if (showLoader) setLoadingContacts(true);
     try {
       const { data, error } = await supabase
         .from('users')
@@ -74,7 +74,7 @@ export default function StaffChat() {
   };
 
   useEffect(() => {
-    fetchCollaborators();
+    fetchCollaborators(true);
   }, [userProfile]);
 
   // 2. Carregar mensagens do contato selecionado
@@ -124,7 +124,7 @@ export default function StaffChat() {
       if (selectedContact) {
         fetchMessages(selectedContact, false);
       }
-      fetchCollaborators();
+      fetchCollaborators(false);
     }, 4000);
 
     return () => clearInterval(interval);

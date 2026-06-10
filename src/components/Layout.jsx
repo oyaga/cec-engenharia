@@ -3,7 +3,6 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Sidebar from './Sidebar'
-import WhatsAppChat from './WhatsAppChat'
 import NotificationBell from './NotificationBell'
 
 export default function Layout() {
@@ -168,7 +167,6 @@ export default function Layout() {
                     <Outlet />
                 </main>
             </div>
-            <WhatsAppChat />
             
             <style>{`
                 .hover-bg-gray:hover {
