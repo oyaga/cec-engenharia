@@ -62,7 +62,12 @@ export default function Cursos() {
         max_installments: 10,
         financing_installments: 6,
         price_notes: '',
-        asaas_product_id: ''
+        asaas_product_id: '',
+        // Retreinamento (Ex-Alunos)
+        retrain_teorico_days: 1,
+        retrain_teorico_price_day: '',
+        retrain_pratico_days: 1,
+        retrain_pratico_price_day: ''
     })
 
     const [pixDiscountPercent, setPixDiscountPercent] = useState(15)
@@ -99,7 +104,11 @@ export default function Cursos() {
                 max_installments: c.max_installments || 10,
                 financing_installments: c.financing_installments || 6,
                 price_notes: c.price_notes || '',
-                asaas_product_id: c.asaas_product_id || ''
+                asaas_product_id: c.asaas_product_id || '',
+                retrain_teorico_days: c.retrain_teorico_days || 1,
+                retrain_teorico_price_day: c.retrain_teorico_price_day || null,
+                retrain_pratico_days: c.retrain_pratico_days || 1,
+                retrain_pratico_price_day: c.retrain_pratico_price_day || null
             }))
             
             setCourses(mapped)
@@ -189,7 +198,11 @@ export default function Cursos() {
             max_installments: 10,
             financing_installments: 6,
             price_notes: '',
-            asaas_product_id: ''
+            asaas_product_id: '',
+            retrain_teorico_days: 1,
+            retrain_teorico_price_day: '',
+            retrain_pratico_days: 1,
+            retrain_pratico_price_day: ''
         })
         setPixDiscountPercent(15)
         setErrorMsg('')
@@ -217,7 +230,11 @@ export default function Cursos() {
             max_installments: course.max_installments || 10,
             financing_installments: course.financing_installments || 6,
             price_notes: course.price_notes || '',
-            asaas_product_id: course.asaas_product_id || ''
+            asaas_product_id: course.asaas_product_id || '',
+            retrain_teorico_days: course.retrain_teorico_days || 1,
+            retrain_teorico_price_day: course.retrain_teorico_price_day ? formatCurrencyBRL(course.retrain_teorico_price_day) : '',
+            retrain_pratico_days: course.retrain_pratico_days || 1,
+            retrain_pratico_price_day: course.retrain_pratico_price_day ? formatCurrencyBRL(course.retrain_pratico_price_day) : ''
         })
         
         const cardNum = parseCurrencyBRL(course.price_card)
@@ -292,7 +309,11 @@ export default function Cursos() {
                             max_installments: parseInt(form.max_installments) || 10,
                             financing_installments: parseInt(form.financing_installments) || 6,
                             price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null
+                            asaas_product_id: form.asaas_product_id || null,
+                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
+                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
+                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
+                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
                         })
                         .eq('id', selectedCourse.id)
                     
@@ -328,7 +349,11 @@ export default function Cursos() {
                             max_installments: parseInt(form.max_installments) || 10,
                             financing_installments: parseInt(form.financing_installments) || 6,
                             price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null
+                            asaas_product_id: form.asaas_product_id || null,
+                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
+                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
+                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
+                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
                         }])
                         .select()
                     
@@ -864,7 +889,91 @@ export default function Cursos() {
 
                             </div>
 
+                            {/* ═══ SEÇÃO RETREINAMENTO (EX-ALUNOS) ═══ */}
+                            <div style={{ background: 'linear-gradient(135deg, #fdf4ff 0%, #faf5ff 100%)', border: '1.5px solid #e9d5ff', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #ddd6fe', paddingBottom: '0.75rem' }}>
+                                    🔁 Retreinamento — Preços para Ex-Alunos
+                                </h4>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#7c3aed', fontWeight: '500', backgroundColor: '#f5f3ff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #ede9fe' }}>
+                                    💡 Ex-alunos que precisam renovar certificação pagam por dia cursado. Defina abaixo a duração e o valor diário para cada modalidade.
+                                </p>
 
+                                {/* RETREINAMENTO TEÓRICO */}
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: '700', fontSize: '0.85rem', color: '#5b21b6', marginBottom: '0.5rem' }}>📖 Retreinamento Teórico</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontWeight: '600', fontSize: '0.78rem', color: '#475569', marginBottom: '0.35rem' }}>Duração (dias)</label>
+                                            <input
+                                                type="number" min="1" max="30"
+                                                value={form.retrain_teorico_days}
+                                                onChange={e => setForm(prev => ({ ...prev, retrain_teorico_days: parseInt(e.target.value) || 1 }))}
+                                                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #ddd6fe', outline: 'none', fontSize: '0.875rem' }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontWeight: '600', fontSize: '0.78rem', color: '#475569', marginBottom: '0.35rem' }}>Valor por dia (R$)</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
+                                                <input
+                                                    type="text" placeholder="R$ 0,00"
+                                                    value={form.retrain_teorico_price_day}
+                                                    onChange={e => setForm(prev => ({ ...prev, retrain_teorico_price_day: maskCurrencyBRL(e.target.value) }))}
+                                                    style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #ddd6fe', outline: 'none', fontSize: '0.875rem', backgroundColor: '#faf5ff' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {parseCurrencyBRL(form.retrain_teorico_price_day) > 0 && (
+                                        <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.75rem', backgroundColor: '#ede9fe', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.78rem', color: '#5b21b6', fontWeight: '600' }}>
+                                                {form.retrain_teorico_days} dia{form.retrain_teorico_days > 1 ? 's' : ''} × {form.retrain_teorico_price_day}/dia
+                                            </span>
+                                            <span style={{ fontSize: '0.85rem', color: '#4c1d95', fontWeight: '800' }}>
+                                                Total: {formatCurrencyBRL(parseCurrencyBRL(form.retrain_teorico_price_day) * (parseInt(form.retrain_teorico_days) || 1))}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* RETREINAMENTO PRÁTICO */}
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: '700', fontSize: '0.85rem', color: '#5b21b6', marginBottom: '0.5rem' }}>🔧 Retreinamento Prático</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontWeight: '600', fontSize: '0.78rem', color: '#475569', marginBottom: '0.35rem' }}>Duração (dias)</label>
+                                            <input
+                                                type="number" min="1" max="30"
+                                                value={form.retrain_pratico_days}
+                                                onChange={e => setForm(prev => ({ ...prev, retrain_pratico_days: parseInt(e.target.value) || 1 }))}
+                                                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #ddd6fe', outline: 'none', fontSize: '0.875rem' }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontWeight: '600', fontSize: '0.78rem', color: '#475569', marginBottom: '0.35rem' }}>Valor por dia (R$)</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', color: '#94a3b8', fontWeight: '600' }}>R$</span>
+                                                <input
+                                                    type="text" placeholder="R$ 0,00"
+                                                    value={form.retrain_pratico_price_day}
+                                                    onChange={e => setForm(prev => ({ ...prev, retrain_pratico_price_day: maskCurrencyBRL(e.target.value) }))}
+                                                    style={{ width: '100%', padding: '0.6rem 0.75rem 0.6rem 2rem', borderRadius: '8px', border: '1px solid #ddd6fe', outline: 'none', fontSize: '0.875rem', backgroundColor: '#faf5ff' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {parseCurrencyBRL(form.retrain_pratico_price_day) > 0 && (
+                                        <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.75rem', backgroundColor: '#ede9fe', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.78rem', color: '#5b21b6', fontWeight: '600' }}>
+                                                {form.retrain_pratico_days} dia{form.retrain_pratico_days > 1 ? 's' : ''} × {form.retrain_pratico_price_day}/dia
+                                            </span>
+                                            <span style={{ fontSize: '0.85rem', color: '#4c1d95', fontWeight: '800' }}>
+                                                Total: {formatCurrencyBRL(parseCurrencyBRL(form.retrain_pratico_price_day) * (parseInt(form.retrain_pratico_days) || 1))}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             {/* BOTOES MODAL */}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>

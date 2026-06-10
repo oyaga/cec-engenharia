@@ -9,6 +9,8 @@ export default function Comunicados() {
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
     const [roleFilter, setRoleFilter] = useState('todos')
+    const [usingMocks, setUsingMocks] = useState(false)
+    const [editingAnnId, setEditingAnnId] = useState(null)
     
     // Modal state
     const [showCreateModal, setShowCreateModal] = useState(false)
@@ -40,6 +42,7 @@ export default function Comunicados() {
             
             if (error) throw error
             setAnnouncements(data || [])
+            setUsingMocks(false)
         } catch (err) {
             console.error('Erro ao buscar comunicados da nuvem (usando local mocks):', err)
             // Fallback mock caso a tabela no Supabase não tenha sido migrada
@@ -76,6 +79,7 @@ export default function Comunicados() {
                 }
             ]
             setAnnouncements(mockAnnouncements)
+            setUsingMocks(true)
         } finally {
             setLoading(false)
         }
@@ -97,10 +101,27 @@ export default function Comunicados() {
             expires_at: ''
         })
         setErrorMsg('')
+        setEditingAnnId(null)
         setShowCreateModal(true)
     }
 
-    const handleCreateAnnouncement = async (e) => {
+    const handleOpenEdit = (ann) => {
+        setEditingAnnId(ann.id)
+        setForm({
+            title: ann.title,
+            body: ann.body,
+            target_aluno: ann.target_roles.includes('aluno'),
+            target_instrutor: ann.target_roles.includes('instrutor'),
+            target_atendente: ann.target_roles.includes('atendente'),
+            target_coordenador: ann.target_roles.includes('coordenador'),
+            is_pinned: ann.is_pinned || false,
+            expires_at: ann.expires_at ? new Date(ann.expires_at).toISOString().split('T')[0] : ''
+        })
+        setErrorMsg('')
+        setShowCreateModal(true)
+    }
+
+    const handleSaveAnnouncement = async (e) => {
         e.preventDefault()
         if (!form.title || !form.body) {
             setErrorMsg('Título e Conteúdo do comunicado são obrigatórios.')
@@ -127,31 +148,47 @@ export default function Comunicados() {
                 body: form.body,
                 target_roles: targetRoles,
                 is_pinned: form.is_pinned,
-                expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+                expires_at: form.expires_at ? new Date(form.expires_at + 'T23:59:59').toISOString() : null,
                 created_by: userProfile?.id || null
             }
 
-            if (announcements[0]?.id.toString().startsWith('mock-')) {
-                // Mock insert
-                const mockNew = {
-                    id: 'mock-' + Date.now(),
-                    ...payload,
-                    created_at: new Date().toISOString(),
-                    author: { full_name: userProfile?.full_name || 'Admin/Coordenador' }
+            if (editingAnnId) {
+                // UPDATE
+                if (usingMocks || editingAnnId.toString().startsWith('mock-')) {
+                    setAnnouncements(prev => prev.map(a => a.id === editingAnnId ? { ...a, ...payload } : a))
+                } else {
+                    const { error } = await supabase
+                        .from('announcements')
+                        .update(payload)
+                        .eq('id', editingAnnId)
+                    
+                    if (error) throw error
+                    fetchAnnouncements()
                 }
-                setAnnouncements([mockNew, ...announcements])
+                alert('Comunicado atualizado com sucesso!')
             } else {
-                // Real insert
-                const { error } = await supabase
-                    .from('announcements')
-                    .insert([payload])
-                
-                if (error) throw error
+                // INSERT
+                if (usingMocks) {
+                    const mockNew = {
+                        id: 'mock-' + Date.now(),
+                        ...payload,
+                        created_at: new Date().toISOString(),
+                        author: { full_name: userProfile?.full_name || 'Admin/Coordenador' }
+                    }
+                    setAnnouncements([mockNew, ...announcements])
+                } else {
+                    const { error } = await supabase
+                        .from('announcements')
+                        .insert([payload])
+                    
+                    if (error) throw error
+                    fetchAnnouncements()
+                }
+                alert('Comunicado publicado com sucesso!')
             }
 
-            fetchAnnouncements()
             setShowCreateModal(false)
-            alert('Comunicado publicado com sucesso!')
+            setEditingAnnId(null)
         } catch (err) {
             console.error('Erro ao salvar comunicado:', err)
             setErrorMsg(err.message || 'Falha ao salvar comunicado.')
@@ -164,7 +201,7 @@ export default function Comunicados() {
         if (!window.confirm('Tem certeza que deseja apagar este comunicado? ele sumirá do mural dos destinatários.')) return
 
         try {
-            if (id.toString().startsWith('mock-')) {
+            if (usingMocks || id.toString().startsWith('mock-')) {
                 setAnnouncements(prev => prev.filter(a => a.id !== id))
             } else {
                 const { error } = await supabase
@@ -172,9 +209,9 @@ export default function Comunicados() {
                     .delete()
                     .eq('id', id)
                 if (error) throw error
+                fetchAnnouncements()
             }
             alert('Comunicado excluído.')
-            fetchAnnouncements()
         } catch (err) {
             alert('Erro ao excluir: ' + err.message)
         }
@@ -313,6 +350,13 @@ export default function Comunicados() {
                                             <Eye size={14} color="#475569" />
                                         </button>
                                         <button 
+                                            onClick={() => handleOpenEdit(ann)}
+                                            style={{ padding: '0.4rem', border: 'none', backgroundColor: '#fef3c7', borderRadius: '6px', cursor: 'pointer' }}
+                                            title="Editar"
+                                        >
+                                            <Edit size={14} color="#d97706" />
+                                        </button>
+                                        <button 
                                             onClick={() => handleDelete(ann.id)}
                                             style={{ padding: '0.4rem', border: 'none', backgroundColor: '#fee2e2', borderRadius: '6px', cursor: 'pointer' }}
                                             title="Excluir"
@@ -413,12 +457,12 @@ export default function Comunicados() {
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0' }} className="animate-scale-up">
                         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Megaphone size={20} color="var(--primary)" /> Criar Novo Comunicado Oficial
+                                <Megaphone size={20} color="var(--primary)" /> {editingAnnId ? 'Editar Comunicado Oficial' : 'Criar Novo Comunicado Oficial'}
                             </h3>
                             <button onClick={() => setShowCreateModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8' }}><X size={20} /></button>
                         </div>
 
-                        <form onSubmit={handleCreateAnnouncement} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <form onSubmit={handleSaveAnnouncement} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                             {errorMsg && (
                                 <div style={{ padding: '0.75rem 1rem', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991B1B', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <ShieldAlert size={16} /> {errorMsg}
@@ -531,7 +575,7 @@ export default function Comunicados() {
                                     }}
                                 >
                                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    Publicar Comunicado
+                                    {editingAnnId ? 'Salvar Alterações' : 'Publicar Comunicado'}
                                 </button>
                             </div>
                         </form>

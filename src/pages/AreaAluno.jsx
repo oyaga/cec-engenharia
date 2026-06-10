@@ -29,7 +29,8 @@ import {
   Sparkles,
   Star,
   Phone,
-  Zap
+  Zap,
+  Pin
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { generateDocument } from '../lib/pdfGenerator';
@@ -122,6 +123,12 @@ export default function AreaAluno() {
   const [chatMessages, setChatMessages] = useState([]);
   const [newChatMessage, setNewChatMessage] = useState('');
   const messagesEndRef = useRef(null);
+
+  // Estados para Modal de Selfie / Captura de Câmera
+  const [showSelfieModal, setShowSelfieModal] = useState(false);
+  const [selfieStream, setSelfieStream] = useState(null);
+  const videoRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Efeito para a saudação baseada no horário
   useEffect(() => {
@@ -363,12 +370,18 @@ export default function AreaAluno() {
     try {
       const { data, error } = await supabase
         .from('lms_courses')
-        .select('id, title, description, modality, category, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
+        .select('id, title, description, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
         .eq('is_published', true)
         .order('title', { ascending: true });
 
       if (error) throw error;
-      setAvailableCourses(data || []);
+      
+      const mapped = (data || []).map(c => ({
+        ...c,
+        category: c.code?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
+        modality: 'hibrido'
+      }));
+      setAvailableCourses(mapped);
     } catch (err) {
       console.warn('Vitrine: usando cursos de demonstração');
       setAvailableCourses([
@@ -421,15 +434,9 @@ export default function AreaAluno() {
           return;
         }
       }
-      // Se não houver vinculados na turma, busca coordenadores ou admins de fallback
-      const { data: fallbacks } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .in('role', ['coordenador', 'admin']);
-      
-      setInstructors(fallbacks || []);
+      setInstructors([]);
     } catch (err) {
-      setInstructors([{ id: 'inst-fallback', full_name: 'Suporte Pedagógico C&C', email: 'suporte@cursocec.com.br' }]);
+      setInstructors([]);
     }
   };
 
@@ -639,9 +646,74 @@ export default function AreaAluno() {
     }
   };
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: 640, height: 480 } 
+      });
+      setSelfieStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Erro ao acessar a câmera:", err);
+      alert("Não foi possível acessar a câmera. Por favor, dê permissão de acesso à câmera no seu navegador ou envie um arquivo de imagem.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (selfieStream) {
+      selfieStream.getTracks().forEach(track => track.stop());
+      setSelfieStream(null);
+    }
+  };
+
+  const captureSelfie = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    
+    const size = Math.min(video.videoWidth, video.videoHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 400;
+    const ctx = canvas.getContext('2d');
+    
+    const sx = (video.videoWidth - size) / 2;
+    const sy = (video.videoHeight - size) / 2;
+    
+    // Aplicar máscara de corte redondo físico na imagem para máxima privacidade
+    ctx.beginPath();
+    ctx.arc(200, 200, 200, 0, Math.PI * 2);
+    ctx.clip();
+    
+    ctx.drawImage(video, sx, sy, size, size, 0, 0, 400, 400);
+    
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `selfie-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        handleFileUpload(file, 'photo');
+        setShowSelfieModal(false);
+        stopCamera();
+      }
+    }, 'image/jpeg', 0.9);
+  };
+
+  const handleSelectLocalFile = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileUpload(e.target.files[0], 'photo');
+      setShowSelfieModal(false);
+      stopCamera();
+    }
+  };
+
   // Upload de Documentos Abendi
   const handleFileUpload = async (e, docType) => {
-    const file = e.target.files[0];
+    let file;
+    if (e && e.target && e.target.files) {
+      file = e.target.files[0];
+    } else {
+      file = e; // se passarmos o objeto File diretamente
+    }
     if (!file || !studentId) return;
 
     try {
@@ -783,7 +855,7 @@ export default function AreaAluno() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* CARD DE BOAS-VINDAS */}
       <div style={{
-        background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+        background: 'linear-gradient(135deg, #004b49 0%, #002d2c 100%)',
         color: 'white',
         padding: '2.5rem',
         borderRadius: '20px',
@@ -1567,16 +1639,28 @@ export default function AreaAluno() {
                     Visualizar
                   </a>
                 )}
-                <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                  {doc.field ? 'Re-enviar' : 'Fazer Upload'}
-                  <input 
-                    type="file" 
-                    hidden 
-                    accept={doc.type === 'photo' ? "image/*" : ".pdf,image/*"} 
-                    capture={doc.type === 'photo' ? "user" : undefined}
-                    onChange={(e) => handleFileUpload(e, doc.type)} 
-                  />
-                </label>
+                {doc.type === 'photo' ? (
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setShowSelfieModal(true);
+                      setTimeout(startCamera, 100);
+                    }}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
+                  >
+                    {doc.field ? 'Re-enviar Foto/Selfie' : 'Tirar Selfie'}
+                  </button>
+                ) : (
+                  <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                    {doc.field ? 'Re-enviar' : 'Fazer Upload'}
+                    <input 
+                      type="file" 
+                      hidden 
+                      accept=".pdf,image/*" 
+                      onChange={(e) => handleFileUpload(e, doc.type)} 
+                    />
+                  </label>
+                )}
               </div>
             </div>
           ))}
@@ -2156,6 +2240,75 @@ export default function AreaAluno() {
     );
   };
 
+  // ABA: QUADRO DE AVISOS COMPLETO
+  const renderQuadroAvisos = () => {
+    return (
+      <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Megaphone size={28} className="text-warning" /> Quadro de Avisos Oficial
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0 0' }}>
+              Fique por dentro de todas as manutenções, prazos e novidades da C&C Engenharia.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {announcements.map(ann => {
+            const isPinned = ann.is_pinned;
+            return (
+              <div key={ann.id} className="card" style={{ 
+                padding: '1.75rem', 
+                backgroundColor: isPinned ? '#FEF2F2' : 'white', 
+                borderLeft: isPinned ? '6px solid #ef4444' : '6px solid var(--primary)',
+                borderColor: isPinned ? '#FCA5A5' : '#cbd5e1',
+                borderRadius: '16px',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)',
+                transition: 'transform 0.2s',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isPinned && (
+                      <span style={{ backgroundColor: '#fee2e2', color: '#ef4444', fontSize: '0.7rem', fontWeight: '800', padding: '3px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <Pin size={10} fill="#ef4444" /> IMPORTANTE
+                      </span>
+                    )}
+                    <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>{ann.title}</h3>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Publicado em: {new Date(ann.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: '#334155', margin: '0 0 1.25rem 0', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                  {ann.body}
+                </p>
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#64748b' }}>
+                  <span>
+                    Autor: <strong>{ann.author?.full_name || 'Coordenação Pedagógica'}</strong>
+                  </span>
+                  {ann.expires_at && (
+                    <span>
+                      Válido até: <strong>{new Date(ann.expires_at).toLocaleDateString('pt-BR')}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {announcements.length === 0 && (
+            <div className="card text-center" style={{ padding: '4rem 2rem', backgroundColor: 'white', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+              <Megaphone size={40} style={{ color: '#94a3b8', margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#475569', margin: '0 0 0.25rem 0' }}>Mural Limpo!</h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhum aviso importante publicado para seu perfil no momento.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ═══════════════════════════════════════════
   // CONTROLE GERAL DA RENDERIZAÇÃO
   // ═══════════════════════════════════════════
@@ -2227,16 +2380,28 @@ export default function AreaAluno() {
             ].map((doc) => (
               <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
-                <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                  {doc.type === 'photo' ? 'Tirar Selfie / Enviar' : 'Selecionar Arquivo'}
-                  <input 
-                    type="file" 
-                    hidden 
-                    accept={doc.type === 'photo' ? "image/*" : ".pdf,image/*"} 
-                    capture={doc.type === 'photo' ? "user" : undefined}
-                    onChange={(e) => handleFileUpload(e, doc.type)} 
-                  />
-                </label>
+                {doc.type === 'photo' ? (
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setShowSelfieModal(true);
+                      setTimeout(startCamera, 100);
+                    }}
+                    style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
+                  >
+                    Tirar Selfie
+                  </button>
+                ) : (
+                  <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                    Selecionar Arquivo
+                    <input 
+                      type="file" 
+                      hidden 
+                      accept=".pdf,image/*" 
+                      onChange={(e) => handleFileUpload(e, doc.type)} 
+                    />
+                  </label>
+                )}
               </div>
             ))}
           </div>
@@ -2269,6 +2434,8 @@ export default function AreaAluno() {
       return renderFinanceiro();
     } else if (path === '/area-aluno/vitrine') {
       return renderVitrine();
+    } else if (path === '/area-aluno/avisos') {
+      return renderQuadroAvisos();
     } else {
       return renderDashboard();
     }
@@ -2277,6 +2444,126 @@ export default function AreaAluno() {
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {getActiveTabContent()}
+
+      {/* MODAL DE CAPTURA DE SELFIE INTERATIVA COM MÁSCARA REDONDA DE PRIVACIDADE */}
+      {showSelfieModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '440px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid #e2e8f0', textAlign: 'center', boxSizing: 'border-box' }} className="animate-scale-up">
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)' }}>
+              Capturar Selfie
+            </h3>
+            <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 1.5rem 0', lineHeight: 1.4 }}>
+              Posicione seu rosto no centro da bola para encaixar a foto. A imagem será recortada em círculo para sua total privacidade.
+            </p>
+
+            {/* Vídeo com a Câmera */}
+            <div style={{
+              position: 'relative',
+              width: '280px',
+              height: '280px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '4px solid var(--primary)',
+              boxShadow: '0 8px 30px rgba(0, 75, 73, 0.15)',
+              margin: '0 auto 1.5rem auto',
+              backgroundColor: '#0f172a'
+            }}>
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)' // Efeito espelho natural
+                }}
+              />
+              {/* Círculo visual de encaixe */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                border: '20px solid rgba(15, 23, 42, 0.7)',
+                borderRadius: '50%',
+                pointerEvents: 'none'
+              }} />
+            </div>
+
+            {/* Ações do Modal */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button 
+                onClick={captureSelfie}
+                style={{
+                  width: '100%',
+                  padding: '0.85rem',
+                  backgroundColor: 'var(--primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0, 75, 73, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                Capturar e Enviar
+              </button>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
+                <button 
+                  onClick={() => {
+                    stopCamera();
+                    setShowSelfieModal(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    backgroundColor: 'white',
+                    color: '#64748b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    fontWeight: '600',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    backgroundColor: '#f1f5f9',
+                    color: 'var(--primary-dark)',
+                    border: 'none',
+                    borderRadius: '10px',
+                    fontWeight: '700',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Enviar Arquivo
+                </button>
+              </div>
+            </div>
+
+            {/* Input file oculto para envio manual alternativo */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              hidden 
+              accept="image/*" 
+              onChange={handleSelectLocalFile}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

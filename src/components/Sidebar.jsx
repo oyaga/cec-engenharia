@@ -153,6 +153,22 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
+                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
+                    <NavLink
+                        to="/secretaria/chat"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500'
+                        })}
+                    >
+                        <MessageSquare size={20} />
+                        Chat Interno
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Equipe)</span>
+                    </NavLink>
+                )}
+
                 {hasAccess('access_alunos', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/alunos"
@@ -198,6 +214,22 @@ export default function Sidebar() {
                         <MessageSquare size={20} />
                         Leads de Contato
                         <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Mensagens do Site)</span>
+                    </NavLink>
+                )}
+
+                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
+                    <NavLink
+                        to="/admin/testimonials"
+                        style={({ isActive }) => ({
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                            fontWeight: isActive ? '600' : '500'
+                        })}
+                    >
+                        <MessageSquare size={20} />
+                        Depoimentos / Prova Social
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Avaliações Site)</span>
                     </NavLink>
                 )}
 
@@ -315,7 +347,7 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
-                {hasAccess('access_auditoria', ['admin']) && (
+                {hasAccess('access_auditoria', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/auditoria"
                         style={({ isActive }) => ({
@@ -331,7 +363,7 @@ export default function Sidebar() {
                     </NavLink>
                 )}
                 
-                {hasAccess('access_ouvidoria', ['admin']) && (
+                {hasAccess('access_ouvidoria', ['admin', 'coordenador']) && (
                     <NavLink
                         to="/ouvidoria-admin"
                         style={({ isActive }) => ({
@@ -350,7 +382,7 @@ export default function Sidebar() {
                 {(hasAccess('access_equipe', ['admin', 'coordenador']) || 
                   hasAccess('access_lms', ['admin', 'coordenador']) || 
                   hasAccess('access_comunicados', ['admin', 'coordenador']) ||
-                  hasAccess('access_config', ['admin']) ||
+                  hasAccess('access_config', ['admin', 'coordenador']) ||
                   hasAccess('access_config_asaas', ['admin', 'coordenador'])) && (
                     <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                         {hasAccess('access_equipe', ['admin', 'coordenador']) && (
@@ -403,7 +435,7 @@ export default function Sidebar() {
                             </NavLink>
                         )}
 
-                        {hasAccess('access_config', ['admin']) && (
+                        {hasAccess('access_config', ['admin', 'coordenador']) && (
                             <NavLink
                                 to="/config"
                                 style={({ isActive }) => ({
@@ -419,6 +451,7 @@ export default function Sidebar() {
                                 <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Modelos PDF/Contrato)</span>
                             </NavLink>
                         )}
+
 
                         {hasAccess('access_config_asaas', ['admin', 'coordenador']) && (
                             <NavLink

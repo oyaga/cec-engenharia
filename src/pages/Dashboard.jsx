@@ -13,7 +13,8 @@ import {
   DollarSign, 
   Wallet,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  MessageSquare
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -319,6 +320,36 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
+      
+      {/* Cabeçalho do Dashboard com Título e Botão de Chat */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--primary-dark)', margin: 0 }}>Painel de Gestão da Secretaria</h1>
+          <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '4px 0 0 0' }}>Métricas gerais, faturamento e controle de atividades.</p>
+        </div>
+        <button 
+          onClick={() => navigate('/secretaria/chat')}
+          style={{
+            background: 'linear-gradient(135deg, var(--primary) 0%, #14b8a6 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            padding: '0.75rem 1.5rem',
+            fontSize: '0.9rem',
+            fontWeight: '750',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            boxShadow: '0 4px 15px rgba(0, 75, 73, 0.25)',
+            transition: 'transform 0.2s'
+          }}
+          onMouseOver={e => e.currentTarget.style.transform = 'scale(0.98)'}
+          onMouseOut={e => e.currentTarget.style.transform = 'none'}
+        >
+          <MessageSquare size={18} /> Chat da Equipe
+        </button>
+      </div>
       
       {/* 1. Top Banner Alerts */}
       {((isGerencial && overdueOrdersCount > 0) || criticalClasses.length > 0 || (isGerencial && pixPendingList.length > 0)) && (

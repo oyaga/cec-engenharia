@@ -15,7 +15,8 @@ import {
     LogOut,
     Menu,
     X,
-    Sparkles
+    Sparkles,
+    Megaphone
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -205,6 +206,9 @@ export default function StudentLayout() {
                         </NavLink>
                         <NavLink to="/area-aluno/mensagens" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <MessageSquare size={18} /> Mensagens
+                        </NavLink>
+                        <NavLink to="/area-aluno/avisos" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
+                            <Megaphone size={18} /> Quadro de Avisos
                         </NavLink>
                         <NavLink to="/area-aluno/forum" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <HelpCircle size={18} /> Dúvidas / Fórum

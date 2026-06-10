@@ -35,7 +35,7 @@ const CourseDetails = () => {
       try {
         const { data, error } = await supabase
           .from('lms_courses')
-          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link')
+          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link, retrain_teorico_days, retrain_teorico_price_day, retrain_pratico_days, retrain_pratico_price_day')
           .or(`code.ilike.${slug},code.ilike.${slug.replace(/-/g, '_')}`)
           .eq('is_published', true)
           .limit(1)
@@ -226,6 +226,56 @@ const CourseDetails = () => {
                     {dbPricing.price_notes && (
                       <div className="tip-box">
                         ℹ️ {dbPricing.price_notes}
+                      </div>
+                    )}
+
+                    {/* BLOCO RETREINAMENTO EX-ALUNOS */}
+                    {(dbPricing.retrain_teorico_price_day || dbPricing.retrain_pratico_price_day) && (
+                      <div style={{
+                        marginTop: '1.5rem',
+                        background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(109,40,217,0.1) 100%)',
+                        border: '1px solid rgba(167,139,250,0.4)',
+                        borderRadius: '12px',
+                        padding: '1.25rem'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <span style={{ fontSize: '1rem' }}>🔁</span>
+                          <strong style={{ fontSize: '0.9rem', color: '#c4b5fd', letterSpacing: '0.05em' }}>RETREINAMENTO — EX-ALUNOS</strong>
+                        </div>
+                        <p style={{ fontSize: '0.78rem', color: '#a78bfa', margin: '0 0 0.75rem 0' }}>
+                          Valores especiais para ex-alunos que precisam renovar a certificação.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {dbPricing.retrain_teorico_price_day && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                              <div>
+                                <span style={{ fontSize: '0.85rem', color: '#ddd6fe' }}>📖 Retreinamento Teórico</span>
+                                <span style={{ display: 'block', fontSize: '0.72rem', color: '#a78bfa' }}>
+                                  {dbPricing.retrain_teorico_days || 1} dia{(dbPricing.retrain_teorico_days || 1) > 1 ? 's' : ''} × R$ {Number(dbPricing.retrain_teorico_price_day).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/dia
+                                </span>
+                              </div>
+                              <strong style={{ fontSize: '1rem', color: '#c4b5fd' }}>
+                                R$ {(Number(dbPricing.retrain_teorico_price_day) * (dbPricing.retrain_teorico_days || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </strong>
+                            </div>
+                          )}
+                          {dbPricing.retrain_pratico_price_day && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                              <div>
+                                <span style={{ fontSize: '0.85rem', color: '#ddd6fe' }}>🔧 Retreinamento Prático</span>
+                                <span style={{ display: 'block', fontSize: '0.72rem', color: '#a78bfa' }}>
+                                  {dbPricing.retrain_pratico_days || 1} dia{(dbPricing.retrain_pratico_days || 1) > 1 ? 's' : ''} × R$ {Number(dbPricing.retrain_pratico_price_day).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/dia
+                                </span>
+                              </div>
+                              <strong style={{ fontSize: '1rem', color: '#c4b5fd' }}>
+                                R$ {(Number(dbPricing.retrain_pratico_price_day) * (dbPricing.retrain_pratico_days || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </strong>
+                            </div>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '0.72rem', color: '#7c3aed', margin: '0.75rem 0 0 0', textAlign: 'center' }}>
+                          Entre em contato pelo WhatsApp para agendar o retreinamento
+                        </p>
                       </div>
                     )}
                     <button

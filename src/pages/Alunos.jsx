@@ -351,7 +351,8 @@ export default function Alunos() {
                         action: 'create',
                         email: student.originalData.email,
                         password: credentialsPassword,
-                        fullName: student.name,
+                        name: student.name,
+                        cpf: student.originalData.cpf || student.cpf,
                         phone: student.originalData.phone,
                         role: 'aluno'
                     })
