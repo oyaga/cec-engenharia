@@ -33,6 +33,7 @@ import {
   Pin
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import initialContent from '../data/content.json';
 import { generateDocument } from '../lib/pdfGenerator';
 
 export default function AreaAluno() {
@@ -400,35 +401,136 @@ export default function AreaAluno() {
     }
   };
 
-  // Carregar cursos disponíveis para matrícula (Vitrine)
+  // Carregar cursos disponíveis para matrícula (Vitrine integrada ao CMS)
   const loadAvailableCourses = async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Carregar cursos do LMS
+      const { data: lmsCourses } = await supabase
         .from('lms_courses')
         .select('id, title, description, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
-        .eq('is_published', true)
-        .order('title', { ascending: true });
+        .eq('is_published', true);
 
-      if (error) throw error;
-      
-      const mapped = (data || []).map(c => ({
-        ...c,
-        category: c.code?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
-        modality: 'hibrido'
-      }));
+      // 2. Carregar CMS do site público (site_content)
+      const { data: siteData, error: siteError } = await supabase
+        .from('site_content')
+        .select('data')
+        .eq('id', 'main-content')
+        .maybeSingle();
+
+      if (siteError) throw siteError;
+
+      const siteContent = siteData?.data || {};
+      const cmsCourses = siteContent.courses_section?.courses || [];
+      const courseDetails = siteContent.course_details || {};
+
+      // Se não há cursos no CMS, usa o lms_courses diretamente
+      if (cmsCourses.length === 0) {
+        const mapped = (lmsCourses || []).map(c => ({
+          ...c,
+          category: c.code?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
+          modality: 'hibrido'
+        }));
+        setAvailableCourses(mapped);
+        return;
+      }
+
+      // 3. Fazer o merge inteligente das informações
+      const mapped = cmsCourses.map((c, index) => {
+        const slug = c.slug || '';
+        const details = courseDetails[slug] || {};
+        const investment = details.investment || {};
+
+        // Achar o correspondente no LMS para obter o ID real de matrícula
+        const lmsMatch = (lmsCourses || []).find(l => 
+          l.code?.toLowerCase() === slug.toLowerCase() ||
+          slug.toLowerCase().replace(/-/g, '') === l.code?.toLowerCase().replace(/-/g, '') ||
+          l.title?.toLowerCase().includes(c.title?.toLowerCase()) ||
+          c.title?.toLowerCase().includes(l.title?.toLowerCase())
+        );
+
+        // Parsear preço do PIX no CMS
+        let pricePix = 0;
+        if (investment.pix) {
+          const match = investment.pix.match(/R$\s*([0-9.,]+)/);
+          if (match) pricePix = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+        }
+        if (!pricePix && lmsMatch?.price_pix) {
+          pricePix = lmsMatch.price_pix;
+        }
+
+        // Parsear preço do Cartão no CMS
+        let priceCard = 0;
+        if (investment.credit) {
+          const match = investment.credit.match(/R$\s*([0-9.,]+)/);
+          if (match) priceCard = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+        }
+        if (!priceCard && lmsMatch?.price_card) {
+          priceCard = lmsMatch.price_card;
+        }
+
+        // Parsear parcelas
+        let maxInstallments = 10;
+        if (investment.credit) {
+          const matchInstallments = investment.credit.match(/([0-9]+)\s*x/i);
+          if (matchInstallments) maxInstallments = parseInt(matchInstallments[1], 10);
+        }
+        if (maxInstallments === 10 && lmsMatch?.max_installments) {
+          maxInstallments = lmsMatch.max_installments;
+        }
+
+        return {
+          id: lmsMatch?.id || slug || `cms-${index}`,
+          title: c.title || lmsMatch?.title,
+          description: c.description || lmsMatch?.description,
+          thumbnail_url: c.image || lmsMatch?.thumbnail_url,
+          code: lmsMatch?.code || slug?.toUpperCase(),
+          price_card: priceCard || 3000,
+          price_pix: pricePix || 2500,
+          max_installments: maxInstallments,
+          modality: c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido',
+          category: slug.startsWith('nr') ? 'NR' : 'END',
+          whatsapp_link: c.whatsapp_link || null
+        };
+      });
+
       setAvailableCourses(mapped);
     } catch (err) {
-      console.warn('Vitrine: usando cursos de demonstração');
-      setAvailableCourses([
-        { id: 'demo-1', title: 'Ensaio por Líquido Penetrante - LP Nível I', description: 'Treinamento completo em LP para detecção de descontinuidades superficiais. Atende às normas ASME e ABNT.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-LP1', price_card: 1800, price_pix: 1530, max_installments: 10 },
-        { id: 'demo-2', title: 'Inspeção Visual - IV Nível I', description: 'Capacitação em inspeção visual de equipamentos e estruturas, com fundamentos de código AWS D1.1 e ASME V.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-IV1', price_card: 1600, price_pix: 1360, max_installments: 10 },
-        { id: 'demo-3', title: 'Radiografia Industrial - RT Nível I', description: 'Formação em radiografia industrial com uso de equipamentos de Raios X e gama para detecção de falhas internas.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-RT1', price_card: 2200, price_pix: 1870, max_installments: 10 },
-        { id: 'demo-4', title: 'Ultrassom - UT Nível I', description: 'Fundamentos e prática de ultrassom industrial para inspeção de soldas, chapas e componentes metálicos.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-UT1', price_card: 1800, price_pix: 1530, max_installments: 10 },
-        { id: 'demo-5', title: 'Partículas Magnéticas - PM Nível I', description: 'Técnicas de magnetização e revelação de descontinuidades em materiais ferromagnéticos por partículas magnéticas.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-PM1', price_card: 1600, price_pix: 1360, max_installments: 10 },
-        { id: 'demo-6', title: 'NR-12 – Segurança em Máquinas e Equipamentos', description: 'Treinamento obrigatório de segurança para operadores e manutenção de máquinas industriais conforme NR-12.', modality: 'presencial', category: 'NR', thumbnail_url: null, code: 'NR-12', price_card: 950, price_pix: 807.50, max_installments: 6 },
-        { id: 'demo-7', title: 'NR-10 – Segurança em Instalações Elétricas', description: 'Capacitação em segurança no trabalho em instalações elétricas para eletricistas, técnicos e engenheiros.', modality: 'presencial', category: 'NR', thumbnail_url: null, code: 'NR-10', price_card: 850, price_pix: 722.50, max_installments: 6 },
-        { id: 'demo-8', title: 'Correntes Parasitas - EC Nível I', description: 'Formação em correntes parasitas (Eddy Current) para inspeção de tubulações e materiais condutores.', modality: 'hibrido', category: 'END', thumbnail_url: null, code: 'END-EC1', price_card: 2000, price_pix: 1700, max_installments: 10 }
-      ]);
+      console.warn('Vitrine: falha ao carregar do CMS, usando dados locais de fallback do content.json');
+      
+      const cmsCourses = initialContent?.courses_section?.courses || [];
+      const courseDetails = initialContent?.course_details || {};
+      
+      const mapped = cmsCourses.map((c, index) => {
+        const details = courseDetails[c.slug] || {};
+        const investment = details.investment || {};
+        
+        let pricePix = 2500;
+        let priceCard = 3000;
+        let maxInstallments = 10;
+        
+        if (c.slug === 'cd-cl') { pricePix = 3300; priceCard = 3800; maxInstallments = 10; }
+        else if (c.slug === 'cd-et') { pricePix = 4800; priceCard = 5200; maxInstallments = 10; }
+        else if (c.slug === 'cd-mc') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
+        else if (c.slug === 'cd-to') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
+        else if (c.slug === 'laser-tracker-caldeiraria') { pricePix = 5300; priceCard = 5900; maxInstallments = 10; }
+        else if (c.slug === 'retreinamento-teorico-cd-cl') { pricePix = 1550; priceCard = 1800; maxInstallments = 10; }
+        else if (c.slug === 'retreinamento-pratico-cd-cl') { pricePix = 2100; priceCard = 2400; maxInstallments = 10; }
+
+        return {
+          id: c.slug || `cms-local-${index}`,
+          title: c.title,
+          description: c.description,
+          thumbnail_url: c.image || null,
+          code: c.slug?.toUpperCase() || 'END',
+          price_card: priceCard,
+          price_pix: pricePix,
+          max_installments: maxInstallments,
+          modality: c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido',
+          category: c.slug?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
+          whatsapp_link: c.whatsapp_link || null
+        };
+      });
+      setAvailableCourses(mapped);
     }
   };
 
