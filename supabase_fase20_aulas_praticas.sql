@@ -12,6 +12,10 @@ COMMENT ON COLUMN public.classes.max_capacity IS 'Capacidade máxima de alunos p
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS practical_class_id UUID;
 COMMENT ON COLUMN public.students.practical_class_id IS 'Identificador da turma de aula prática de final de semana agendada para o aluno.';
 
+-- 2.1 Adicionar coluna practical_class_status na tabela students para gerenciar o fluxo de aprovacao
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS practical_class_status VARCHAR(50) DEFAULT 'pendente';
+COMMENT ON COLUMN public.students.practical_class_status IS 'Status do agendamento da aula prática (pendente ou confirmado).';
+
 -- 3. Adicionar restrição de chave estrangeira com segurança de integridade (ON DELETE SET NULL)
 ALTER TABLE public.students DROP CONSTRAINT IF EXISTS fk_students_practical_class;
 ALTER TABLE public.students 

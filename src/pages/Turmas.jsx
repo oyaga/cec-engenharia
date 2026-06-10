@@ -231,7 +231,7 @@ export default function Turmas() {
                     address,
                     max_capacity,
                     students ( count ),
-                    practical_students:students!practical_class_id ( count ),
+                    practical_students:students!practical_class_id ( id, practical_class_status ),
                     class_instructors ( id, role, user:users(full_name) )
                 `)
                 .order('created_at', { ascending: false })
@@ -258,7 +258,8 @@ export default function Turmas() {
                 instructor_payment_value: c.instructor_payment_value,
                 address: c.address,
                 maxCapacity: c.max_capacity || 10,
-                practicalStudentsCount: c.practical_students?.[0]?.count || 0,
+                practicalStudentsCount: c.practical_students?.filter(st => st.practical_class_status === 'confirmado').length || 0,
+                practicalPendingCount: c.practical_students?.filter(st => st.practical_class_status === 'pendente').length || 0,
                 instructors: c.class_instructors || []
             }))
 
@@ -654,7 +655,7 @@ export default function Turmas() {
         try {
             const { data: scheduledData } = await supabase
                 .from('students')
-                .select('id, full_name, cpf, email, phone, status, classes(name, course_name)')
+                .select('id, full_name, cpf, email, phone, status, practical_class_status, classes(name, course_name)')
                 .eq('practical_class_id', classId)
                 .order('full_name')
 
@@ -675,8 +676,32 @@ export default function Turmas() {
         }
     }
 
-    const handleScheduleStudent = async (student, classId, maxCapacity, currentCount) => {
-        if (currentCount >= maxCapacity) {
+    const handleConfirmRequest = async (student, classId, maxCapacity, confirmedCount) => {
+        if (confirmedCount >= maxCapacity) {
+            const confirmOverbooking = window.confirm(`Atenção: A capacidade máxima desta aula prática (${maxCapacity} alunos) já foi atingida.\n\nDeseja aprovar esta solicitação como overbooking?`)
+            if (!confirmOverbooking) return
+        }
+
+        setSchedulingActionLoading(student.id)
+        try {
+            const { error } = await supabase
+                .from('students')
+                .update({ practical_class_status: 'confirmado' })
+                .eq('id', student.id)
+
+            if (error) throw error
+
+            await loadSchedulingData(classId)
+            fetchClasses()
+        } catch (err) {
+            alert('Erro ao confirmar solicitação: ' + err.message)
+        } finally {
+            setSchedulingActionLoading(null)
+        }
+    }
+
+    const handleScheduleStudent = async (student, classId, maxCapacity, confirmedCount, targetStatus = 'confirmado') => {
+        if (targetStatus === 'confirmado' && confirmedCount >= maxCapacity) {
             const confirmOverbooking = window.confirm(`Atenção: A capacidade máxima desta aula prática (${maxCapacity} alunos) já foi atingida.\n\nDeseja confirmar este agendamento como overbooking?`)
             if (!confirmOverbooking) return
         }
@@ -685,7 +710,10 @@ export default function Turmas() {
         try {
             const { error } = await supabase
                 .from('students')
-                .update({ practical_class_id: classId })
+                .update({ 
+                    practical_class_id: classId,
+                    practical_class_status: targetStatus
+                })
                 .eq('id', student.id)
 
             if (error) throw error
@@ -828,11 +856,13 @@ export default function Turmas() {
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
                                         {turma.schedule === 'Aula prática - Final de semana' ? (
                                             <span style={{
-                                                backgroundColor: '#fee2e2', color: '#991b1b', padding: '0.25rem 0.75rem',
+                                                backgroundColor: turma.practicalPendingCount > 0 ? '#FEF3C7' : '#fee2e2',
+                                                color: turma.practicalPendingCount > 0 ? '#92400E' : '#991b1b',
+                                                padding: '0.25rem 0.75rem',
                                                 borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
                                                 display: 'flex', alignItems: 'center', gap: '0.5rem'
                                             }}>
-                                                <Users size={14} /> Agendados: {turma.practicalStudentsCount}/{turma.maxCapacity}
+                                                <Users size={14} /> Agendados: {turma.practicalStudentsCount}/{turma.maxCapacity} {turma.practicalPendingCount > 0 ? '(' + turma.practicalPendingCount + ' pendente)' : ''}
                                             </span>
                                         ) : (
                                             <span style={{
@@ -906,7 +936,7 @@ export default function Turmas() {
                                             style={{ width: '100%', justifyContent: 'center', backgroundColor: 'var(--primary)', color: 'white', fontWeight: 'bold' }}
                                             onClick={() => handleOpenScheduling(turma)}
                                         >
-                                            <Users size={16} /> Gerenciar Agendamento ({turma.practicalStudentsCount}/{turma.maxCapacity})
+                                            <Users size={16} /> Gerenciar Agendamento ({turma.practicalStudentsCount}/{turma.maxCapacity}){turma.practicalPendingCount > 0 ? ' [' + turma.practicalPendingCount + ' Novo]' : ''}
                                         </button>
                                     )}
                                     {turma.duration && !turma.actualStartDate && (
@@ -1456,41 +1486,98 @@ export default function Turmas() {
                         {/* Corpo do Modal dividido em 2 painéis */}
                         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: '400px' }} className="scheduling-layout">
                             
-                            {/* Painel Esquerdo: Alunos Agendados */}
-                            <div style={{ width: '45%', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
-                                <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
-                                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '750', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span>Confirmados ({scheduledStudents.length})</span>
-                                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', backgroundColor: scheduledStudents.length > selectedSchedulingClass.maxCapacity ? '#fee2e2' : '#e0f2fe', color: scheduledStudents.length > selectedSchedulingClass.maxCapacity ? '#ef4444' : '#0369a1' }}>
-                                            {scheduledStudents.length} / {selectedSchedulingClass.maxCapacity} vagas
-                                        </span>
-                                    </h4>
-                                </div>
+                            {/* Painel Esquerdo: Alunos Agendados (Confirmados e Pendentes) */}
+                            {(() => {
+                                const pendentes = scheduledStudents.filter(s => s.practical_class_status === 'pendente');
+                                const confirmados = scheduledStudents.filter(s => s.practical_class_status === 'confirmado');
+                                const totalConfirmados = confirmados.length;
                                 
-                                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    {scheduledStudents.length === 0 ? (
-                                        <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
-                                            Nenhum aluno agendado para este final de semana ainda.
+                                return (
+                                    <div style={{ width: '45%', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
+                                        
+                                        {/* Status de Ocupação Geral */}
+                                        <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
+                                            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '750', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span>Vagas Ocupadas</span>
+                                                <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', backgroundColor: totalConfirmados > selectedSchedulingClass.maxCapacity ? '#fee2e2' : '#e0f2fe', color: totalConfirmados > selectedSchedulingClass.maxCapacity ? '#ef4444' : '#0369a1' }}>
+                                                    {totalConfirmados} / {selectedSchedulingClass.maxCapacity} vagas
+                                                </span>
+                                            </h4>
                                         </div>
-                                    ) : (
-                                        scheduledStudents.map(st => (
-                                            <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                                                <div style={{ minWidth: 0, flex: 1 }}>
-                                                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.full_name}</p>
-                                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>CPF: {st.cpf}</p>
+                                        
+                                        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            
+                                            {/* Seção 1: Solicitações Pendentes (Alunos que se agendaram) */}
+                                            {pendentes.length > 0 && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                    <h5 style={{ margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: '800', color: '#b45309', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        ⚠️ Solicitações Pendentes ({pendentes.length})
+                                                    </h5>
+                                                    {pendentes.map(st => (
+                                                        <div key={st.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.75rem', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fef3c7', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                                            <div style={{ minWidth: 0 }}>
+                                                                <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.full_name}</p>
+                                                                <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: '#64748b' }}>CPF: {st.cpf}</p>
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                                                                <button 
+                                                                    onClick={() => handleUnscheduleStudent(st.id, selectedSchedulingClass.id)}
+                                                                    disabled={schedulingActionLoading === st.id}
+                                                                    style={{ padding: '3px 8px', fontSize: '0.72rem', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                                                                >
+                                                                    Recusar
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleConfirmRequest(st, selectedSchedulingClass.id, selectedSchedulingClass.maxCapacity, totalConfirmados)}
+                                                                    disabled={schedulingActionLoading === st.id}
+                                                                    style={{ padding: '3px 8px', fontSize: '0.72rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                                                >
+                                                                    {schedulingActionLoading === st.id ? <Loader2 size={10} className="animate-spin" /> : null} Confirmar
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                <button 
-                                                    onClick={() => handleUnscheduleStudent(st.id, selectedSchedulingClass.id)}
-                                                    disabled={schedulingActionLoading === st.id}
-                                                    style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}
-                                                >
-                                                    {schedulingActionLoading === st.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />} Remover
-                                                </button>
+                                            )}
+                                            
+                                            {/* Seção 2: Confirmados */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <h5 style={{ margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: '850', color: '#475569', textTransform: 'uppercase' }}>
+                                                    Confirmados ({totalConfirmados})
+                                                </h5>
+                                                
+                                                {totalConfirmados === 0 ? (
+                                                    <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
+                                                        Nenhum aluno confirmado nesta data.
+                                                    </div>
+                                                ) : (
+                                                    confirmados.map(st => (
+                                                        <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                                <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.full_name}</p>
+                                                                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>CPF: {st.cpf}</p>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => handleUnscheduleStudent(st.id, selectedSchedulingClass.id)}
+                                                                disabled={schedulingActionLoading === st.id}
+                                                                style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}
+                                                            >
+                                                                {schedulingActionLoading === st.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />} Remover
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                )}
                                             </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
+
+                                            {scheduledStudents.length === 0 && (
+                                                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                                    Nenhum aluno agendado ou pendente para este final de semana.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Painel Direito: Buscar e Adicionar Alunos */}
                             <div style={{ width: '55%', display: 'flex', flexDirection: 'column' }}>
@@ -1553,7 +1640,7 @@ export default function Turmas() {
                                                         <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>CPF: {st.cpf} | Turma: {st.classes?.name || 'S/T'}</p>
                                                     </div>
                                                     <button 
-                                                        onClick={() => handleScheduleStudent(st, selectedSchedulingClass.id, selectedSchedulingClass.maxCapacity, scheduledStudents.length)}
+                                                        onClick={() => handleScheduleStudent(st, selectedSchedulingClass.id, selectedSchedulingClass.maxCapacity, scheduledStudents.filter(s => s.practical_class_status === 'confirmado').length, 'confirmado')}
                                                         disabled={schedulingActionLoading === st.id}
                                                         style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}
                                                     >

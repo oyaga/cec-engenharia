@@ -124,6 +124,10 @@ export default function AreaAluno() {
   const [newChatMessage, setNewChatMessage] = useState('');
   const messagesEndRef = useRef(null);
 
+  // Estados para Agendamento Prático (Fase 20.1)
+  const [availablePracticalClasses, setAvailablePracticalClasses] = useState([]);
+  const [schedulingActionLoading, setSchedulingActionLoading] = useState(null);
+
   // Estados para Modal de Selfie / Captura de Câmera
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
@@ -162,7 +166,7 @@ export default function AreaAluno() {
       // 2. Buscar Cadastro do Aluno
       const { data: student, error: stError } = await supabase
         .from('students')
-        .select('*')
+        .select('*, classes:classes!turma_id(name, course_name), practical_class:classes!practical_class_id(name, course_name, start_date, address)')
         .eq('user_id', session.user.id)
         .maybeSingle();
 
@@ -327,6 +331,37 @@ export default function AreaAluno() {
       loadForum(activeTurmaId);
       loadInstructors(activeTurmaId);
       loadAvailableCourses();
+
+      // 11. Carregar Aulas Práticas de Final de Semana Disponíveis (Fase 20.1)
+      if (student) {
+        const courseName = student.classes?.course_name;
+        if (courseName) {
+          const { data: practicals, error: prError } = await supabase
+            .from('classes')
+            .select(`
+              id, name, course_name, start_date, max_capacity, schedule, address,
+              practical_students:students!practical_class_id(id, practical_class_status)
+            `)
+            .eq('schedule', 'Aula prática - Final de semana')
+            .eq('course_name', courseName)
+            .gte('start_date', new Date().toISOString().split('T')[0])
+            .order('start_date', { ascending: true });
+
+          if (!prError && practicals) {
+            const mappedPracticals = practicals.map(p => {
+              const confirmedCount = p.practical_students?.filter(s => s.practical_class_status === 'confirmado').length || 0;
+              const pendingCount = p.practical_students?.filter(s => s.practical_class_status === 'pendente').length || 0;
+              return {
+                ...p,
+                confirmedCount,
+                pendingCount,
+                availableVacancies: Math.max(0, (p.max_capacity || 10) - confirmedCount)
+              };
+            });
+            setAvailablePracticalClasses(mappedPracticals);
+          }
+        }
+      }
 
     } catch (err) {
       console.error('Erro ao carregar dados do Supabase:', err);
@@ -1070,6 +1105,69 @@ export default function AreaAluno() {
     </div>
   );
 
+  // Funções de Agendamento de Aula Prática (Fase 20.1)
+  const handleRequestPracticalClass = async (classId) => {
+    if (!studentData?.id) return;
+    setSchedulingActionLoading(classId);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          practical_class_id: classId,
+          practical_class_status: 'pendente'
+        })
+        .eq('id', studentData.id);
+
+      if (error) throw error;
+
+      alert('Solicitação de agendamento realizada com sucesso! Aguarde a confirmação da coordenação.');
+      await fetchData();
+    } catch (err) {
+      alert('Erro ao solicitar agendamento: ' + err.message);
+    } finally {
+      setSchedulingActionLoading(null);
+    }
+  };
+
+  const handleCancelPracticalClass = async (practicalClass) => {
+    if (!studentData?.id) return;
+    
+    // Regra de 7 dias
+    const prDate = new Date(practicalClass.start_date + 'T12:00:00');
+    const today = new Date();
+    const diffTime = prDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 7) {
+      alert('Bloqueado: Cancelamentos ou alterações só são permitidos com até 7 dias de antecedência. Entre em contato com a secretaria.');
+      return;
+    }
+
+    if (!window.confirm('Deseja realmente cancelar sua solicitação/agendamento para este final de semana?')) {
+      return;
+    }
+
+    setSchedulingActionLoading(practicalClass.id);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          practical_class_id: null,
+          practical_class_status: null
+        })
+        .eq('id', studentData.id);
+
+      if (error) throw error;
+
+      alert('Agendamento cancelado com sucesso!');
+      await fetchData();
+    } catch (err) {
+      alert('Erro ao cancelar agendamento: ' + err.message);
+    } finally {
+      setSchedulingActionLoading(null);
+    }
+  };
+
   // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
   const renderPresencial = () => {
     return (
@@ -1254,6 +1352,168 @@ export default function AreaAluno() {
               <p style={{ fontSize: '0.85rem', color: '#B45309', margin: 0, fontWeight: '600' }}>Nenhuma aula prática presencial prevista no momento.</p>
             </div>
           )}
+
+          {/* BLOCO DE AGENDAMENTO PRÁTICO DE FIM DE SEMANA (Fase 20.1) */}
+          <div style={{ marginTop: '2rem' }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              🗓️ Aula Prática (Fins de Semana)
+            </h3>
+            
+            {studentData?.practical_class ? (
+              // Aluno já tem agendamento (Pendente ou Confirmado)
+              (() => {
+                const isConfirmed = studentData.practical_class_status === 'confirmado';
+                const prClass = studentData.practical_class;
+                
+                // Verificar prazo de 7 dias
+                const prDate = new Date(prClass.start_date + 'T12:00:00');
+                const today = new Date();
+                const diffTime = prDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const isChangeBlocked = diffDays <= 7;
+
+                return (
+                  <div className="card" style={{ 
+                    backgroundColor: isConfirmed ? '#f0fdf4' : '#fffbeb', 
+                    borderColor: isConfirmed ? '#bbf7d0' : '#fef3c7', 
+                    padding: '1.5rem', 
+                    position: 'relative', 
+                    overflow: 'hidden',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: 0, left: 0, right: 0, height: '5px', 
+                      background: isConfirmed ? '#22c55e' : '#f59e0b' 
+                    }}></div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isConfirmed ? '#166534' : '#b45309', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+                      {isConfirmed ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
+                      <span>{isConfirmed ? 'Agendamento Confirmado' : 'Aguardando Confirmação'}</span>
+                    </div>
+
+                    <h4 style={{ color: 'var(--primary-dark)', fontSize: '1rem', fontWeight: '800', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
+                      {prClass.name}
+                    </h4>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.84rem', color: 'var(--text-main)', marginBottom: '1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '750', color: isConfirmed ? '#166534' : '#b45309' }}>
+                        <Calendar size={14} />
+                        <span>
+                          {new Date(prClass.start_date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'start', gap: '0.4rem' }}>
+                        <MapPin size={14} className="text-muted" style={{ marginTop: '2px', flexShrink: 0 }} />
+                        <span>{prClass.address || 'Local do Treinamento CEC'}</span>
+                      </div>
+                    </div>
+
+                    {isChangeBlocked && (
+                      <div style={{ 
+                        backgroundColor: '#f8fafc', 
+                        color: '#64748b', 
+                        padding: '0.75rem', 
+                        borderRadius: '8px', 
+                        fontSize: '0.76rem', 
+                        marginBottom: '1rem',
+                        border: '1px solid #e2e8f0',
+                        lineHeight: '1.4'
+                      }}>
+                        🔒 Alterações bloqueadas. Modificações só são permitidas com até 7 dias de antecedência.
+                      </div>
+                    )}
+
+                    <button 
+                      onClick={() => handleCancelPracticalClass(prClass)}
+                      disabled={isChangeBlocked || schedulingActionLoading === prClass.id}
+                      className="btn"
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.65rem', 
+                        backgroundColor: isChangeBlocked ? '#cbd5e1' : '#fee2e2', 
+                        color: isChangeBlocked ? '#94a3b8' : '#ef4444', 
+                        fontWeight: '800', 
+                        fontSize: '0.82rem', 
+                        borderRadius: '10px', 
+                        border: 'none', 
+                        cursor: isChangeBlocked ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.25rem'
+                      }}
+                    >
+                      {schedulingActionLoading === prClass.id ? (
+                        <span>Processando...</span>
+                      ) : (
+                        <span>Cancelar Agendamento</span>
+                      )}
+                    </button>
+                  </div>
+                );
+              })()
+            ) : (
+              // Aluno não tem agendamento, listar disponíveis
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.82rem', color: '#475569', lineHeight: '1.4' }}>
+                  💡 Selecione abaixo um final de semana disponível para agendar sua aula prática presencial.
+                </div>
+                
+                {availablePracticalClasses.length === 0 ? (
+                  <div className="card text-center text-muted" style={{ padding: '2rem', backgroundColor: 'white' }}>
+                    Nenhuma data de aula prática futura disponível no momento para o seu curso ({studentData?.classes?.course_name || 'CEC'}).
+                  </div>
+                ) : (
+                  availablePracticalClasses.map(pc => {
+                    const isFull = pc.availableVacancies <= 0;
+                    return (
+                      <div key={pc.id} className="card" style={{ padding: '1rem', backgroundColor: 'white', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderRadius: '10px' }}>
+                        <div>
+                          <h4 style={{ color: 'var(--primary-dark)', fontSize: '0.9rem', fontWeight: '800', margin: 0 }}>
+                            {pc.name}
+                          </h4>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b', fontWeight: '600' }}>
+                            📅 {new Date(pc.start_date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                          </p>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                            📍 {pc.address || 'Centro de Treinamento CEC'}
+                          </p>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: isFull ? '#ef4444' : '#166534', fontWeight: '700' }}>
+                            {isFull ? 'Lotado (0 vagas)' : `${pc.availableVacancies} vagas livres`}
+                          </span>
+                          
+                          <button
+                            onClick={() => handleRequestPracticalClass(pc.id)}
+                            disabled={isFull || schedulingActionLoading === pc.id}
+                            className="btn btn-primary"
+                            style={{ 
+                              padding: '0.4rem 1rem', 
+                              fontSize: '0.78rem', 
+                              borderRadius: '8px', 
+                              fontWeight: '700',
+                              backgroundColor: isFull ? '#cbd5e1' : 'var(--primary)',
+                              color: isFull ? '#94a3b8' : 'white',
+                              border: 'none',
+                              cursor: isFull ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            {schedulingActionLoading === pc.id ? 'Solicitando...' : 'Solicitar Vaga'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );

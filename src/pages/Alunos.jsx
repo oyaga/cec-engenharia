@@ -736,6 +736,7 @@ export default function Alunos() {
             education_level: formData.education_level,
             turma_id: formData.turma_id ? formData.turma_id : null,
             practical_class_id: formData.practical_class_id ? formData.practical_class_id : null,
+            practical_class_status: formData.practical_class_id ? 'confirmado' : null,
             how_knew: formData.how_knew,
             how_knew_other: formData.how_knew === 'Outro' ? formData.how_knew_other : null,
             parents_names: { pai: formData.pai, mae: formData.mae },
@@ -1558,6 +1559,17 @@ export default function Alunos() {
                                 {student.originalData.practical_class && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', color: '#b91c1c', fontWeight: 600, fontSize: '0.875rem' }}>
                                         <span>🗓️ Aula Prática:</span> <strong>{student.originalData.practical_class.name}</strong> - {student.originalData.practical_class.course_name} ({student.originalData.practical_class.start_date ? new Date(student.originalData.practical_class.start_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'Flexível'})
+                                        <span style={{
+                                            marginLeft: '0.5rem',
+                                            padding: '2px 8px',
+                                            borderRadius: '999px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 'bold',
+                                            backgroundColor: student.originalData.practical_class_status === 'confirmado' ? '#dcfce7' : '#fef3c7',
+                                            color: student.originalData.practical_class_status === 'confirmado' ? '#15803d' : '#92400e'
+                                        }}>
+                                            {student.originalData.practical_class_status === 'confirmado' ? 'Confirmado' : 'Aguardando Confirmação'}
+                                        </span>
                                     </div>
                                 )}
                             </div>
