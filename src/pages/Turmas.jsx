@@ -8,6 +8,16 @@ export default function Turmas() {
     const [classes, setClasses] = useState([])
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState('list') // list | add
+    
+    // Estados de Agendamento Prático
+    const [showSchedulingModal, setShowSchedulingModal] = useState(false)
+    const [selectedSchedulingClass, setSelectedSchedulingClass] = useState(null)
+    const [scheduledStudents, setScheduledStudents] = useState([])
+    const [availableStudents, setAvailableStudents] = useState([])
+    const [schedulingSearch, setSchedulingSearch] = useState('')
+    const [schedulingCourseFilter, setSchedulingCourseFilter] = useState('todos')
+    const [schedulingLoading, setSchedulingLoading] = useState(false)
+    const [schedulingActionLoading, setSchedulingActionLoading] = useState(null)
     const [selectedClassData, setSelectedClassData] = useState(null)
     const [classStudents, setClassStudents] = useState([])
     const [modalLoading, setModalLoading] = useState(false)
@@ -38,6 +48,7 @@ export default function Turmas() {
         instructor_payment_value: 0,
         create_lms_integration: false,
         address: '',
+        max_capacity: 10,
         is_past_class: false,
         actual_start_date: '',
         actual_end_date: ''
@@ -218,7 +229,9 @@ export default function Turmas() {
                     is_immediate_start,
                     instructor_payment_type, instructor_payment_value,
                     address,
+                    max_capacity,
                     students ( count ),
+                    practical_students:students!practical_class_id ( count ),
                     class_instructors ( id, role, user:users(full_name) )
                 `)
                 .order('created_at', { ascending: false })
@@ -244,6 +257,8 @@ export default function Turmas() {
                 instructor_payment_type: c.instructor_payment_type,
                 instructor_payment_value: c.instructor_payment_value,
                 address: c.address,
+                maxCapacity: c.max_capacity || 10,
+                practicalStudentsCount: c.practical_students?.[0]?.count || 0,
                 instructors: c.class_instructors || []
             }))
 
@@ -422,6 +437,7 @@ export default function Turmas() {
             instructor_payment_type: formData.instructor_payment_type,
             instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0,
             address: formData.address || null,
+            max_capacity: formData.max_capacity ? parseInt(formData.max_capacity) : 10,
             actual_start_date: (formData.is_past_class && formData.actual_start_date) ? formData.actual_start_date : null,
             actual_end_date: (formData.is_past_class && formData.actual_end_date) ? formData.actual_end_date : null
         }
@@ -476,6 +492,7 @@ export default function Turmas() {
             instructor_payment_value: turma.instructor_payment_value || 0,
             create_lms_integration: !!turma.lms_course_id,
             address: turma.address || '',
+            max_capacity: turma.maxCapacity || 10,
             is_past_class: !!(turma.actualStartDate && turma.actualEndDate),
             actual_start_date: turma.actualStartDate || '',
             actual_end_date: turma.actualEndDate || ''
@@ -497,6 +514,7 @@ export default function Turmas() {
             instructor_payment_value: 0,
             create_lms_integration: false,
             address: '',
+            max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
             actual_end_date: ''
@@ -571,6 +589,7 @@ export default function Turmas() {
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
             address: '',
+            max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
             actual_end_date: ''
@@ -620,6 +639,85 @@ export default function Turmas() {
         })
         setModalDateValue(new Date().toISOString().split('T')[0])
         setShowDateModal(true)
+    }
+
+    const handleOpenScheduling = async (turma) => {
+        setSelectedSchedulingClass(turma)
+        setShowSchedulingModal(true)
+        setSchedulingLoading(true)
+        setSchedulingSearch('')
+        setSchedulingCourseFilter('todos')
+        await loadSchedulingData(turma.id)
+    }
+
+    const loadSchedulingData = async (classId) => {
+        try {
+            const { data: scheduledData } = await supabase
+                .from('students')
+                .select('id, full_name, cpf, email, phone, status, classes(name, course_name)')
+                .eq('practical_class_id', classId)
+                .order('full_name')
+
+            setScheduledStudents(scheduledData || [])
+
+            const { data: availableData } = await supabase
+                .from('students')
+                .select('id, full_name, cpf, email, phone, status, classes(name, course_name)')
+                .eq('status', 'ativa')
+                .is('practical_class_id', null)
+                .order('full_name')
+
+            setAvailableStudents(availableData || [])
+        } catch (err) {
+            console.error('Erro ao carregar dados de agendamento:', err)
+        } finally {
+            setSchedulingLoading(false)
+        }
+    }
+
+    const handleScheduleStudent = async (student, classId, maxCapacity, currentCount) => {
+        if (currentCount >= maxCapacity) {
+            const confirmOverbooking = window.confirm(`Atenção: A capacidade máxima desta aula prática (${maxCapacity} alunos) já foi atingida.\n\nDeseja confirmar este agendamento como overbooking?`)
+            if (!confirmOverbooking) return
+        }
+
+        setSchedulingActionLoading(student.id)
+        try {
+            const { error } = await supabase
+                .from('students')
+                .update({ practical_class_id: classId })
+                .eq('id', student.id)
+
+            if (error) throw error
+
+            await loadSchedulingData(classId)
+            fetchClasses()
+        } catch (err) {
+            alert('Erro ao agendar: ' + err.message)
+        } finally {
+            setSchedulingActionLoading(null)
+        }
+    }
+
+    const handleUnscheduleStudent = async (studentId, classId) => {
+        if (!window.confirm('Remover este aluno do agendamento prático deste final de semana?')) return
+
+        setSchedulingActionLoading(studentId)
+        try {
+            const { error } = await supabase
+                .from('students')
+                .update({ practical_class_id: null })
+                .eq('id', studentId)
+
+            if (error) throw error
+
+            await loadSchedulingData(classId)
+            fetchClasses()
+        } catch (err) {
+            alert('Erro ao remover agendamento: ' + err.message)
+        } finally {
+            setSchedulingActionLoading(null)
+        }
     }
 
     const toggleStudentEad = async (studentId, currentStatus) => {
@@ -728,13 +826,23 @@ export default function Turmas() {
                                         <p className="text-secondary" style={{ fontSize: '0.875rem' }}>Curso: {turma.course}</p>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                                        <span style={{
-                                            backgroundColor: '#DBEAFE', color: '#1E40AF', padding: '0.25rem 0.75rem',
-                                            borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
-                                            display: 'flex', alignItems: 'center', gap: '0.5rem'
-                                        }}>
-                                            <Users size={14} /> {turma.studentsCount} Alunos
-                                        </span>
+                                        {turma.schedule === 'Aula prática - Final de semana' ? (
+                                            <span style={{
+                                                backgroundColor: '#fee2e2', color: '#991b1b', padding: '0.25rem 0.75rem',
+                                                borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
+                                                display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                            }}>
+                                                <Users size={14} /> Agendados: {turma.practicalStudentsCount}/{turma.maxCapacity}
+                                            </span>
+                                        ) : (
+                                            <span style={{
+                                                backgroundColor: '#DBEAFE', color: '#1E40AF', padding: '0.25rem 0.75rem',
+                                                borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
+                                                display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                            }}>
+                                                <Users size={14} /> {turma.studentsCount} Alunos
+                                            </span>
+                                        )}
                                         {(userProfile?.role === 'admin' || userProfile?.role === 'coordenador' || userProfile?.role === 'atendente') && (
                                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                                                 <button className="btn btn-secondary" style={{ padding: '0.25rem', height: 'auto' }} onClick={() => handleEditClass(turma)} title="Editar Turma">
@@ -792,6 +900,15 @@ export default function Turmas() {
                                 )}
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {turma.schedule === 'Aula prática - Final de semana' && (
+                                        <button 
+                                            className="btn btn-primary" 
+                                            style={{ width: '100%', justifyContent: 'center', backgroundColor: 'var(--primary)', color: 'white', fontWeight: 'bold' }}
+                                            onClick={() => handleOpenScheduling(turma)}
+                                        >
+                                            <Users size={16} /> Gerenciar Agendamento ({turma.practicalStudentsCount}/{turma.maxCapacity})
+                                        </button>
+                                    )}
                                     {turma.duration && !turma.actualStartDate && (
                                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                                             <button className="btn" style={{ flex: 3, justifyContent: 'center', backgroundColor: '#ECFDF5', color: '#065F46', borderColor: '#A7F3D0' }} onClick={() => handleStartClass(turma.id, turma.name)}>
@@ -1187,6 +1304,18 @@ export default function Turmas() {
                         )}
                     </div>
                     <div className="form-group"><label className="form-label">Carga Horária (Duração)</label><input type="text" className="form-control" name="duration" value={formData.duration} onChange={handleFormChange} placeholder="Ex: 80 horas" /></div>
+                    <div className="form-group">
+                        <label className="form-label">Capacidade Máxima de Vagas</label>
+                        <input 
+                            type="number" 
+                            className="form-control" 
+                            name="max_capacity" 
+                            value={formData.max_capacity || ''} 
+                            onChange={handleFormChange} 
+                            placeholder="Ex: 10" 
+                            min="1"
+                        />
+                    </div>
                     <div className="form-group" style={{ gridColumn: 'span 2' }}>
                         <label className="form-label">Endereço da Aula Prática (Sede ou Local Externo)</label>
                         <input
@@ -1301,6 +1430,148 @@ export default function Turmas() {
                                 dateModalConfig.onSave(modalDateValue)
                                 setShowDateModal(false)
                             }}>Confirmar Data</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL GESTÃO DE AGENDAMENTO PRÁTICO (FIM DE SEMANA) */}
+            {showSchedulingModal && selectedSchedulingClass && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
+                        
+                        {/* Header */}
+                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    👥 Agendamento de Alunos - Aula Prática
+                                </h3>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                                    Turma: <strong>{selectedSchedulingClass.name}</strong> | Data: {selectedSchedulingClass.startDate ? new Date(selectedSchedulingClass.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Flexível'} | Capacidade: <strong>{selectedSchedulingClass.maxCapacity} vagas</strong>
+                                </p>
+                            </div>
+                            <button onClick={() => setShowSchedulingModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8' }}><X size={20} /></button>
+                        </div>
+
+                        {/* Corpo do Modal dividido em 2 painéis */}
+                        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: '400px' }} className="scheduling-layout">
+                            
+                            {/* Painel Esquerdo: Alunos Agendados */}
+                            <div style={{ width: '45%', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
+                                <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '750', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Confirmados ({scheduledStudents.length})</span>
+                                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', backgroundColor: scheduledStudents.length > selectedSchedulingClass.maxCapacity ? '#fee2e2' : '#e0f2fe', color: scheduledStudents.length > selectedSchedulingClass.maxCapacity ? '#ef4444' : '#0369a1' }}>
+                                            {scheduledStudents.length} / {selectedSchedulingClass.maxCapacity} vagas
+                                        </span>
+                                    </h4>
+                                </div>
+                                
+                                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {scheduledStudents.length === 0 ? (
+                                        <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                            Nenhum aluno agendado para este final de semana ainda.
+                                        </div>
+                                    ) : (
+                                        scheduledStudents.map(st => (
+                                            <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.full_name}</p>
+                                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>CPF: {st.cpf}</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleUnscheduleStudent(st.id, selectedSchedulingClass.id)}
+                                                    disabled={schedulingActionLoading === st.id}
+                                                    style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}
+                                                >
+                                                    {schedulingActionLoading === st.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />} Remover
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Painel Direito: Buscar e Adicionar Alunos */}
+                            <div style={{ width: '55%', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '750', color: '#1e293b' }}>Buscar Alunos Aptos</h4>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Buscar por nome ou CPF..." 
+                                            value={schedulingSearch}
+                                            onChange={e => setSchedulingSearch(e.target.value)}
+                                            style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+                                        />
+                                        <select
+                                            value={schedulingCourseFilter}
+                                            onChange={e => setSchedulingCourseFilter(e.target.value)}
+                                            style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}
+                                        >
+                                            <option value="todos">Todos os cursos</option>
+                                            <option value="CD-CL">CD-CL</option>
+                                            <option value="CD-TO">CD-TO</option>
+                                            <option value="CD-CM">CD-CM</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {schedulingLoading ? (
+                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '150px', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <Loader2 size={24} className="animate-spin text-muted" />
+                                            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Carregando alunos aptos...</span>
+                                        </div>
+                                    ) : (
+                                        (() => {
+                                            const filtered = availableStudents.filter(st => {
+                                                const matchesSearch = st.full_name.toLowerCase().includes(schedulingSearch.toLowerCase()) || st.cpf.includes(schedulingSearch);
+                                                
+                                                let matchesCourse = true;
+                                                if (schedulingCourseFilter !== 'todos') {
+                                                    const text = (st.classes?.course_name || '').toUpperCase();
+                                                    if (schedulingCourseFilter === 'CD-CL') matchesCourse = text.includes('CALDEIRARIA') || text.includes('CD-CL');
+                                                    if (schedulingCourseFilter === 'CD-TO') matchesCourse = text.includes('TOPOGRAFIA') || text.includes('CD-TO');
+                                                    if (schedulingCourseFilter === 'CD-CM') matchesCourse = text.includes('MECÂNICA') || text.includes('CD-CM') || text.includes('CD-MC') || text.includes('CM');
+                                                }
+                                                return matchesSearch && matchesCourse;
+                                            });
+
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                                        Nenhum aluno apto encontrado para agendamento.
+                                                    </div>
+                                                );
+                                            }
+
+                                            return filtered.map(st => (
+                                                <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                                        <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '700', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.full_name}</p>
+                                                        <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>CPF: {st.cpf} | Turma: {st.classes?.name || 'S/T'}</p>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => handleScheduleStudent(st, selectedSchedulingClass.id, selectedSchedulingClass.maxCapacity, scheduledStudents.length)}
+                                                        disabled={schedulingActionLoading === st.id}
+                                                        style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}
+                                                    >
+                                                        {schedulingActionLoading === st.id ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />} Agendar
+                                                    </button>
+                                                </div>
+                                            ));
+                                        })()
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{ padding: '1rem 1.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setShowSchedulingModal(false)} style={{ padding: '0.5rem 1.25rem', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                Concluir
+                            </button>
                         </div>
                     </div>
                 </div>

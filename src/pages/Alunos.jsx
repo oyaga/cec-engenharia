@@ -56,7 +56,7 @@ export default function Alunos() {
     const [formData, setFormData] = useState({
         full_name: '', cpf: '', rg: '', birth_date: '', birth_place: '', marital_status: 'Solteiro(a)',
         pai: '', mae: '', education_level: 'Ensino Médio Completo', email: '', phone: '',
-        cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '',
+        cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '', practical_class_id: '',
         how_knew: 'WhatsApp', how_knew_other: '',
         base_value: '', discount_value: '', manual_signed: false,
         payment_method: 'À Vista (PIX/Dinheiro)',
@@ -565,7 +565,7 @@ export default function Alunos() {
 
             const { data: stdData, error } = await supabase
                 .from('students')
-                .select('*, classes(name, course_name), student_evaluations(*)')
+                .select('*, classes:classes!turma_id(name, course_name), practical_class:classes!practical_class_id(name, course_name, start_date), student_evaluations(*)')
                 .order('created_at', { ascending: false })
 
             if (error) throw error
@@ -735,6 +735,7 @@ export default function Alunos() {
             phone: formData.phone,
             education_level: formData.education_level,
             turma_id: formData.turma_id ? formData.turma_id : null,
+            practical_class_id: formData.practical_class_id ? formData.practical_class_id : null,
             how_knew: formData.how_knew,
             how_knew_other: formData.how_knew === 'Outro' ? formData.how_knew_other : null,
             parents_names: { pai: formData.pai, mae: formData.mae },
@@ -902,7 +903,7 @@ export default function Alunos() {
         setFormData({
             full_name: '', cpf: '', rg: '', birth_date: '', birth_place: '', marital_status: 'Solteiro(a)',
             pai: '', mae: '', education_level: 'Ensino Médio Completo', email: '', phone: '',
-            cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '',
+            cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '', turma_id: '', practical_class_id: '',
             how_knew: 'WhatsApp', how_knew_other: '',
             base_value: '', discount_value: '', manual_signed: false,
             payment_method: 'À Vista (PIX/Dinheiro)',
@@ -952,6 +953,7 @@ export default function Alunos() {
             cidade: s.address?.cidade || '',
             estado: s.address?.estado || '',
             turma_id: s.turma_id || '',
+            practical_class_id: s.practical_class_id || '',
             how_knew: s.how_knew || 'WhatsApp',
             how_knew_other: s.how_knew_other || '',
             base_value: s.base_value !== null && s.base_value !== undefined ? formatCurrencyBRL(s.base_value) : '',
@@ -1366,13 +1368,22 @@ export default function Alunos() {
             </div>
 
             <div className="card">
-                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>5. Turma (DB Link)</h3>
-                <div className="form-group">
-                    <label className="form-label">Selecione a Turma</label>
-                    <select className="form-control" name="turma_id" value={formData.turma_id} onChange={handleFormChange}>
-                        <option value="">Selecione...</option>
-                        {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.course_name}</option>)}
-                    </select>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>5. Turma & Aula Prática</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                    <div className="form-group">
+                        <label className="form-label">Turma Teórica / EAD (Principal)</label>
+                        <select className="form-control" name="turma_id" value={formData.turma_id} onChange={handleFormChange}>
+                            <option value="">Selecione...</option>
+                            {classes.filter(c => c.schedule !== 'Aula prática - Final de semana').map(c => <option key={c.id} value={c.id}>{c.name} - {c.course_name}</option>)}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Agendamento de Aula Prática (Fim de Semana)</label>
+                        <select className="form-control" name="practical_class_id" value={formData.practical_class_id} onChange={handleFormChange}>
+                            <option value="">Sem agendamento</option>
+                            {classes.filter(c => c.schedule === 'Aula prática - Final de semana').map(c => <option key={c.id} value={c.id}>{c.name} - {c.course_name} ({c.start_date ? new Date(c.start_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem data'})</option>)}
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -1544,6 +1555,11 @@ export default function Alunos() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', color: 'var(--primary)', fontWeight: 600, fontSize: '0.875rem' }}>
                                     <Clock size={16} /> Tempo de Estudo EAD: {Math.floor(totalStudyTime / 3600)}h {Math.floor((totalStudyTime % 3600) / 60)}min
                                 </div>
+                                {student.originalData.practical_class && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', color: '#b91c1c', fontWeight: 600, fontSize: '0.875rem' }}>
+                                        <span>🗓️ Aula Prática:</span> <strong>{student.originalData.practical_class.name}</strong> - {student.originalData.practical_class.course_name} ({student.originalData.practical_class.start_date ? new Date(student.originalData.practical_class.start_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'Flexível'})
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div style={{ padding: '0.5rem 1rem', borderRadius: '999px', fontWeight: 600, backgroundColor: statusBadge.bg, color: statusBadge.color }}>{statusBadge.label}</div>
