@@ -15,8 +15,11 @@ export default function Comunicados() {
     // Modal state
     const [showCreateModal, setShowCreateModal] = useState(false)
     const [showPreviewModal, setShowPreviewModal] = useState(false)
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
+    const [annToDelete, setAnnToDelete] = useState(null)
     const [selectedAnn, setSelectedAnn] = useState(null)
     const [saving, setSaving] = useState(false)
+    const [deleting, setDeleting] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     
     // Form state
@@ -197,23 +200,36 @@ export default function Comunicados() {
         }
     }
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('Tem certeza que deseja apagar este comunicado? ele sumirá do mural dos destinatários.')) return
+    const handleOpenDelete = (ann, e) => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+        setAnnToDelete(ann)
+        setShowDeleteModal(true)
+    }
 
+    const handleConfirmDelete = async () => {
+        if (!annToDelete) return
+        setDeleting(true)
         try {
-            if (usingMocks || id.toString().startsWith('mock-')) {
-                setAnnouncements(prev => prev.filter(a => a.id !== id))
+            if (usingMocks || annToDelete.id.toString().startsWith('mock-')) {
+                setAnnouncements(prev => prev.filter(a => a.id !== annToDelete.id))
             } else {
                 const { error } = await supabase
                     .from('announcements')
                     .delete()
-                    .eq('id', id)
+                    .eq('id', annToDelete.id)
                 if (error) throw error
                 fetchAnnouncements()
             }
-            alert('Comunicado excluído.')
+            setShowDeleteModal(false)
+            setAnnToDelete(null)
+            alert('Comunicado excluído com sucesso.')
         } catch (err) {
             alert('Erro ao excluir: ' + err.message)
+        } finally {
+            setDeleting(false)
         }
     }
 
@@ -357,9 +373,10 @@ export default function Comunicados() {
                                             <Edit size={14} color="#d97706" />
                                         </button>
                                         <button 
-                                            onClick={() => handleDelete(ann.id)}
+                                            onClick={(e) => handleOpenDelete(ann, e)}
                                             style={{ padding: '0.4rem', border: 'none', backgroundColor: '#fee2e2', borderRadius: '6px', cursor: 'pointer' }}
                                             title="Excluir"
+                                            type="button"
                                         >
                                             <Trash2 size={14} color="#ef4444" />
                                         </button>
@@ -579,6 +596,46 @@ export default function Comunicados() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL CONFIRMAÇÃO EXCLUSÃO */}
+            {showDeleteModal && annToDelete && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
+                        <div style={{ padding: '1.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', backgroundColor: '#fee2e2', borderRadius: '50%', color: '#ef4444' }}>
+                                <Trash2 size={24} />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
+                                    Excluir Comunicado?
+                                </h3>
+                                <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b', lineHeight: '1.5' }}>
+                                    Tem certeza de que deseja excluir o comunicado <strong>"{annToDelete.title}"</strong>?<br/>
+                                    Esta ação não pode ser desfeita e ele sumirá do mural de todos os destinatários.
+                                </p>
+                            </div>
+                        </div>
+                        <div style={{ padding: '1rem 1.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
+                            <button 
+                                type="button"
+                                onClick={() => { setShowDeleteModal(false); setAnnToDelete(null); }} 
+                                style={{ padding: '0.6rem 1.25rem', backgroundColor: 'white', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem' }}
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={handleConfirmDelete} 
+                                disabled={deleting}
+                                style={{ padding: '0.6rem 1.5rem', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '750', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                                {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                Excluir Definitivamente
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
