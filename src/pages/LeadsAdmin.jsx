@@ -64,12 +64,13 @@ const LeadsAdmin = () => {
     if (leads.length === 0) return;
     
     // Cabeçalhos
-    const headers = ["Nome", "Telefone", "Curso de Interesse", "Mensagem", "Status", "Data"];
+    const headers = ["Nome", "Telefone", "E-mail", "Curso de Interesse", "Mensagem", "Status", "Data"];
     
     // Dados formatados
     const csvRows = leads.map(lead => [
       lead.name || "Sem Nome",
       lead.phone || "Sem Telefone",
+      lead.email || "Não informado",
       lead.course_interest || "Não informado",
       `"${(lead.message || '').replace(/"/g, '""')}"`, // Escapar aspas na mensagem
       lead.status || "novo",
@@ -194,6 +195,7 @@ const LeadsAdmin = () => {
                     </div>
                     <div className="flex gap-4 text-sm text-secondary mb-2">
                       <span className="flex items-center gap-1"><Phone size={14} /> {lead.phone || 'Sem Telefone'}</span>
+                      {lead.email && <span className="flex items-center gap-1">✉️ {lead.email}</span>}
                       <span className="flex items-center gap-1"><Calendar size={14} /> {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                       {lead.course_interest && (
                         <span className="flex items-center gap-1 text-primary font-bold">
