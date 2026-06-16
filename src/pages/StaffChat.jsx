@@ -44,7 +44,7 @@ export default function StaffChat() {
       const { data, error } = await supabase
         .from('users')
         .select('id, full_name, email, role')
-        .in('role', ['admin', 'coordenador', 'atendente'])
+        .in('role', ['admin', 'coordenador', 'atendente', 'administrativo'])
         .neq('id', userProfile.id)
         .order('full_name', { ascending: true });
 
@@ -176,6 +176,7 @@ export default function StaffChat() {
     switch (role) {
       case 'admin': return { bg: '#fee2e2', text: '#991b1b', label: 'Admin' };
       case 'coordenador': return { bg: '#fef3c7', text: '#92400e', label: 'Coord' };
+      case 'administrativo': return { bg: '#e0e7ff', text: '#3730a3', label: 'Administrativo' };
       default: return { bg: '#e0f2fe', text: '#075985', label: 'Atendente' };
     }
   };

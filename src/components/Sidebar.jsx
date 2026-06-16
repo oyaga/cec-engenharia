@@ -153,7 +153,7 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
-                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
+                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente', 'administrativo']) && (
                     <NavLink
                         to="/secretaria/chat"
                         style={({ isActive }) => ({

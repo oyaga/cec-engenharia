@@ -180,7 +180,7 @@ function App() {
               <Route path="/lms" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_lms"><LMSAdmin /></RoleGuard>} />
               <Route path="/secretaria/comunicados" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_comunicados"><Comunicados /></RoleGuard>} />
               <Route path="/secretaria/certificados" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_certificados"><Certificados /></RoleGuard>} />
-              <Route path="/secretaria/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']} requiredPermission="access_dashboard"><StaffChat /></RoleGuard>} />
+              <Route path="/secretaria/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente', 'administrativo']} requiredPermission="access_dashboard"><StaffChat /></RoleGuard>} />
               <Route path="/config" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config"><ConfigDocs /></RoleGuard>} />
               <Route path="/config-asaas" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config_asaas"><ConfigAsaas /></RoleGuard>} />
               <Route path="/secretaria/instrutores" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_instrutores"><Instrutores /></RoleGuard>} />
