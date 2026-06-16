@@ -27,14 +27,15 @@ const Contact = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase
+      // 1. Salvar no Supabase (Upsert para evitar erros caso o telefone já exista)
       const { error } = await supabase
         .from('leads')
-        .insert([{
+        .upsert([{
           name: formData.name,
           phone: formData.phone,
-          message: formData.message
-        }]);
+          message: formData.message,
+          status: 'novo'
+        }], { onConflict: 'phone' });
 
       if (error) throw error;
 

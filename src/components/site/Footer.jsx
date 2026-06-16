@@ -22,7 +22,7 @@ const Footer = () => {
         .from('leads')
         .insert([{
           name: 'Assinante Newsletter',
-          phone: 'N/A',
+          email: newsletterEmail,
           course_interest: 'Newsletter',
           message: `E-mail inscrito na newsletter: ${newsletterEmail}`,
           status: 'novo'
