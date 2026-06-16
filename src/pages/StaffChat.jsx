@@ -25,16 +25,24 @@ export default function StaffChat() {
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
   // Auto-scroll para a última mensagem
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (smooth = true) => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
   };
 
+  const messagesLength = chatMessages.length;
+  const contactId = selectedContact?.id;
+
   useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages, selectedContact]);
+    scrollToBottom(true);
+  }, [messagesLength, contactId]);
 
   // 1. Carregar contatos (colaboradores da secretaria)
   const fetchCollaborators = async (showLoader = false) => {
@@ -387,17 +395,20 @@ export default function StaffChat() {
             </div>
 
             {/* Corpo das Mensagens (Scrollable) */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '1.5rem',
-              backgroundColor: '#f1f5f9',
-              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
-              backgroundSize: '16px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem'
-            }}>
+            <div 
+              ref={messagesContainerRef}
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '1.5rem',
+                backgroundColor: '#f1f5f9',
+                backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
+                backgroundSize: '16px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}
+            >
               {loadingMessages ? (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', gap: '0.5rem' }}>
                   <RefreshCw size={28} className="animate-spin text-muted" />
@@ -455,7 +466,6 @@ export default function StaffChat() {
                   );
                 })
               )}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Input de Envio (Rodapé) */}
