@@ -379,11 +379,11 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
-                {(hasAccess('access_equipe', ['admin', 'coordenador']) || 
-                  hasAccess('access_lms', ['admin', 'coordenador']) || 
-                  hasAccess('access_comunicados', ['admin', 'coordenador']) ||
-                  hasAccess('access_config', ['admin', 'coordenador']) ||
-                  hasAccess('access_config_asaas', ['admin', 'coordenador'])) && (
+                {(hasAccess('access_equipe', ['admin', 'coordenador', 'administrativo']) || 
+                  hasAccess('access_lms', ['admin', 'coordenador', 'administrativo']) || 
+                  hasAccess('access_comunicados', ['admin', 'coordenador', 'administrativo']) ||
+                  hasAccess('access_config', ['admin', 'coordenador', 'administrativo']) ||
+                  hasAccess('access_config_asaas', ['admin', 'coordenador', 'administrativo'])) && (
                     <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                         {hasAccess('access_equipe', ['admin', 'coordenador']) && (
                             <NavLink
@@ -401,7 +401,7 @@ export default function Sidebar() {
                             </NavLink>
                         )}
 
-                        {hasAccess('access_lms', ['admin', 'coordenador']) && (
+                        {hasAccess('access_lms', ['admin', 'coordenador', 'administrativo']) && (
                             <NavLink
                                 to="/lms"
                                 style={({ isActive }) => ({

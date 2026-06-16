@@ -177,7 +177,7 @@ function App() {
               <Route path="/leads-admin" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']} requiredPermission="access_leads"><LeadsAdmin /></RoleGuard>} />
               <Route path="/equipe" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_equipe"><Equipe /></RoleGuard>} />
               <Route path="/secretaria/funcionarios" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_equipe"><Equipe /></RoleGuard>} />
-              <Route path="/lms" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_lms"><LMSAdmin /></RoleGuard>} />
+              <Route path="/lms" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'administrativo']} requiredPermission="access_lms"><LMSAdmin /></RoleGuard>} />
               <Route path="/secretaria/comunicados" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_comunicados"><Comunicados /></RoleGuard>} />
               <Route path="/secretaria/certificados" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_certificados"><Certificados /></RoleGuard>} />
               <Route path="/secretaria/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente', 'administrativo']} requiredPermission="access_dashboard"><StaffChat /></RoleGuard>} />
