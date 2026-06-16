@@ -11,25 +11,28 @@ const Footer = () => {
   const { footer, navbar } = content;
 
   const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterPhone, setNewsletterPhone] = useState('');
   const [newsletterStatus, setNewsletterStatus] = useState(null); // 'sending', 'success', 'error'
 
   const handleNewsletterSubmit = async (e) => {
     e.preventDefault();
-    if (!newsletterEmail) return;
+    if (!newsletterEmail || !newsletterPhone) return;
     setNewsletterStatus('sending');
     try {
       const { error } = await supabase
         .from('leads')
-        .insert([{
+        .upsert([{
           name: 'Assinante Newsletter',
+          phone: newsletterPhone,
           email: newsletterEmail,
           course_interest: 'Newsletter',
-          message: `E-mail inscrito na newsletter: ${newsletterEmail}`,
+          message: `E-mail inscrito na newsletter: ${newsletterEmail} | WhatsApp: ${newsletterPhone}`,
           status: 'novo'
-        }]);
+        }], { onConflict: 'phone' });
       if (error) throw error;
       setNewsletterStatus('success');
       setNewsletterEmail('');
+      setNewsletterPhone('');
       setTimeout(() => setNewsletterStatus(null), 3000);
     } catch (err) {
       console.error(err);
@@ -240,7 +243,7 @@ const Footer = () => {
             <EditableText path="footer.newsletter.text" initialValue={footer.newsletter?.text} tagName="p" />
           </div>
           <form onSubmit={handleNewsletterSubmit} className="newsletter-form">
-            <div className="newsletter-input" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <div className="newsletter-fields" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
               <input 
                 type="email" 
                 required
@@ -248,15 +251,24 @@ const Footer = () => {
                 onChange={(e) => setNewsletterEmail(e.target.value)}
                 placeholder="Seu melhor e-mail" 
                 disabled={newsletterStatus === 'sending'}
-                style={{ flex: 1, padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem' }}
+                style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+              />
+              <input 
+                type="tel" 
+                required
+                value={newsletterPhone}
+                onChange={(e) => setNewsletterPhone(e.target.value)}
+                placeholder="WhatsApp (ex: 21 99999-9999)" 
+                disabled={newsletterStatus === 'sending'}
+                style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
               />
               <button 
                 type="submit" 
                 className="btn-send" 
                 disabled={newsletterStatus === 'sending'} 
-                style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 1.25rem', height: '44px', flexShrink: 0 }}
+                style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0.65rem 1.25rem', height: '44px', width: '100%', marginTop: '0.25rem', boxSizing: 'border-box' }}
               >
-                <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{newsletterStatus === 'sending' ? '...' : 'Enviar'}</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{newsletterStatus === 'sending' ? 'Enviando...' : 'Inscrever-se na Newsletter'}</span>
                 <Mail size={16} />
               </button>
             </div>
