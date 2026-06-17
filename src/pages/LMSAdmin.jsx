@@ -593,6 +593,7 @@ export default function LMSAdmin() {
         const data = {
             module_id: lessonForm.moduleId,
             title: lessonForm.title,
+            type: lessonForm.type,
             video_url: lessonForm.type === 'video' ? lessonForm.video_url : null,
             pdf_url: lessonForm.type === 'pdf' ? lessonForm.pdf_url : null,
             min_watch_time_sec: (parseInt(lessonForm.min_minutes) || 0) * 60,

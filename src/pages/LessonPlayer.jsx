@@ -665,17 +665,17 @@ export default function LessonPlayer() {
                 </button>
 
                 {/* ÁREA DE CONTEÚDO PRINCIPAL (PLAYER OU COMPONENTE ADAPTATIVO) */}
-                {(!lesson.type || lesson.type === 'video' || lesson.type === 'pdf') ? (
+                {(true) ? (
                     <>
                         <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', border: '1px solid #1e293b' }}>
-                            {(!lesson.type || lesson.type === 'video') && lesson.video_url ? (
+                            {lesson.video_url ? (
                                 <iframe 
                                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
                                     src={formatVideoUrl(lesson.video_url)}
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                     allowFullScreen
                                 ></iframe>
-                            ) : (lesson.type === 'pdf' || (!lesson.type && lesson.pdf_url)) && lesson.pdf_url ? (
+                            ) : lesson.pdf_url ? (
                                 <div
                                     ref={pdfContainerRef}
                                     style={{
