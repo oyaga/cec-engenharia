@@ -29,6 +29,7 @@ export default function LessonPlayer() {
     const { session, userProfile } = useAuth()
     
     const [showCompletionModal, setShowCompletionModal] = useState(false)
+    const [frequenciaPratica, setFrequenciaPratica] = useState(100) // Cálculo dinâmico para certificado
     const [lesson, setLesson] = useState(null)
     const [course, setCourse] = useState(null)
     const [allLessons, setAllLessons] = useState([])
@@ -235,6 +236,26 @@ export default function LessonPlayer() {
                         setStudentId(studentsData.id)
                         setTurmaId(studentsData.turma_id)
                         
+                        // Buscar histórico de presença para cálculo de frequência prática do aluno
+                        if (studentsData.turma_id) {
+                            const { data: attData } = await supabase
+                                .from('attendance_records')
+                                .select('*')
+                                .eq('student_id', studentsData.id)
+                            
+                            if (attData && attData.length > 0) {
+                                const datasUnicas = Array.from(new Set(attData.map(a => a.created_at?.split('T')[0])))
+                                const totalDadas = datasUnicas.length
+                                const presencas = attData.filter(a => 
+                                    a.class_id === studentsData.turma_id && (a.status === 'presente' || a.status === 'falta_justificada')
+                                ).length
+                                const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100
+                                setFrequenciaPratica(freq)
+                            } else {
+                                setFrequenciaPratica(100) // Default 100% se nenhuma chamada foi lançada ainda
+                            }
+                        }
+                        
                         // Se for aula do tipo presencial, buscar os detalhes da aula prática
                         if (lessonData.type === 'presencial' && studentsData.turma_id) {
                             const { data: turmaData } = await supabase
@@ -259,7 +280,7 @@ export default function LessonPlayer() {
                         }
                     }
                 } catch (stErr) {
-                    console.warn("Erro ao buscar dados do estudante ou aula presencial:", stErr.message)
+                    console.warn("Erro ao buscar dados do estudante, presença ou aula presencial:", stErr.message)
                 }
 
                 // Se for aula do tipo tarefa, buscar se ja existe submissao
@@ -554,7 +575,7 @@ export default function LessonPlayer() {
     const saveProgress = async (seconds, completed) => {
         if (!session?.user?.id || !lessonId) return
         
-        await supabase
+        const { error } = await supabase
             .from('lms_student_progress')
             .upsert({
                 student_id: session.user.id,
@@ -563,6 +584,30 @@ export default function LessonPlayer() {
                 is_completed: completed,
                 last_accessed: new Date().toISOString()
             }, { onConflict: ['student_id', 'lesson_id'] })
+
+        // Sincronizar porcentagem de progresso real na tabela 'students'
+        if (!error && studentId && allLessons.length > 0) {
+            try {
+                const { data: currentProgress } = await supabase
+                    .from('lms_student_progress')
+                    .select('lesson_id, is_completed')
+                    .eq('student_id', session.user.id)
+                    .eq('is_completed', true)
+                
+                const completedCount = allLessons.filter(l => 
+                    (l.id === lessonId && completed) || currentProgress?.some(p => p.lesson_id === l.id)
+                ).length
+                
+                const percentage = Math.round((completedCount / allLessons.length) * 100)
+                
+                await supabase
+                    .from('students')
+                    .update({ progress_percent: percentage })
+                    .eq('id', studentId)
+            } catch (err) {
+                console.error("Erro ao sincronizar progress_percent no banco:", err)
+            }
+        }
     }
 
     // Lógica de cronômetro para tempo mínimo e Heartbeat de presença
@@ -1531,94 +1576,167 @@ export default function LessonPlayer() {
                         animation: 'scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
                         color: 'white'
                     }}>
-                        <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '90px',
-                            height: '90px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-                            boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.4)',
-                            marginBottom: '2rem',
-                            animation: 'float 3s ease-in-out infinite'
-                        }}>
-                            <Trophy size={48} color="white" />
-                        </div>
-                        <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem', background: 'linear-gradient(to right, #fbbf24, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                            Curso Concluído!
-                        </h2>
-                        <p style={{ fontSize: '1.1rem', color: '#e2e8f0', fontWeight: 600, marginBottom: '1.5rem', padding: '0 1rem' }}>
-                            Parabéns, {userProfile?.full_name || 'Estudante'}! Você concluiu com sucesso todas as etapas teóricas do curso.
-                        </p>
-                        <div style={{ 
-                            backgroundColor: '#0f172a',
-                            borderRadius: '16px',
-                            padding: '1rem',
-                            border: '1px solid rgba(255,255,255,0.05)',
-                            marginBottom: '2.5rem',
-                            fontSize: '0.9rem',
-                            color: '#94a3b8'
-                        }}>
-                            🎓 Seu certificado EAD já está disponível na sua área de certificados do aluno.
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            <button 
-                                onClick={() => navigate('/certificados')}
-                                className="btn btn-primary"
-                                style={{ 
-                                    padding: '0.85rem 1.5rem', 
-                                    fontSize: '1rem', 
-                                    fontWeight: 700, 
-                                    borderRadius: '12px',
-                                    background: 'linear-gradient(to right, #10b981, #059669)',
-                                    border: 'none',
-                                    color: 'white',
-                                    boxShadow: '0 4px 14px 0 rgba(16, 185, 129, 0.3)',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                📜 Ir para Meus Certificados
-                            </button>
-                            <button 
-                                onClick={() => navigate('/meus-cursos')}
-                                style={{ 
-                                    padding: '0.85rem 1.5rem', 
-                                    fontSize: '0.95rem', 
-                                    fontWeight: 600, 
-                                    borderRadius: '12px',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    color: '#e2e8f0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={e => {
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'
-                                }}
-                                onMouseLeave={e => {
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-                                }}
-                            >
-                                📚 Voltar para Meus Cursos
-                            </button>
-                            <button 
-                                onClick={() => setShowCompletionModal(false)}
-                                style={{ 
-                                    background: 'none', 
-                                    border: 'none', 
-                                    color: '#64748b', 
-                                    fontSize: '0.85rem', 
-                                    cursor: 'pointer',
-                                    marginTop: '0.5rem',
-                                    textDecoration: 'underline'
-                                }}
-                            >
-                                Fechar e continuar na aula
-                            </button>
-                        </div>
+                        {frequenciaPratica < 75 ? (
+                            <>
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '90px',
+                                    height: '90px',
+                                    borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)',
+                                    boxShadow: '0 10px 25px -5px rgba(2, 132, 199, 0.4)',
+                                    marginBottom: '2rem',
+                                    animation: 'float 3s ease-in-out infinite'
+                                }}>
+                                    <FileText size={48} color="white" />
+                                </div>
+                                <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.5rem', background: 'linear-gradient(to right, #38bdf8, #0284c7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                                    Teoria EAD Concluída!
+                                </h2>
+                                <p style={{ fontSize: '1.1rem', color: '#e2e8f0', fontWeight: 600, marginBottom: '1.5rem', padding: '0 1rem' }}>
+                                    Parabéns, {userProfile?.full_name || 'Estudante'}! Você concluiu 100% das etapas teóricas do curso.
+                                </p>
+                                <div style={{ 
+                                    backgroundColor: '#0f172a',
+                                    borderRadius: '16px',
+                                    padding: '1.25rem',
+                                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                                    marginBottom: '2.5rem',
+                                    fontSize: '0.9rem',
+                                    color: '#f59e0b',
+                                    textAlign: 'left',
+                                    lineHeight: '1.5'
+                                }}>
+                                    ⚠️ <strong>Certificado Aguardando Prática:</strong> A parte teórica EAD está concluída. O seu certificado oficial de qualificação será liberado automaticamente assim que você atingir o mínimo de <strong>75% de frequência presencial</strong> nas aulas práticas de caldeiraria e tubulação (sua presença atual: {frequenciaPratica}%).
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <button 
+                                        onClick={() => navigate('/meus-cursos')}
+                                        className="btn btn-primary"
+                                        style={{ 
+                                            padding: '0.85rem 1.5rem', 
+                                            fontSize: '1rem', 
+                                            fontWeight: 700, 
+                                            borderRadius: '12px',
+                                            background: 'linear-gradient(to right, #0284c7, #0369a1)',
+                                            border: 'none',
+                                            color: 'white',
+                                            boxShadow: '0 4px 14px 0 rgba(2, 132, 199, 0.3)',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        📚 Voltar para Meus Cursos
+                                    </button>
+                                    <button 
+                                        onClick={() => setShowCompletionModal(false)}
+                                        style={{ 
+                                            background: 'none', 
+                                            border: 'none', 
+                                            color: '#64748b', 
+                                            fontSize: '0.85rem', 
+                                            cursor: 'pointer',
+                                            marginTop: '0.5rem',
+                                            textDecoration: 'underline'
+                                        }}
+                                    >
+                                        Fechar e continuar na aula
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '90px',
+                                    height: '90px',
+                                    borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                                    boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.4)',
+                                    marginBottom: '2rem',
+                                    animation: 'float 3s ease-in-out infinite'
+                                }}>
+                                    <Trophy size={48} color="white" />
+                                </div>
+                                <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem', background: 'linear-gradient(to right, #fbbf24, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                                    Curso Concluído!
+                                </h2>
+                                <p style={{ fontSize: '1.1rem', color: '#e2e8f0', fontWeight: 600, marginBottom: '1.5rem', padding: '0 1rem' }}>
+                                    Parabéns, {userProfile?.full_name || 'Estudante'}! Você concluiu com sucesso todas as etapas teóricas e práticas do curso.
+                                </p>
+                                <div style={{ 
+                                    backgroundColor: '#0f172a',
+                                    borderRadius: '16px',
+                                    padding: '1rem',
+                                    border: '1px solid rgba(255,255,255,0.05)',
+                                    marginBottom: '2.5rem',
+                                    fontSize: '0.9rem',
+                                    color: '#94a3b8'
+                                }}>
+                                    🎓 Seu certificado oficial de qualificação técnica já está liberado na sua área de certificados!
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <button 
+                                        onClick={() => navigate('/certificados')}
+                                        className="btn btn-primary"
+                                        style={{ 
+                                            padding: '0.85rem 1.5rem', 
+                                            fontSize: '1rem', 
+                                            fontWeight: 700, 
+                                            borderRadius: '12px',
+                                            background: 'linear-gradient(to right, #10b981, #059669)',
+                                            border: 'none',
+                                            color: 'white',
+                                            boxShadow: '0 4px 14px 0 rgba(16, 185, 129, 0.3)',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        📜 Ir para Meus Certificados
+                                    </button>
+                                    <button 
+                                        onClick={() => navigate('/meus-cursos')}
+                                        style={{ 
+                                            padding: '0.85rem 1.5rem', 
+                                            fontSize: '0.95rem', 
+                                            fontWeight: 600, 
+                                            borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            border: '1px solid rgba(255,255,255,0.1)',
+                                            color: '#e2e8f0',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => {
+                                            e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'
+                                        }}
+                                        onMouseLeave={e => {
+                                            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                                        }}
+                                    >
+                                        📚 Voltar para Meus Cursos
+                                    </button>
+                                    <button 
+                                        onClick={() => setShowCompletionModal(false)}
+                                        style={{ 
+                                            background: 'none', 
+                                            border: 'none', 
+                                            color: '#64748b', 
+                                            fontSize: '0.85rem', 
+                                            cursor: 'pointer',
+                                            marginTop: '0.5rem',
+                                            textDecoration: 'underline'
+                                        }}
+                                    >
+                                        Fechar e continuar na aula
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

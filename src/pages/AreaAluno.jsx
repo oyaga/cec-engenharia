@@ -1056,23 +1056,46 @@ export default function AreaAluno() {
             {myCourses.map(course => {
               const isEligible = course.progress_percent === 100 && freqReal >= 75;
               const hasCert = issuedCertificates.some(c => c.course_id === course.id);
+              const isEadCompleted = course.progress_percent === 100;
+              
+              // Estilo de borda especial de celebração para cursos completos/teoria completa
+              const cardBorder = hasCert 
+                ? '1px solid rgba(16, 185, 129, 0.45)' 
+                : isEligible 
+                  ? '1px solid rgba(2, 132, 199, 0.45)' 
+                  : isEadCompleted 
+                    ? '1px dashed rgba(245, 158, 11, 0.5)' 
+                    : '1px solid var(--border-color)';
+
+              const cardBg = hasCert 
+                ? 'linear-gradient(to bottom right, #ffffff, #f0fdf4)' 
+                : isEadCompleted 
+                  ? 'linear-gradient(to bottom right, #ffffff, #fffdfa)'
+                  : 'white';
               
               return (
-                <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', background: cardBg, border: cardBorder, display: 'flex', flexDirection: 'column', gap: '1.25rem', transition: 'all 0.2s', boxShadow: hasCert ? '0 10px 15px -3px rgba(16, 185, 129, 0.05)' : 'none' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
                     <div>
-                      <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0 }}>{course.title}</h4>
+                      <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {course.title}
+                        {hasCert && <span style={{ fontSize: '1.1rem' }}>🏆</span>}
+                      </h4>
                       <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Modalidade: {course.modality?.toUpperCase() || 'HÍBRIDO'}</span>
                     </div>
-
+ 
                     <div>
                       {hasCert ? (
-                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px' }}>
-                          ✅ Certificado Emitido
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          ✓ Certificado Emitido
                         </span>
                       ) : isEligible ? (
-                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px' }}>
-                          ⏳ Aguardando Emissão
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px' }}>
+                          ⏳ Aguardando Homologação
+                        </span>
+                      ) : isEadCompleted ? (
+                        <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fff7ed', color: '#c2410c', padding: '4px 10px', borderRadius: '12px' }}>
+                          📚 Teoria 100% · Prática Pendente
                         </span>
                       ) : (
                         <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px' }}>
@@ -1081,19 +1104,21 @@ export default function AreaAluno() {
                       )}
                     </div>
                   </div>
-
+ 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
                     {/* Progresso Teórico EAD */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
                         <span>Aulas Teóricas EAD</span>
-                        <span>{course.progress_percent || 0}%</span>
+                        <span style={{ color: isEadCompleted ? '#10b981' : '#475569', fontWeight: '800' }}>
+                          {isEadCompleted ? 'Concluído 100% 🎉' : `${course.progress_percent || 0}%`}
+                        </span>
                       </div>
                       <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 0.4s' }}></div>
+                        <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: isEadCompleted ? '#10b981' : 'var(--primary)', transition: 'width 0.4s' }}></div>
                       </div>
                     </div>
-
+ 
                     {/* Progresso Presencial */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
@@ -1106,6 +1131,12 @@ export default function AreaAluno() {
                     </div>
                   </div>
 
+                  {isEadCompleted && !isEligible && !hasCert && (
+                    <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.04)', borderLeft: '3px solid #f59e0b', padding: '0.75rem', borderRadius: '6px', fontSize: '0.78rem', color: '#b45309', lineHeight: '1.4' }}>
+                      💡 <strong>Teoria EAD Concluída:</strong> Fique atento às datas presenciais de final de semana na aba de Aulas Presenciais. O seu certificado será gerado assim que cumprir a frequência prática.
+                    </div>
+                  )}
+ 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '700' }}>Frequência Presencial:</span>
@@ -1120,14 +1151,64 @@ export default function AreaAluno() {
                         {freqReal}% {freqReal < 75 && <AlertCircle size={14} title="Mínimo exigido para aprovação: 75%" />}
                       </span>
                     </div>
-
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => handleStartCourse(course.id)}
-                      style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '700', fontSize: '0.85rem' }}
-                    >
-                      Estudar EAD <ChevronRight size={16} />
-                    </button>
+ 
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {hasCert ? (
+                        <>
+                          <button
+                            onClick={() => handleStartCourse(course.id)}
+                            style={{ 
+                              padding: '0.5rem 1rem', 
+                              borderRadius: '8px', 
+                              fontWeight: '600', 
+                              fontSize: '0.82rem',
+                              background: 'transparent',
+                              border: '1px solid #cbd5e1',
+                              color: '#475569',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Rever Aulas EAD
+                          </button>
+                          <button
+                            onClick={() => navigate('/area-aluno/certificados')}
+                            className="btn"
+                            style={{ 
+                              padding: '0.6rem 1.5rem', 
+                              borderRadius: '8px', 
+                              fontWeight: '750', 
+                              fontSize: '0.85rem',
+                              background: 'linear-gradient(to right, #10b981, #059669)',
+                              border: 'none',
+                              color: 'white',
+                              cursor: 'pointer',
+                              boxShadow: '0 4px 10px rgba(16, 185, 129, 0.2)'
+                            }}
+                          >
+                            📜 Acessar Certificado
+                          </button>
+                        </>
+                      ) : isEadCompleted ? (
+                        <>
+                          <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: '600', marginRight: '4px' }}>EAD Completo!</span>
+                          <button 
+                            className="btn btn-secondary" 
+                            onClick={() => handleStartCourse(course.id)}
+                            style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '700', fontSize: '0.85rem', border: '1px solid #cbd5e1', color: '#475569', background: 'transparent' }}
+                          >
+                            Rever Aulas EAD <ChevronRight size={16} />
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={() => handleStartCourse(course.id)}
+                          style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '700', fontSize: '0.85rem' }}
+                        >
+                          Estudar EAD <ChevronRight size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -1179,30 +1260,135 @@ export default function AreaAluno() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)' }}>Meus Cursos Matriculados</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-        {myCourses.map(course => (
-          <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <h4 style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)', margin: 0 }}>{course.title}</h4>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Código do Curso: <strong>{course.code || ' --- '}</strong></p>
-            
-            <div style={{ marginTop: '0.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
-                <span>Progresso Teórico</span>
-                <span>{course.progress_percent || 0}%</span>
+        {myCourses.map(course => {
+          const isEligible = course.progress_percent === 100 && freqReal >= 75;
+          const hasCert = issuedCertificates.some(c => c.course_id === course.id);
+          const isEadCompleted = course.progress_percent === 100;
+
+          // Mesmos estilos do dashboard
+          const cardBorder = hasCert 
+            ? '1px solid rgba(16, 185, 129, 0.45)' 
+            : isEligible 
+              ? '1px solid rgba(2, 132, 199, 0.45)' 
+              : isEadCompleted 
+                ? '1px dashed rgba(245, 158, 11, 0.5)' 
+                : '1px solid var(--border-color)';
+
+          const cardBg = hasCert 
+            ? 'linear-gradient(to bottom right, #ffffff, #f0fdf4)' 
+            : isEadCompleted 
+              ? 'linear-gradient(to bottom right, #ffffff, #fffdfa)'
+              : 'white';
+
+          return (
+            <div key={course.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', background: cardBg, border: cardBorder, display: 'flex', flexDirection: 'column', gap: '1.15rem', transition: 'all 0.2s', boxShadow: hasCert ? '0 10px 15px -3px rgba(16, 185, 129, 0.05)' : 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h4 style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {course.title}
+                    {hasCert && <span style={{ fontSize: '1.15rem' }}>🏆</span>}
+                  </h4>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>Código do Curso: <strong>{course.code || ' --- '}</strong></p>
+                </div>
+                
+                <div>
+                  {hasCert ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px' }}>
+                      ✓ Certificado Emitido
+                    </span>
+                  ) : isEligible ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px' }}>
+                      ⏳ Aguardando Homologação
+                    </span>
+                  ) : isEadCompleted ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fff7ed', color: '#c2410c', padding: '4px 10px', borderRadius: '12px' }}>
+                      📚 Teoria 100% · Prática Pendente
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px' }}>
+                      🔒 Certificado Bloqueado
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: 'var(--primary)' }}></div>
+              
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
+                  <span>Progresso Teórico EAD</span>
+                  <span style={{ color: isEadCompleted ? '#10b981' : '#475569', fontWeight: '800' }}>
+                    {isEadCompleted ? 'Concluído 100% 🎉' : `${course.progress_percent || 0}%`}
+                  </span>
+                </div>
+                <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${course.progress_percent || 0}%`, height: '100%', backgroundColor: isEadCompleted ? '#10b981' : 'var(--primary)', transition: 'width 0.4s' }}></div>
+                </div>
+              </div>
+
+              {isEadCompleted && !isEligible && !hasCert && (
+                <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.04)', borderLeft: '3px solid #f59e0b', padding: '0.75rem', borderRadius: '6px', fontSize: '0.78rem', color: '#b45309', lineHeight: '1.4' }}>
+                  💡 A parte teórica está completa! Fique atento às aulas presenciais obrigatórias para liberar seu certificado.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', width: '100%' }}>
+                {hasCert ? (
+                  <>
+                    <button
+                      onClick={() => handleStartCourse(course.id)}
+                      style={{ 
+                        flex: 1,
+                        padding: '0.65rem', 
+                        borderRadius: '8px', 
+                        fontWeight: '700', 
+                        fontSize: '0.85rem',
+                        background: 'transparent',
+                        border: '1px solid #cbd5e1',
+                        color: '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Rever Aulas
+                    </button>
+                    <button
+                      onClick={() => navigate('/area-aluno/certificados')}
+                      className="btn"
+                      style={{ 
+                        flex: 1.5,
+                        padding: '0.65rem', 
+                        borderRadius: '8px', 
+                        fontWeight: '750', 
+                        fontSize: '0.85rem',
+                        background: 'linear-gradient(to right, #10b981, #059669)',
+                        border: 'none',
+                        color: 'white',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)'
+                      }}
+                    >
+                      📜 Acessar Certificado
+                    </button>
+                  </>
+                ) : isEadCompleted ? (
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => handleStartCourse(course.id)}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', border: '1px solid #cbd5e1', color: '#475569', background: 'transparent' }}
+                  >
+                    Revisar Aulas EAD <ChevronRight size={16} style={{ marginLeft: '4px' }} />
+                  </button>
+                ) : (
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => handleStartCourse(course.id)}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750' }}
+                  >
+                    Estudar EAD <ChevronRight size={16} style={{ marginLeft: '4px' }} />
+                  </button>
+                )}
               </div>
             </div>
-
-            <button 
-              className="btn btn-primary"
-              onClick={() => handleStartCourse(course.id)}
-              style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', marginTop: '1rem' }}
-            >
-              Acessar Player de Aula
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
