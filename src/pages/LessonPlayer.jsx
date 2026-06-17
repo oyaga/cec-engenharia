@@ -26,8 +26,9 @@ import {
 export default function LessonPlayer() {
     const { courseId, lessonId } = useParams()
     const navigate = useNavigate()
-    const { session } = useAuth()
+    const { session, userProfile } = useAuth()
     
+    const [showCompletionModal, setShowCompletionModal] = useState(false)
     const [lesson, setLesson] = useState(null)
     const [course, setCourse] = useState(null)
     const [allLessons, setAllLessons] = useState([])
@@ -1140,7 +1141,7 @@ export default function LessonPlayer() {
                             if (currentIndex < allLessons.length - 1) {
                                 navigate(`/curso/${courseId}/aula/${allLessons[currentIndex+1].id}`)
                             } else {
-                                alert('Parabéns! Você concluiu todas as lições deste curso.')
+                                setShowCompletionModal(true)
                             }
                         }}
                         className="btn btn-primary"
@@ -1494,6 +1495,133 @@ export default function LessonPlayer() {
                     })}
                 </div>
             </div>
+            {showCompletionModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(8px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 20000,
+                    animation: 'fadeIn 0.3s ease-out'
+                }}>
+                    <style>{`
+                        @keyframes fadeIn {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+                        @keyframes scaleUp {
+                            from { transform: scale(0.95); opacity: 0; }
+                            to { transform: scale(1); opacity: 1; }
+                        }
+                        @keyframes float {
+                            0% { transform: translateY(0px); }
+                            50% { transform: translateY(-10px); }
+                            100% { transform: translateY(0px); }
+                        }
+                    `}</style>
+                    <div style={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '24px',
+                        padding: '3rem 2rem',
+                        maxWidth: '500px',
+                        width: '90%',
+                        textAlign: 'center',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                        animation: 'scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                        color: 'white'
+                    }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '90px',
+                            height: '90px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                            boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.4)',
+                            marginBottom: '2rem',
+                            animation: 'float 3s ease-in-out infinite'
+                        }}>
+                            <Trophy size={48} color="white" />
+                        </div>
+                        <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem', background: 'linear-gradient(to right, #fbbf24, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                            Curso Concluído!
+                        </h2>
+                        <p style={{ fontSize: '1.1rem', color: '#e2e8f0', fontWeight: 600, marginBottom: '1.5rem', padding: '0 1rem' }}>
+                            Parabéns, {userProfile?.full_name || 'Estudante'}! Você concluiu com sucesso todas as etapas teóricas do curso.
+                        </p>
+                        <div style={{ 
+                            backgroundColor: '#0f172a',
+                            borderRadius: '16px',
+                            padding: '1rem',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                            marginBottom: '2.5rem',
+                            fontSize: '0.9rem',
+                            color: '#94a3b8'
+                        }}>
+                            🎓 Seu certificado EAD já está disponível na sua área de certificados do aluno.
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <button 
+                                onClick={() => navigate('/certificados')}
+                                className="btn btn-primary"
+                                style={{ 
+                                    padding: '0.85rem 1.5rem', 
+                                    fontSize: '1rem', 
+                                    fontWeight: 700, 
+                                    borderRadius: '12px',
+                                    background: 'linear-gradient(to right, #10b981, #059669)',
+                                    border: 'none',
+                                    color: 'white',
+                                    boxShadow: '0 4px 14px 0 rgba(16, 185, 129, 0.3)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                📜 Ir para Meus Certificados
+                            </button>
+                            <button 
+                                onClick={() => navigate('/meus-cursos')}
+                                style={{ 
+                                    padding: '0.85rem 1.5rem', 
+                                    fontSize: '0.95rem', 
+                                    fontWeight: 600, 
+                                    borderRadius: '12px',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    color: '#e2e8f0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                                }}
+                            >
+                                📚 Voltar para Meus Cursos
+                            </button>
+                            <button 
+                                onClick={() => setShowCompletionModal(false)}
+                                style={{ 
+                                    background: 'none', 
+                                    border: 'none', 
+                                    color: '#64748b', 
+                                    fontSize: '0.85rem', 
+                                    cursor: 'pointer',
+                                    marginTop: '0.5rem',
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                Fechar e continuar na aula
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
