@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import EditableText from '../../components/site/EditableText';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
@@ -15,6 +16,7 @@ import AdminToolbar from '../../components/site/AdminToolbar';
 
 const Enrollment = () => {
   const { content } = useEdit();
+  const { userProfile } = useAuth();
   const courses_section = content.courses_section || { courses: [] };
   const coursesList = courses_section.courses || [];
   const manual = content.manual_do_aluno || { title: 'Manual do Aluno', content: 'Carregando...' };
@@ -33,6 +35,19 @@ const Enrollment = () => {
     course: '',
     paymentMethod: 'pix' // pix | credit_card | boleto
   });
+
+  // Pré-preenchimento automático dos dados do perfil logado
+  useEffect(() => {
+    if (userProfile) {
+      setFormData(prev => ({
+        ...prev,
+        name: userProfile.full_name || prev.name,
+        email: userProfile.email || prev.email,
+        phone: userProfile.phone || prev.phone,
+        cpf: userProfile.cpf || prev.cpf
+      }));
+    }
+  }, [userProfile]);
 
   const [selectedClass, setSelectedClass] = useState(null);
   const [loadingPrice, setLoadingPrice] = useState(false);

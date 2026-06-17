@@ -451,7 +451,7 @@ export default function AreaAluno() {
         // Parsear preço do PIX no CMS
         let pricePix = 0;
         if (investment.pix) {
-          const match = investment.pix.match(/R$\s*([0-9.,]+)/);
+          const match = investment.pix.match(/R\$\s*([0-9.,]+)/);
           if (match) pricePix = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
         }
         if (!pricePix && lmsMatch?.price_pix) {
@@ -461,7 +461,7 @@ export default function AreaAluno() {
         // Parsear preço do Cartão no CMS
         let priceCard = 0;
         if (investment.credit) {
-          const match = investment.credit.match(/R$\s*([0-9.,]+)/);
+          const match = investment.credit.match(/R\$\s*([0-9.,]+)/);
           if (match) priceCard = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
         }
         if (!priceCard && lmsMatch?.price_card) {
@@ -487,7 +487,7 @@ export default function AreaAluno() {
           price_card: priceCard || 3000,
           price_pix: pricePix || 2500,
           max_installments: maxInstallments,
-          modality: c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido',
+          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: slug.startsWith('nr') ? 'NR' : 'END',
           whatsapp_link: c.whatsapp_link || null
         };
@@ -525,7 +525,7 @@ export default function AreaAluno() {
           price_card: priceCard,
           price_pix: pricePix,
           max_installments: maxInstallments,
-          modality: c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido',
+          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: c.slug?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
           whatsapp_link: c.whatsapp_link || null
         };
@@ -555,6 +555,11 @@ export default function AreaAluno() {
       `Poderia me passar mais informações sobre valores, turmas disponíveis e datas de início? Obrigado(a)!`
     );
     window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
+  };
+
+  // Redirecionamento para checkout
+  const handleMatricular = (course) => {
+    navigate(`/matricular-se?course=${encodeURIComponent(course.title)}`);
   };
 
   // Carregar instrutores da turma do aluno para o Chat
@@ -2408,8 +2413,6 @@ export default function AreaAluno() {
 
   // ABA 10: VITRINE DE CURSOS / WISHLIST
   const renderVitrine = () => {
-    const categories = ['Todos', ...Array.from(new Set(availableCourses.map(c => c.category || 'Outros').filter(Boolean)))];
-    
     const enrolledIds = new Set(myCourses.map(c => c.id));
 
     const filtered = availableCourses.filter(c => {
@@ -2417,8 +2420,7 @@ export default function AreaAluno() {
         c.title.toLowerCase().includes(vitrineSearch.toLowerCase()) ||
         (c.description || '').toLowerCase().includes(vitrineSearch.toLowerCase()) ||
         (c.code || '').toLowerCase().includes(vitrineSearch.toLowerCase());
-      const matchCat = selectedCategory === 'Todos' || (c.category || 'Outros') === selectedCategory;
-      return matchSearch && matchCat;
+      return matchSearch;
     });
 
     const wishlistCourses = availableCourses.filter(c => wishlist.includes(c.id));
@@ -2496,17 +2498,16 @@ export default function AreaAluno() {
                   gap: '0.75rem',
                   boxShadow: '0 4px 15px rgba(124,58,237,0.08)'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#7c3aed', background: '#f5f3ff', padding: '3px 8px', borderRadius: '6px' }}>{course.category || 'END'}</span>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
                     <button onClick={() => toggleWishlist(course.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
                       <Heart size={16} fill="#ef4444" color="#ef4444" />
                     </button>
                   </div>
                   <p style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e293b', margin: 0, lineHeight: 1.3 }}>{course.title}</p>
                   <button
-                    onClick={() => handleContactSecretaria(course)}
+                    onClick={() => handleMatricular(course)}
                     style={{
-                      background: '#25D366',
+                      background: '#7c3aed',
                       color: 'white',
                       border: 'none',
                       borderRadius: '8px',
@@ -2520,7 +2521,7 @@ export default function AreaAluno() {
                       gap: '0.35rem'
                     }}
                   >
-                    <Phone size={12} /> Solicitar Matrícula
+                    <Zap size={12} /> Solicitar Matrícula
                   </button>
                 </div>
               ))}
@@ -2528,7 +2529,7 @@ export default function AreaAluno() {
           </div>
         )}
 
-        {/* BUSCA E FILTROS */}
+        {/* BUSCA */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
@@ -2550,27 +2551,6 @@ export default function AreaAluno() {
               onFocus={e => e.target.style.borderColor = '#7c3aed'}
               onBlur={e => e.target.style.borderColor = '#e2e8f0'}
             />
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  borderRadius: '20px',
-                  border: selectedCategory === cat ? '2px solid #7c3aed' : '2px solid #e2e8f0',
-                  background: selectedCategory === cat ? '#7c3aed' : 'white',
-                  color: selectedCategory === cat ? 'white' : '#475569',
-                  fontSize: '0.8rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {cat}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -2610,12 +2590,6 @@ export default function AreaAluno() {
                     position: 'relative',
                     flexShrink: 0
                   }}>
-                    {/* Badge categoria */}
-                    <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
-                      <span style={{ fontSize: '0.68rem', fontWeight: '900', background: 'rgba(0,0,0,0.45)', color: 'white', padding: '4px 10px', borderRadius: '8px', backdropFilter: 'blur(4px)', letterSpacing: '0.05em' }}>
-                        {course.category || 'END'}
-                      </span>
-                    </div>
 
                     {/* Botão Wishlist */}
                     <button
@@ -2709,14 +2683,14 @@ export default function AreaAluno() {
                       </button>
 
                       <button
-                        onClick={() => handleContactSecretaria(course)}
+                        onClick={() => handleMatricular(course)}
                         disabled={alreadyEnrolled}
                         style={{
                           flex: 2,
                           padding: '0.6rem 0.75rem',
                           borderRadius: '8px',
                           border: 'none',
-                          background: alreadyEnrolled ? '#e2e8f0' : 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                          background: alreadyEnrolled ? '#e2e8f0' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                           color: alreadyEnrolled ? '#94a3b8' : 'white',
                           fontSize: '0.75rem',
                           fontWeight: '800',
@@ -2725,11 +2699,11 @@ export default function AreaAluno() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           gap: '0.3rem',
-                          boxShadow: alreadyEnrolled ? 'none' : '0 3px 10px rgba(37,211,102,0.3)',
+                          boxShadow: alreadyEnrolled ? 'none' : '0 3px 10px rgba(124,58,237,0.3)',
                           transition: 'all 0.2s'
                         }}
                       >
-                        <Phone size={13} />
+                        <Zap size={13} />
                         {alreadyEnrolled ? 'Já Matriculado' : 'Quero me Matricular'}
                       </button>
                     </div>

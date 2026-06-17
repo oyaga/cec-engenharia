@@ -113,17 +113,19 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     const settings = customSettings || savedSettings;
 
     if (isVideo(url)) {
-      const showControls = settings.controls ?? true;
-      const isMuted = settings.muted ?? false;
+      const showControls = settings.controls ?? false;
+      const isMuted = settings.muted ?? true;
       const shouldLoop = settings.loop ?? true;
       const shouldAutoplay = settings.autoplay ?? true;
 
       return (
         <video 
+          ref={el => { if (el) el.muted = isMuted; }}
           src={finalUrl} 
           style={style} 
           autoPlay={shouldAutoplay} 
           muted={isMuted} 
+          defaultMuted={isMuted}
           loop={shouldLoop} 
           playsInline 
           controls={showControls}
