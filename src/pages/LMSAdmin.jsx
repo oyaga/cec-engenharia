@@ -24,6 +24,17 @@ const formatVideoUrl = (url) => {
     return cleanUrl
 }
 
+const isImageUrl = (url) => {
+    if (!url) return false
+    const cleanPath = url.split('?')[0].toLowerCase()
+    return cleanPath.endsWith('.png') || 
+           cleanPath.endsWith('.jpg') || 
+           cleanPath.endsWith('.jpeg') || 
+           cleanPath.endsWith('.webp') || 
+           cleanPath.endsWith('.gif') ||
+           cleanPath.endsWith('.svg')
+}
+
 export default function LMSAdmin() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState([])
@@ -1344,7 +1355,7 @@ export default function LMSAdmin() {
                             <div className="form-group">
                                 <label className="form-label">Arquivo / Documento</label>
                                 <button className="btn btn-secondary" style={{ width: '100%' }} onClick={async () => {
-                                    const input = document.createElement('input'); input.type = 'file'; input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+                                    const input = document.createElement('input'); input.type = 'file'; input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif';
                                     input.onchange = async (e) => {
                                         const file = e.target.files[0]
                                         if (file) {
@@ -1366,11 +1377,21 @@ export default function LMSAdmin() {
                                                 Abrir em Nova Aba ↗
                                             </a>
                                         </div>
-                                        <iframe 
-                                            src={lessonForm.pdf_url} 
-                                            style={{ width: '100%', height: '180px', border: '1px solid #cbd5e1', borderRadius: '6px', backgroundColor: 'white' }}
-                                            title="Prévia do PDF"
-                                        ></iframe>
+                                        {isImageUrl(lessonForm.pdf_url) ? (
+                                            <div style={{ width: '100%', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', borderRadius: '6px', overflow: 'hidden' }}>
+                                                <img 
+                                                    src={lessonForm.pdf_url} 
+                                                    alt="Prévia do arquivo" 
+                                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <iframe 
+                                                src={lessonForm.pdf_url} 
+                                                style={{ width: '100%', height: '180px', border: '1px solid #cbd5e1', borderRadius: '6px', backgroundColor: 'white' }}
+                                                title="Prévia do PDF"
+                                            ></iframe>
+                                        )}
                                     </div>
                                 )}
                             </div>

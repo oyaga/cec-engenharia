@@ -635,6 +635,17 @@ export default function LessonPlayer() {
         return cleanUrl
     }
 
+    const isImageUrl = (url) => {
+        if (!url) return false
+        const cleanPath = url.split('?')[0].toLowerCase()
+        return cleanPath.endsWith('.png') || 
+               cleanPath.endsWith('.jpg') || 
+               cleanPath.endsWith('.jpeg') || 
+               cleanPath.endsWith('.webp') || 
+               cleanPath.endsWith('.gif') ||
+               cleanPath.endsWith('.svg')
+    }
+
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando aula...</div>
     if (!lesson) return <div style={{ padding: '2rem', textAlign: 'center' }}>Aula não encontrada.</div>
 
@@ -669,14 +680,24 @@ export default function LessonPlayer() {
                                     ref={pdfContainerRef}
                                     style={{
                                         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                                        backgroundColor: 'white'
+                                        backgroundColor: '#0f172a'
                                     }}
                                 >
-                                    <iframe 
-                                        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                                        src={lesson.pdf_url}
-                                        title="Documento da Aula"
-                                    ></iframe>
+                                    {isImageUrl(lesson.pdf_url) ? (
+                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                                            <img 
+                                                src={lesson.pdf_url} 
+                                                alt={lesson.title} 
+                                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)' }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <iframe 
+                                            style={{ width: '100%', height: '100%', border: 'none', display: 'block', backgroundColor: 'white' }}
+                                            src={lesson.pdf_url}
+                                            title="Documento da Aula"
+                                        ></iframe>
+                                    )}
                                     <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10, display: 'flex', gap: '0.5rem' }}>
                                         <a
                                             href={lesson.pdf_url}
