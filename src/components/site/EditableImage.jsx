@@ -26,7 +26,12 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
 
   const isVideo = (url) => {
     if (!url) return false;
-    return url.match(/\.(mp4|webm|ogg|mov)$/i) || url.includes('supabase.co/storage/v1/object/public/site_assets/');
+    try {
+      const cleanUrl = url.split('?')[0];
+      return !!cleanUrl.match(/\.(mp4|webm|ogg|mov)$/i);
+    } catch (e) {
+      return false;
+    }
   };
 
   useEffect(() => {
