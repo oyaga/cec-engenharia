@@ -616,13 +616,23 @@ export default function LessonPlayer() {
 
     const formatVideoUrl = (url) => {
         if (!url) return ''
-        if (url.includes('youtube.com/watch?v=')) {
-            return url.replace('watch?v=', 'embed/')
+        const cleanUrl = url.trim()
+
+        // 1. YouTube Regex
+        const ytRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/
+        const ytMatch = cleanUrl.match(ytRegex)
+        if (ytMatch && ytMatch[2].length === 11) {
+            return `https://www.youtube.com/embed/${ytMatch[2]}`
         }
-        if (url.includes('youtu.be/')) {
-            return url.replace('youtu.be/', 'youtube.com/embed/')
+
+        // 2. Vimeo Regex
+        const vimeoRegex = /(?:vimeo)\.com\/(?:channels\/[\w| ]+\/|groups\/[^\/]+\/videos\/|album\/[0-9]+\/video\/|showcase\/[0-9]+\/video\/|video\/|)(^[0-9]+|[0-9]+)/
+        const vimeoMatch = cleanUrl.match(vimeoRegex)
+        if (vimeoMatch) {
+            return `https://player.vimeo.com/video/${vimeoMatch[1]}`
         }
-        return url
+
+        return cleanUrl
     }
 
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando aula...</div>

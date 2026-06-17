@@ -3,6 +3,27 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Plus, Book, Video, FileText, ChevronRight, ChevronDown, Save, Trash2, Edit, CheckSquare, Clock, Trophy, Eye, Printer, Search, Award, UploadCloud, Megaphone } from 'lucide-react'
 
+const formatVideoUrl = (url) => {
+    if (!url) return ''
+    const cleanUrl = url.trim()
+
+    // 1. YouTube Regex
+    const ytRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/
+    const ytMatch = cleanUrl.match(ytRegex)
+    if (ytMatch && ytMatch[2].length === 11) {
+        return `https://www.youtube.com/embed/${ytMatch[2]}`
+    }
+
+    // 2. Vimeo Regex
+    const vimeoRegex = /(?:vimeo)\.com\/(?:channels\/[\w| ]+\/|groups\/[^\/]+\/videos\/|album\/[0-9]+\/video\/|showcase\/[0-9]+\/video\/|video\/|)(^[0-9]+|[0-9]+)/
+    const vimeoMatch = cleanUrl.match(vimeoRegex)
+    if (vimeoMatch) {
+        return `https://player.vimeo.com/video/${vimeoMatch[1]}`
+    }
+
+    return cleanUrl
+}
+
 export default function LMSAdmin() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState([])
@@ -1304,6 +1325,20 @@ export default function LMSAdmin() {
                             <div className="form-group">
                                 <label className="form-label">URL do Vídeo</label>
                                 <input type="text" className="form-control" value={lessonForm.video_url} onChange={e => setLessonForm({...lessonForm, video_url: e.target.value})} placeholder="https://youtube.com/..." />
+                                {lessonForm.video_url && (
+                                    <div style={{ marginTop: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.75rem', backgroundColor: '#f8fafc' }}>
+                                        <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600, display: 'block', marginBottom: '0.5rem' }}>📺 Prévia do Vídeo:</span>
+                                        <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '6px', overflow: 'hidden' }}>
+                                            <iframe 
+                                                src={formatVideoUrl(lessonForm.video_url)} 
+                                                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                allowFullScreen
+                                                title="Prévia do Vídeo"
+                                            ></iframe>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="form-group">
