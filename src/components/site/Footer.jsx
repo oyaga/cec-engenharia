@@ -13,20 +13,38 @@ const Footer = () => {
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterPhone, setNewsletterPhone] = useState('');
   const [newsletterStatus, setNewsletterStatus] = useState(null); // 'sending', 'success', 'error'
+  const [validationError, setValidationError] = useState('');
+
+  const handleEmailChange = (val) => {
+    setNewsletterEmail(val);
+    if (val.trim() || newsletterPhone.trim()) setValidationError('');
+  };
+
+  const handlePhoneChange = (val) => {
+    setNewsletterPhone(val);
+    if (val.trim() || newsletterEmail.trim()) setValidationError('');
+  };
 
   const handleNewsletterSubmit = async (e) => {
     e.preventDefault();
-    if (!newsletterEmail || !newsletterPhone) return;
+    if (!newsletterEmail.trim() && !newsletterPhone.trim()) {
+      setValidationError('Por favor, preencha o e-mail ou o WhatsApp.');
+      return;
+    }
+    setValidationError('');
     setNewsletterStatus('sending');
     try {
+      const emailValue = newsletterEmail.trim() ? newsletterEmail.trim() : null;
+      const phoneValue = newsletterPhone.trim() ? newsletterPhone.trim() : null;
+
       const { error } = await supabase
         .from('leads')
         .upsert([{
           name: 'Assinante Newsletter',
-          phone: newsletterPhone,
-          email: newsletterEmail,
+          phone: phoneValue,
+          email: emailValue,
           course_interest: 'Newsletter',
-          message: `E-mail inscrito na newsletter: ${newsletterEmail} | WhatsApp: ${newsletterPhone}`,
+          message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
           status: 'novo'
         }], { onConflict: 'phone' });
       if (error) throw error;
@@ -246,19 +264,17 @@ const Footer = () => {
             <div className="newsletter-fields" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
               <input 
                 type="email" 
-                required
                 value={newsletterEmail}
-                onChange={(e) => setNewsletterEmail(e.target.value)}
-                placeholder="Seu melhor e-mail" 
+                onChange={(e) => handleEmailChange(e.target.value)}
+                placeholder="E-mail (ou preencha o WhatsApp)" 
                 disabled={newsletterStatus === 'sending'}
                 style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
               />
               <input 
                 type="tel" 
-                required
                 value={newsletterPhone}
-                onChange={(e) => setNewsletterPhone(e.target.value)}
-                placeholder="WhatsApp (ex: 21 99999-9999)" 
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                placeholder="WhatsApp (ou preencha o e-mail)" 
                 disabled={newsletterStatus === 'sending'}
                 style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
               />
@@ -272,6 +288,7 @@ const Footer = () => {
                 <Mail size={16} />
               </button>
             </div>
+            {validationError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '0.5rem', fontWeight: 'bold', textAlign: 'left', margin: '0.5rem 0 0 0' }}>⚠️ {validationError}</p>}
             {newsletterStatus === 'success' && <p style={{ color: '#10b981', fontSize: '0.8rem', marginTop: '0.5rem', fontWeight: 'bold', textAlign: 'left', margin: '0.5rem 0 0 0' }}>✅ Inscrito com sucesso!</p>}
             {newsletterStatus === 'error' && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '0.5rem', fontWeight: 'bold', textAlign: 'left', margin: '0.5rem 0 0 0' }}>❌ Erro ao inscrever. Tente novamente.</p>}
           </form>
