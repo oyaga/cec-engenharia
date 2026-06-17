@@ -667,34 +667,58 @@ export default function LessonPlayer() {
                                         src={lesson.pdf_url}
                                         title="Documento da Aula"
                                     ></iframe>
-                                    <button
-                                        onClick={togglePdfFullscreen}
-                                        title={isPdfFullscreen ? 'Sair da Tela Cheia' : 'Expandir para Tela Cheia'}
-                                        style={{
-                                            position: 'absolute',
-                                            top: '0.75rem',
-                                            right: '0.75rem',
-                                            zIndex: 10,
-                                            background: 'rgba(15,23,42,0.85)',
-                                            border: '1px solid rgba(255,255,255,0.15)',
-                                            borderRadius: '8px',
-                                            color: 'white',
-                                            padding: '0.45rem 0.75rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.4rem',
-                                            fontSize: '0.78rem',
-                                            fontWeight: 600,
-                                            backdropFilter: 'blur(4px)',
-                                            transition: 'background 0.2s',
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(30,41,59,0.95)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(15,23,42,0.85)'}
-                                    >
-                                        {isPdfFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-                                        {isPdfFullscreen ? 'Reduzir' : 'Tela Cheia'}
-                                    </button>
+                                    <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10, display: 'flex', gap: '0.5rem' }}>
+                                        <a
+                                            href={lesson.pdf_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                background: 'rgba(16,185,129,0.9)',
+                                                border: '1px solid rgba(255,255,255,0.15)',
+                                                borderRadius: '8px',
+                                                color: 'white',
+                                                padding: '0.45rem 0.75rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.4rem',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 600,
+                                                textDecoration: 'none',
+                                                backdropFilter: 'blur(4px)',
+                                                transition: 'background 0.2s',
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
+                                        >
+                                            <ExternalLink size={15} />
+                                            Abrir em Nova Guia
+                                        </a>
+                                        <button
+                                            onClick={togglePdfFullscreen}
+                                            title={isPdfFullscreen ? 'Sair da Tela Cheia' : 'Expandir para Tela Cheia'}
+                                            style={{
+                                                background: 'rgba(15,23,42,0.85)',
+                                                border: '1px solid rgba(255,255,255,0.15)',
+                                                borderRadius: '8px',
+                                                color: 'white',
+                                                padding: '0.45rem 0.75rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.4rem',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 600,
+                                                backdropFilter: 'blur(4px)',
+                                                transition: 'background 0.2s',
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(30,41,59,0.95)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(15,23,42,0.85)'}
+                                        >
+                                            {isPdfFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                                            {isPdfFullscreen ? 'Reduzir' : 'Tela Cheia'}
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>

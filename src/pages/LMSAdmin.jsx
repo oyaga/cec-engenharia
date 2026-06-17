@@ -1323,6 +1323,21 @@ export default function LMSAdmin() {
                                     }
                                     input.click()
                                 }}>{lessonForm.pdf_url ? 'Alterar Arquivo' : 'Subir Arquivo'}</button>
+                                {lessonForm.pdf_url && (
+                                    <div style={{ marginTop: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.75rem', backgroundColor: '#f8fafc' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>✅ Arquivo Carregado:</span>
+                                            <a href={lessonForm.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'underline' }}>
+                                                Abrir em Nova Aba ↗
+                                            </a>
+                                        </div>
+                                        <iframe 
+                                            src={lessonForm.pdf_url} 
+                                            style={{ width: '100%', height: '180px', border: '1px solid #cbd5e1', borderRadius: '6px', backgroundColor: 'white' }}
+                                            title="Prévia do PDF"
+                                        ></iframe>
+                                    </div>
+                                )}
                             </div>
                         )}
 
