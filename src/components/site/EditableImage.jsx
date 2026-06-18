@@ -10,6 +10,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
   const [tempUrl, setTempUrl] = useState(initialValue);
   const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
   const getNestedValue = (obj, path) => {
@@ -24,8 +25,17 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
 
   const [tempSettings, setTempSettings] = useState(savedSettings);
 
-  const isVideo = (url) => {
+  const isVideo = (url, file) => {
+    if (file) {
+      return file.type.startsWith('video/');
+    }
     if (!url) return false;
+    if (url.startsWith('blob:')) {
+      const inputFile = fileInputRef.current?.files[0];
+      if (inputFile) {
+        return inputFile.type.startsWith('video/');
+      }
+    }
     try {
       const cleanUrl = url.split('?')[0];
       return !!cleanUrl.match(/\.(mp4|webm|ogg|mov)$/i);
@@ -49,11 +59,13 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
   const handleCancel = () => {
     setIsOpen(false);
     setPreview(null);
+    setSelectedFile(null);
   };
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setSelectedFile(file);
     setPreview(URL.createObjectURL(file));
     setTab('upload');
   };
@@ -84,6 +96,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
       updateContent(`${path}_settings`, tempSettings);
       setIsOpen(false);
       setPreview(null);
+      setSelectedFile(null);
     } catch (err) {
       console.error('Erro detalhado no upload:', err);
       alert('Erro ao enviar: ' + err.message);
@@ -117,7 +130,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
 
     const settings = customSettings || savedSettings;
 
-    if (isVideo(url)) {
+    if (isVideo(url, isBlob ? selectedFile : null)) {
       const showControls = settings.controls ?? false;
       const isMuted = settings.muted ?? true;
       const shouldLoop = settings.loop ?? true;
@@ -248,7 +261,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
                 <input type="range" min="0" max="100" step="1" value={tempSettings.y} onChange={e => setTempSettings({...tempSettings, y: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
               </div>
 
-              {isVideo(preview || tempUrl) && (
+              {isVideo(preview || tempUrl, preview ? selectedFile : null) && (
                 <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem', borderTop:'1px solid #334155', paddingTop:'0.75rem', marginTop:'0.25rem' }}>
                   <span style={{ color:'#10b981', fontSize:'0.75rem', fontWeight:'700', letterSpacing:'0.05em' }}>CONFIGURAÇÕES DO VÍDEO</span>
                   
