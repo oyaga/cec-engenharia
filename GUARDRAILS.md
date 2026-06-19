@@ -79,7 +79,30 @@ import { createPortal } from 'react-dom';
 
 ---
 
-## 5. Checklist de Qualidade Pré-Commit / Pré-Push
+## 5. Sistema da Secretaria (Painel Administrativo)
+
+A secretaria é o núcleo operacional da escola, lidando com informações acadêmicas e financeiras críticas. As seguintes regras impedem regressões no painel administrativo:
+
+### 👤 Cadastro e Edição de Alunos (`Alunos.jsx`)
+- **Validação de Duplicidade:** CPF e E-mail do aluno devem ser verificados contra a base de dados antes de concluir a inserção para impedir registros duplicados que quebrem os logins no portal do aluno.
+- **Senhas Temporárias:** Na **criação** de novos alunos, o campo `requires_password_change` deve ser salvo como `true` no banco de dados. Isso força o aluno a alterar sua senha logo no primeiro acesso. Na **edição** de perfis existentes, este campo **não deve ser sobrescrito** para evitar que alunos ativos sejam forçados a mudar suas senhas repentinamente.
+
+### 💳 Integração Financeira Asaas (`Financeiro.jsx` e `ConfigAsaas.jsx`)
+- O faturamento e geração de cobranças (PIX, Boleto, Cartão) dependem de chaves de API salvas na tabela `system_settings`.
+- **Regra:** Mudanças no código de integração com o Asaas não devem alterar a URL de produção (`https://api.asaas.com/v3`) para sandbox (`https://sandbox.asaas.com/v3`), a não ser sob verificação explícita de ambiente local (`development`).
+- **Gatilhos de Matrícula:** A alteração do status de pagamento de uma matrícula no painel financeiro para "Paga" deve, de forma automática e síncrona, liberar o acesso do aluno ao curso correspondente na tabela `student_courses` / `enrollments`.
+
+### 🎓 Geração e Validação de Certificados (`Certificados.jsx`)
+- A verificação de autenticidade dos certificados é um recurso público acessado via QR Code na rota `/validar-certificado/:id`.
+- **Regra:** A lógica de geração do código hash/identificador único do certificado e o layout de impressão em PDF **não devem ser modificados**. Mudanças no formato de identificação quebrarão instantaneamente a validação por QR Code de todos os certificados impressos emitidos anteriormente para ex-alunos.
+
+### 📅 Grade de Turmas e Cursos
+- O menu "Turmas (Grade do Site)" foi ocultado na barra lateral da secretaria e do site porque todos os cursos são 100% online com acesso imediato e sem data de turma fixa. Mas a página `/turmas` ainda é usada internamente pela secretaria para controle.
+- Se a secretaria for criar turmas, deve-se atentar que a vinculação de alunos à turma precisa atualizar a tabela de histórico acadêmico.
+
+---
+
+## 6. Checklist de Qualidade Pré-Commit / Pré-Push
 
 Antes de rodar `git commit` ou enviar novos códigos para a branch `main`:
 - [ ] **Desfazer Bypasses de Teste:** Verificar se códigos de atalho de login temporário foram removidos.
