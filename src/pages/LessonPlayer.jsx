@@ -105,6 +105,7 @@ export default function LessonPlayer() {
     
     const timerRef = useRef(null)
     const pdfContainerRef = useRef(null)
+    const mainContentRef = useRef(null)
     const [isPdfFullscreen, setIsPdfFullscreen] = useState(false)
 
     // Estados específicos da Sprint 1 (Portal do Aluno / LMS)
@@ -570,6 +571,9 @@ export default function LessonPlayer() {
         setSecondsWatched(0)
         setIsCompleted(false)
         setSelectedTopic(null)
+        if (mainContentRef.current) {
+            mainContentRef.current.scrollTop = 0
+        }
     }, [lessonId])
 
     const saveProgress = async (seconds, completed) => {
@@ -701,8 +705,37 @@ export default function LessonPlayer() {
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', height: 'calc(100vh - 120px)', backgroundColor: '#0f172a' }}>
+            <style>{`
+                .pdf-fullscreen-container:fullscreen {
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    background-color: #0f172a !important;
+                    z-index: 99999 !important;
+                }
+                .pdf-fullscreen-container:-webkit-full-screen {
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    background-color: #0f172a !important;
+                    z-index: 99999 !important;
+                }
+                .pdf-fullscreen-container:-moz-full-screen {
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    background-color: #0f172a !important;
+                    z-index: 99999 !important;
+                }
+            `}</style>
             {/* PLAYER E CONTEÚDO */}
-            <div style={{ overflowY: 'auto', padding: '2rem', color: 'white' }}>
+            <div ref={mainContentRef} style={{ overflowY: 'auto', padding: '2rem', color: 'white' }}>
                 <button 
                     onClick={() => navigate('/meus-cursos')}
                     style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '1.5rem' }}
@@ -715,17 +748,55 @@ export default function LessonPlayer() {
                     <>
                         <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', border: '1px solid #1e293b' }}>
                             {lesson.video_url ? (
-                                <iframe 
-                                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                                    src={formatVideoUrl(lesson.video_url)}
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                ></iframe>
+                                <>
+                                    <iframe 
+                                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+                                        src={formatVideoUrl(lesson.video_url)}
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                    ></iframe>
+                                    {lesson.allow_download && (
+                                        <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10 }}>
+                                            <a
+                                                href={lesson.video_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    background: 'rgba(16,185,129,0.9)',
+                                                    border: '1px solid rgba(255,255,255,0.15)',
+                                                    borderRadius: '8px',
+                                                    color: 'white',
+                                                    padding: '0.45rem 0.75rem',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.4rem',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 600,
+                                                    textDecoration: 'none',
+                                                    backdropFilter: 'blur(4px)',
+                                                    transition: 'background 0.2s',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
+                                            >
+                                                <ExternalLink size={15} />
+                                                Baixar Vídeo / Link Externo
+                                            </a>
+                                        </div>
+                                    )}
+                                </>
                             ) : lesson.pdf_url ? (
                                 <div
                                     ref={pdfContainerRef}
+                                    className="pdf-fullscreen-container"
                                     style={{
-                                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                                        position: isPdfFullscreen ? 'fixed' : 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: isPdfFullscreen ? '100vw' : '100%',
+                                        height: isPdfFullscreen ? '100vh' : '100%',
+                                        zIndex: isPdfFullscreen ? 99999 : 'auto',
                                         backgroundColor: '#0f172a'
                                     }}
                                 >
@@ -745,32 +816,34 @@ export default function LessonPlayer() {
                                         ></iframe>
                                     )}
                                     <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10, display: 'flex', gap: '0.5rem' }}>
-                                        <a
-                                            href={lesson.pdf_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                                background: 'rgba(16,185,129,0.9)',
-                                                border: '1px solid rgba(255,255,255,0.15)',
-                                                borderRadius: '8px',
-                                                color: 'white',
-                                                padding: '0.45rem 0.75rem',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.4rem',
-                                                fontSize: '0.78rem',
-                                                fontWeight: 600,
-                                                textDecoration: 'none',
-                                                backdropFilter: 'blur(4px)',
-                                                transition: 'background 0.2s',
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
-                                        >
-                                            <ExternalLink size={15} />
-                                            Abrir em Nova Guia
-                                        </a>
+                                        {lesson.allow_download && (
+                                            <a
+                                                href={lesson.pdf_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    background: 'rgba(16,185,129,0.9)',
+                                                    border: '1px solid rgba(255,255,255,0.15)',
+                                                    borderRadius: '8px',
+                                                    color: 'white',
+                                                    padding: '0.45rem 0.75rem',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.4rem',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 600,
+                                                    textDecoration: 'none',
+                                                    backdropFilter: 'blur(4px)',
+                                                    transition: 'background 0.2s',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
+                                            >
+                                                <ExternalLink size={15} />
+                                                Abrir em Nova Guia
+                                            </a>
+                                        )}
                                         <button
                                             onClick={togglePdfFullscreen}
                                             title={isPdfFullscreen ? 'Sair da Tela Cheia' : 'Expandir para Tela Cheia'}

@@ -102,6 +102,22 @@ A secretaria é o núcleo operacional da escola, lidando com informações acad�
 
 ---
 
+## 7. Plataforma EAD / LMS e Visualização de Mídias
+
+### 📁 Controle de Download de Materiais (`allow_download`)
+- Todos os materiais de aula (PDFs, imagens e vídeos) carregados no LMS pelo painel administrativo (`LMSAdmin.jsx`) possuem a propriedade `allow_download` configurada no banco de dados.
+- **Regra:** Os botões de "Abrir em Nova Guia" ou links externos que permitam ao aluno baixar/salvar o arquivo **devem sempre respeitar a propriedade `allow_download` da lição**. Caso `allow_download` seja falso, esses links e botões devem ser ocultados no player do aluno para proteger o direito autoral do material de estudo.
+
+### 📺 Visualização em Tela Cheia (Fullscreen)
+- Ao expandir mídias (PDFs/Imagens) para tela cheia na plataforma EAD, o contêiner `pdf-fullscreen-container` entra em modo fullscreen nativo do navegador.
+- **Regra:** Para evitar que a tela fique branca ou colapso de layout nas diferentes implementações de navegadores (Chrome, Safari/iOS, Firefox), utilize sempre os seletores CSS `:fullscreen`, `-webkit-full-screen` e `-moz-full-screen` forçando o dimensionamento para `100vw !important` e `100vh !important`, com fundo escuro (`#0f172a`).
+
+### 📜 Reset de Rolagem ao Carregar Lição
+- Devido à estrutura de layout em colunas com rolagem interna (`overflowY: 'auto'`) no painel de lições do `LessonPlayer.jsx`, a navegação do React Router não reseta automaticamente a posição vertical da tela interna.
+- **Regra:** Sempre resete a propriedade `scrollTop` do contêiner de conteúdo principal para `0` programaticamente através de uma referência `useRef` ao disparar o efeito colateral de mudança de lição (`lessonId`).
+
+---
+
 ## 6. Checklist de Qualidade Pré-Commit / Pré-Push
 
 Antes de rodar `git commit` ou enviar novos códigos para a branch `main`:

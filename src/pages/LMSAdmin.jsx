@@ -98,7 +98,8 @@ export default function LMSAdmin() {
         type: 'video', // video | pdf
         video_url: '',
         pdf_url: '',
-        min_minutes: 0
+        min_minutes: 0,
+        allow_download: false
     })
 
     const [showQuizForm, setShowQuizForm] = useState(false)
@@ -571,7 +572,8 @@ export default function LMSAdmin() {
                 type: lesson.video_url ? 'video' : 'pdf',
                 video_url: lesson.video_url || '',
                 pdf_url: lesson.pdf_url || '',
-                min_minutes: Math.round((lesson.min_watch_time_sec || 0) / 60)
+                min_minutes: Math.round((lesson.min_watch_time_sec || 0) / 60),
+                allow_download: lesson.allow_download || false
             })
         } else {
             setLessonForm({
@@ -581,7 +583,8 @@ export default function LMSAdmin() {
                 type: 'video',
                 video_url: '',
                 pdf_url: '',
-                min_minutes: 10
+                min_minutes: 10,
+                allow_download: false
             })
         }
         setShowLessonForm(true)
@@ -597,6 +600,7 @@ export default function LMSAdmin() {
             video_url: lessonForm.type === 'video' ? lessonForm.video_url : null,
             pdf_url: lessonForm.type === 'pdf' ? lessonForm.pdf_url : null,
             min_watch_time_sec: (parseInt(lessonForm.min_minutes) || 0) * 60,
+            allow_download: lessonForm.allow_download || false
         }
 
         if (!lessonForm.id) {
@@ -1401,6 +1405,19 @@ export default function LMSAdmin() {
                         <div className="form-group">
                             <label className="form-label">Tempo teórico (Minutos)</label>
                             <input type="number" className="form-control" value={lessonForm.min_minutes} onChange={e => setLessonForm({...lessonForm, min_minutes: e.target.value})} />
+                        </div>
+
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1rem 0' }}>
+                            <input 
+                                type="checkbox" 
+                                id="allow_download" 
+                                checked={lessonForm.allow_download || false} 
+                                onChange={e => setLessonForm({...lessonForm, allow_download: e.target.checked})}
+                                style={{ width: 'auto', margin: 0 }}
+                            />
+                            <label htmlFor="allow_download" style={{ fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', margin: 0 }}>
+                                Liberar download do material (PDF, Imagem, Vídeo) para o aluno?
+                            </label>
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
