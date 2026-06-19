@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PDFDocument, rgb, degrees } from 'pdf-lib'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { 
@@ -108,6 +109,9 @@ export default function LessonPlayer() {
     const pdfContainerRef = useRef(null)
     const mainContentRef = useRef(null)
     const [isPdfFullscreen, setIsPdfFullscreen] = useState(false)
+    const [watermarkedPdfUrl, setWatermarkedPdfUrl] = useState(null)
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+    const [videoWatermarkPos, setVideoWatermarkPos] = useState({ top: '10%', left: '10%' })
 
     // Estados específicos da Sprint 1 (Portal do Aluno / LMS)
     const [taskSubmission, setTaskSubmission] = useState(null)
@@ -577,6 +581,113 @@ export default function LessonPlayer() {
         }
     }, [lessonId])
 
+    // Efeito para mover a marca d'água do vídeo aleatoriamente a cada 10 segundos
+    useEffect(() => {
+        if (!lesson || !lesson.video_url) return
+
+        const moveWatermark = () => {
+            const top = Math.floor(Math.random() * 70) + 15 // Entre 15% e 85% para não sair dos limites visíveis
+            const left = Math.floor(Math.random() * 70) + 15 // Entre 15% e 85%
+            setVideoWatermarkPos({ top: `${top}%`, left: `${left}%` })
+        }
+
+        moveWatermark()
+        const interval = setInterval(moveWatermark, 10000)
+
+        return () => clearInterval(interval)
+    }, [lesson])
+
+    // Efeito para injetar a marca d'água do CPF do aluno no PDF via pdf-lib
+    useEffect(() => {
+        let isCancelled = false
+        const originalPdfUrl = lesson?.pdf_url
+
+        const processPdf = async () => {
+            if (!originalPdfUrl) return
+            
+            // Se for uma imagem, apenas atribuímos diretamente (o visualizador aplica marca d'água via overlay HTML)
+            if (originalPdfUrl.match(/\.(jpeg|jpg|gif|png|webp)/i) || originalPdfUrl.includes('image')) {
+                setWatermarkedPdfUrl(originalPdfUrl)
+                return
+            }
+
+            setIsGeneratingPdf(true)
+            setWatermarkedPdfUrl(null)
+
+            try {
+                const studentCpf = userProfile?.cpf || session?.user?.email || 'CPF nao cadastrado'
+                const studentName = userProfile?.full_name || 'Aluno'
+                const watermarkText = `Visualizado por: ${studentName} (${studentCpf}) - CEC Engenharia`
+
+                const response = await fetch(originalPdfUrl)
+                if (!response.ok) {
+                    throw new Error(`Erro ao baixar PDF: ${response.statusText}`)
+                }
+                const pdfBytes = await response.arrayBuffer()
+
+                const pdfDoc = await PDFDocument.load(pdfBytes)
+                const pages = pdfDoc.getPages()
+                const font = await pdfDoc.embedFont('Helvetica')
+
+                for (const page of pages) {
+                    const { width, height } = page.getSize()
+                    
+                    // Desenha marca d'água diagonal centralizada
+                    page.drawText(watermarkText, {
+                        x: width / 2 - 220,
+                        y: height / 2,
+                        size: Math.max(10, Math.min(width, height) * 0.035),
+                        font: font,
+                        color: rgb(0.6, 0.6, 0.6),
+                        opacity: 0.15,
+                        rotate: degrees(-45),
+                    })
+
+                    // Rodapé discreto de segurança
+                    page.drawText(`Documento seguro - CPF do aluno: ${studentCpf}`, {
+                        x: 20,
+                        y: 15,
+                        size: 9,
+                        font: font,
+                        color: rgb(0.5, 0.5, 0.5),
+                        opacity: 0.4
+                    })
+                }
+
+                const modifiedPdfBytes = await pdfDoc.save()
+                const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' })
+                const blobUrl = URL.createObjectURL(blob)
+
+                if (!isCancelled) {
+                    setWatermarkedPdfUrl(blobUrl)
+                } else {
+                    URL.revokeObjectURL(blobUrl)
+                }
+            } catch (err) {
+                console.error("Falha ao gerar marca d'água no PDF. Usando fallback original.", err)
+                if (!isCancelled) {
+                    setWatermarkedPdfUrl(originalPdfUrl)
+                }
+            } finally {
+                if (!isCancelled) {
+                    setIsGeneratingPdf(false)
+                }
+            }
+        }
+
+        processPdf()
+
+        return () => {
+            isCancelled = true
+            setWatermarkedPdfUrl(prev => {
+                if (prev && prev.startsWith('blob:')) {
+                    URL.revokeObjectURL(prev)
+                }
+                return null
+            })
+        }
+    }, [lesson, userProfile, session])
+
     const saveProgress = async (seconds, completed) => {
         if (!session?.user?.id || !lessonId) return
         
@@ -756,6 +867,26 @@ export default function LessonPlayer() {
                                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                         allowFullScreen
                                     ></iframe>
+                                    
+                                    {/* Marca d'água flutuante dinâmica sobre o vídeo */}
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: videoWatermarkPos.top,
+                                        left: videoWatermarkPos.left,
+                                        transform: 'translate(-50%, -50%)',
+                                        color: 'rgba(255, 255, 255, 0.18)',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
+                                        pointerEvents: 'none',
+                                        zIndex: 8,
+                                        whiteSpace: 'nowrap',
+                                        transition: 'top 0.5s ease, left 0.5s ease',
+                                        userSelect: 'none'
+                                    }}>
+                                        {userProfile?.full_name || 'Aluno'} ({userProfile?.cpf || session?.user?.email || 'CPF nao cadastrado'})
+                                    </div>
+
                                     {lesson.allow_download && (
                                         <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10 }}>
                                             <a
@@ -802,27 +933,44 @@ export default function LessonPlayer() {
                                         backgroundColor: '#0f172a'
                                     }}
                                 >
-                                    {isImageUrl(lesson.pdf_url) ? (
-                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                                    {isGeneratingPdf || !watermarkedPdfUrl ? (
+                                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: '1rem' }}>
+                                            <div className="spinner-border text-success" role="status" style={{ width: '2rem', height: '2rem' }}>
+                                                <span className="visually-hidden">Protegendo documento...</span>
+                                            </div>
+                                            <p style={{ fontSize: '0.9rem', color: '#cbd5e1' }}>Protegendo documento com marca d'água...</p>
+                                        </div>
+                                    ) : isImageUrl(watermarkedPdfUrl) ? (
+                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', position: 'relative' }}>
                                             <img 
-                                                src={lesson.pdf_url} 
+                                                src={watermarkedPdfUrl} 
                                                 alt={lesson.title} 
                                                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)' }}
                                             />
+                                            {/* Marca d'água sobreposta sobre imagem no EAD */}
+                                            <div style={{
+                                                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-45deg)',
+                                                fontSize: '1.8rem', fontWeight: 'bold', color: 'rgba(255, 255, 255, 0.12)',
+                                                textShadow: '1px 1px 2px rgba(0,0,0,0.15)', pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 5,
+                                                textAlign: 'center', userSelect: 'none'
+                                            }}>
+                                                {userProfile?.full_name || 'Aluno'} <br />
+                                                {userProfile?.cpf || session?.user?.email}
+                                            </div>
                                         </div>
                                     ) : (
                                         <iframe 
                                             style={{ width: '100%', height: '100%', border: 'none', display: 'block', backgroundColor: 'white' }}
-                                            src={lesson.pdf_url}
+                                            src={watermarkedPdfUrl}
                                             title="Documento da Aula"
                                         ></iframe>
                                     )}
                                     <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10, display: 'flex', gap: '0.5rem' }}>
-                                        {lesson.allow_download && (
+                                        {!isGeneratingPdf && watermarkedPdfUrl && lesson.allow_download && (
                                             <>
                                                 <a
-                                                    href={lesson.pdf_url}
-                                                    download
+                                                    href={watermarkedPdfUrl}
+                                                    download={`${lesson.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_protegido.pdf`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     style={{
@@ -848,7 +996,7 @@ export default function LessonPlayer() {
                                                     Baixar Material
                                                 </a>
                                                 <a
-                                                    href={lesson.pdf_url}
+                                                    href={watermarkedPdfUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     style={{
