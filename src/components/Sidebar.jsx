@@ -233,6 +233,7 @@ export default function Sidebar() {
                     </NavLink>
                 )}
 
+                {/* 
                 {hasAccess('access_turmas', ['admin', 'coordenador', 'atendente']) && (
                     <NavLink
                         to="/turmas"
@@ -248,6 +249,7 @@ export default function Sidebar() {
                         <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Calendário do Site)</span>
                     </NavLink>
                 )}
+                */}
 
                 {hasAccess('access_cursos', ['admin', 'coordenador']) && (
                     <NavLink
