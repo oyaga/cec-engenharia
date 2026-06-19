@@ -1195,6 +1195,7 @@ export default function Equipe() {
                             <div className="form-group">
                                 <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Cargo / Função *</label>
                                 <select className="form-control" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                    <option value="admin">Administrador (Master)</option>
                                     <option value="atendente">Atendente (Secretaria)</option>
                                     <option value="coordenador">Coordenador Pedagógico</option>
                                     <option value="financeiro">Gestor Financeiro</option>
