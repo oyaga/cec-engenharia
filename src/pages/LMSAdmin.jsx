@@ -284,6 +284,13 @@ export default function LMSAdmin() {
         fetchCertConfigs()
     }, [])
 
+    useEffect(() => {
+        const contentArea = document.querySelector('.content-area')
+        if (contentArea) {
+            contentArea.scrollTop = 0
+        }
+    }, [view, selectedCourse])
+
     const handleSaveCourse = async () => {
         if (!courseForm.title) return alert('Título é obrigatório')
         
