@@ -17,6 +17,7 @@ import {
     Upload,
     Calendar,
     MapPin,
+    Download,
     ExternalLink,
     MessageCircle,
     Users,
@@ -759,6 +760,7 @@ export default function LessonPlayer() {
                                         <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10 }}>
                                             <a
                                                 href={lesson.video_url}
+                                                download
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
@@ -780,7 +782,7 @@ export default function LessonPlayer() {
                                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
                                                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
                                             >
-                                                <ExternalLink size={15} />
+                                                <Download size={15} />
                                                 Baixar Vídeo / Link Externo
                                             </a>
                                         </div>
@@ -817,32 +819,61 @@ export default function LessonPlayer() {
                                     )}
                                     <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 10, display: 'flex', gap: '0.5rem' }}>
                                         {lesson.allow_download && (
-                                            <a
-                                                href={lesson.pdf_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{
-                                                    background: 'rgba(16,185,129,0.9)',
-                                                    border: '1px solid rgba(255,255,255,0.15)',
-                                                    borderRadius: '8px',
-                                                    color: 'white',
-                                                    padding: '0.45rem 0.75rem',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.4rem',
-                                                    fontSize: '0.78rem',
-                                                    fontWeight: 600,
-                                                    textDecoration: 'none',
-                                                    backdropFilter: 'blur(4px)',
-                                                    transition: 'background 0.2s',
-                                                }}
-                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
-                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
-                                            >
-                                                <ExternalLink size={15} />
-                                                Abrir em Nova Guia
-                                            </a>
+                                            <>
+                                                <a
+                                                    href={lesson.pdf_url}
+                                                    download
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        background: 'rgba(16,185,129,0.9)',
+                                                        border: '1px solid rgba(255,255,255,0.15)',
+                                                        borderRadius: '8px',
+                                                        color: 'white',
+                                                        padding: '0.45rem 0.75rem',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.4rem',
+                                                        fontSize: '0.78rem',
+                                                        fontWeight: 600,
+                                                        textDecoration: 'none',
+                                                        backdropFilter: 'blur(4px)',
+                                                        transition: 'background 0.2s',
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(5,150,105,1)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.9)'}
+                                                >
+                                                    <Download size={15} />
+                                                    Baixar Material
+                                                </a>
+                                                <a
+                                                    href={lesson.pdf_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        background: 'rgba(15,23,42,0.85)',
+                                                        border: '1px solid rgba(255,255,255,0.15)',
+                                                        borderRadius: '8px',
+                                                        color: 'white',
+                                                        padding: '0.45rem 0.75rem',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.4rem',
+                                                        fontSize: '0.78rem',
+                                                        fontWeight: 600,
+                                                        textDecoration: 'none',
+                                                        backdropFilter: 'blur(4px)',
+                                                        transition: 'background 0.2s',
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(30,41,59,0.95)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(15,23,42,0.85)'}
+                                                >
+                                                    <ExternalLink size={15} />
+                                                    Abrir em Nova Guia
+                                                </a>
+                                            </>
                                         )}
                                         <button
                                             onClick={togglePdfFullscreen}
