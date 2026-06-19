@@ -53,6 +53,10 @@ import { createPortal } from 'react-dom';
 )}
 ```
 
+### 📝 Edição na Página de Matrículas (`Enrollment.jsx`)
+- Os textos explicativos, avisos de prazos de conclusão, manuais e o botão de confirmação na página de matrículas são editáveis pelo administrador através do componente `<EditableText>` com caminhos mapeados sob a chave `enrollment_page`.
+- **Prevenção de Envio de Formulário:** No `handleSubmit` de `Enrollment.jsx`, a lógica de validação deve verificar o estado de `isEditing` obtido de `useEdit()`. Se `isEditing` for verdadeiro (ou seja, o administrador está no Modo Edição ajustando o conteúdo), a submissão do formulário **deve ser interrompida imediatamente** (`if (isEditing) return;`). Isso impede o envio de dados de teste ou cliques acidentais que disparariam processos no Asaas.
+
 ---
 
 ## 3. Prevenção de Quebras de Layout (Responsividade)
