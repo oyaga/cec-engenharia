@@ -191,7 +191,7 @@ const Courses = () => {
                   <div className="card-meta">
                     <div className="meta-item">
                       <Clock size={16} />
-                      <EditableText path={`courses_section.courses.${index}.duration`} initialValue={course.duration} />
+                      <span>{content.course_details?.[course.slug]?.details?.workload || course.duration || '100 Horas'}</span>
                     </div>
                     <div className="meta-item">
                       <Monitor size={16} />
