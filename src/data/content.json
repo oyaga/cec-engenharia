@@ -555,5 +555,21 @@
     "title": "Manual do Aluno e Termos de Uso",
     "content": "### 1. INTRODUÇÃO\nEste manual visa orientar o aluno sobre o funcionamento dos cursos da CEC Engenharia...\n\n### 2. FREQUÊNCIA E AVALIAÇÃO\nA frequência mínima para aprovação é de 75%...\n\n### 3. PAGAMENTOS E CANCELAMENTOS\nO cancelamento pode ser solicitado em até 7 dias após a matrícula...\n\n### 4. ACESSO AO PORTAL\nO acesso é pessoal e intransferível...\n\n(Este texto pode ser editado livremente pelo administrador)",
     "version": "1.0.2026"
+  },
+  "enrollment_page": {
+    "title_main": "Sua carreira de elite ",
+    "title_span": "começa aqui.",
+    "benefit_1_title": "Garantia CEC",
+    "benefit_1_desc": "Início garantido e suporte total durante o curso.",
+    "benefit_2_title": "Acesso Digital",
+    "benefit_2_desc": "Liberação imediata do portal do aluno pós-pagamento.",
+    "form_title": "Inscrição Online",
+    "form_subtitle": "Preencha os dados abaixo para gerar seu acesso.",
+    "notice_title": "Aviso Importante: Prazo de Conclusão",
+    "notice_text": "Ao se matricular, você declara estar ciente de que tem o prazo máximo e improrrogável de 6 meses para a conclusão de todo o curso (incluindo as aulas teóricas EAD e as aulas práticas presenciais).",
+    "btn_manual_text": "Ler Manual do Aluno (Obrigatório)",
+    "checkbox_text": "Li e concordo com o Manual do Aluno e Termos de Uso.",
+    "warning_text": "Abra o manual e role até o final para habilitar.",
+    "btn_submit_text": "Confirmar Matrícula"
   }
 }

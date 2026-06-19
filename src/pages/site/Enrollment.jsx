@@ -15,7 +15,7 @@ import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
 
 const Enrollment = () => {
-  const { content } = useEdit();
+  const { content, isEditing } = useEdit();
   const { userProfile } = useAuth();
   const courses_section = content.courses_section || { courses: [] };
   const coursesList = courses_section.courses || [];
@@ -142,6 +142,7 @@ const Enrollment = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isEditing) return;
     if (!acceptedTerms) return;
 
     if (honeypot) {
@@ -312,21 +313,26 @@ const Enrollment = () => {
             className="enroll-content"
           >
             <div className="badge-status">MATRÍCULAS ABERTAS 2026</div>
-            <h1 className="enroll-title">Sua carreira de elite <span className="text-primary">começa aqui.</span></h1>
+            <h1 className="enroll-title">
+              <EditableText path="enrollment_page.title_main" initialValue={content.enrollment_page?.title_main || "Sua carreira de elite "} />
+              <span className="text-primary">
+                <EditableText path="enrollment_page.title_span" initialValue={content.enrollment_page?.title_span || "começa aqui."} />
+              </span>
+            </h1>
             
             <div className="enroll-benefits-large">
               <div className="benefit-card">
                 <ShieldCheck size={32} className="text-secondary" />
                 <div>
-                  <h4>Garantia CEC</h4>
-                  <p>Início garantido e suporte total durante o curso.</p>
+                  <EditableText path="enrollment_page.benefit_1_title" initialValue={content.enrollment_page?.benefit_1_title || "Garantia CEC"} tagName="h4" />
+                  <EditableText path="enrollment_page.benefit_1_desc" initialValue={content.enrollment_page?.benefit_1_desc || "Início garantido e suporte total durante o curso."} tagName="p" />
                 </div>
               </div>
               <div className="benefit-card">
                 <Smartphone size={32} className="text-secondary" />
                 <div>
-                  <h4>Acesso Digital</h4>
-                  <p>Liberação imediata do portal do aluno pós-pagamento.</p>
+                  <EditableText path="enrollment_page.benefit_2_title" initialValue={content.enrollment_page?.benefit_2_title || "Acesso Digital"} tagName="h4" />
+                  <EditableText path="enrollment_page.benefit_2_desc" initialValue={content.enrollment_page?.benefit_2_desc || "Liberação imediata do portal do aluno pós-pagamento."} tagName="p" />
                 </div>
               </div>
             </div>
@@ -369,8 +375,8 @@ const Enrollment = () => {
                   autoComplete="off"
                 />
                 <div className="form-head">
-                  <h3>Inscrição Online</h3>
-                  <p>Preencha os dados abaixo para gerar seu acesso.</p>
+                  <h3><EditableText path="enrollment_page.form_title" initialValue={content.enrollment_page?.form_title || "Inscrição Online"} /></h3>
+                  <p><EditableText path="enrollment_page.form_subtitle" initialValue={content.enrollment_page?.form_subtitle || "Preencha os dados abaixo para gerar seu acesso."} /></p>
                 </div>
 
                 <div className="input-group">
@@ -451,15 +457,15 @@ const Enrollment = () => {
                 <div className="enroll-deadline-notice">
                   <div className="notice-header">
                     <Info size={18} className="notice-icon" />
-                    <strong>Aviso Importante: Prazo de Conclusão</strong>
+                    <strong><EditableText path="enrollment_page.notice_title" initialValue={content.enrollment_page?.notice_title || "Aviso Importante: Prazo de Conclusão"} /></strong>
                   </div>
-                  <p>Ao se matricular, você declara estar ciente de que tem o prazo máximo e improrrogável de <strong>6 meses</strong> para a conclusão de todo o curso (incluindo as aulas teóricas EAD e as aulas práticas presenciais).</p>
+                  <p><EditableText path="enrollment_page.notice_text" initialValue={content.enrollment_page?.notice_text || "Ao se matricular, você declara estar ciente de que tem o prazo máximo e improrrogável de 6 meses para a conclusão de todo o curso (incluindo as aulas teóricas EAD e as aulas práticas presenciais)."} /></p>
                 </div>
 
                 <div className="terms-agreement-box">
                   <div className="agreement-header">
                     <button type="button" className="btn-site-primary btn-open-manual" onClick={() => setShowManual(true)}>
-                      <FileText size={16} /> Ler Manual do Aluno (Obrigatório)
+                      <FileText size={16} /> <EditableText path="enrollment_page.btn_manual_text" initialValue={content.enrollment_page?.btn_manual_text || "Ler Manual do Aluno (Obrigatório)"} />
                     </button>
                   </div>
                   <label className={`checkbox-label ${!manualReadToEnd ? 'disabled' : ''}`}>
@@ -470,14 +476,20 @@ const Enrollment = () => {
                       checked={acceptedTerms}
                       onChange={(e) => setAcceptedTerms(e.target.checked)}
                     />
-                    <span>Li e concordo com o Manual do Aluno e Termos de Uso.</span>
+                    <span><EditableText path="enrollment_page.checkbox_text" initialValue={content.enrollment_page?.checkbox_text || "Li e concordo com o Manual do Aluno e Termos de Uso."} /></span>
                   </label>
-                  {!manualReadToEnd && <p className="read-warning"><Info size={12}/> Abra o manual e role até o final para habilitar.</p>}
+                  {!manualReadToEnd && <p className="read-warning"><Info size={12}/> <EditableText path="enrollment_page.warning_text" initialValue={content.enrollment_page?.warning_text || "Abra o manual e role até o final para habilitar."} /></p>}
                 </div>
 
                 <button type="submit" className="btn-site-primary w-full btn-large" disabled={isSubmitting || !acceptedTerms}>
-                  {isSubmitting ? 'Gerando Cobrança...' : 'Confirmar Matrícula'}
-                  <Send size={18} />
+                  {isSubmitting ? (
+                    'Gerando Cobrança...'
+                  ) : (
+                    <>
+                      <EditableText path="enrollment_page.btn_submit_text" initialValue={content.enrollment_page?.btn_submit_text || "Confirmar Matrícula"} />
+                      <Send size={18} />
+                    </>
+                  )}
                 </button>
               </form>
             ) : (
