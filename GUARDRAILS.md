@@ -127,6 +127,13 @@ A secretaria é o núcleo operacional da escola, lidando com informações acad�
 - **Funções Auxiliares de Upload:** Evite embutir inputs ou lógica complexa de manipulação do DOM de forma inline no JSX (como a geração e clique de inputs de file). Sempre utilize funções auxiliares isoladas (ex: `handleOptionImageClick`) para prevenir problemas de compilação com o bundler/esbuild decorrentes do parser do JSX lendo o caractere `/` como delimitador de expressão regular.
 - **Inserção de Símbolos Rápidos:** A barra de símbolos matemáticos e técnicos utiliza a função `insertSymbol` que lê o `document.activeElement` e injeta o caractere correspondente diretamente na posição atual do cursor (`selectionStart` / `selectionEnd`), tanto no `textarea` do enunciado quanto nos `inputs` de alternativas. Para que isso funcione, os campos editáveis devem possuir os atributos `data-field-type="question"` ou `data-field-type="option"` com seu respectivo `data-option-idx={oidx}`. Ao adicionar novos símbolos no painel de atalhos, utilize eventos `onMouseDown` com `preventDefault()` para impedir que o navegador retire o foco do campo de texto em edição.
 
+### 💰 Preços Dinâmicos nas Páginas de Curso (`CourseDetails.jsx`)
+- A página pública de detalhes do curso (`/curso/:slug`) busca preços da tabela `lms_courses` do Supabase pelo campo `code` do curso.
+- **Regra de Unicidade de Codes:** Cada curso principal **deve** ter um `code` único na tabela `lms_courses`. Codes duplicados fazem a query retornar o curso errado (ex: retreinamento ao invés do curso principal).
+  - Cursos de retreinamento devem usar codes com prefixo `R` (ex: `RCD-CL`, `RCD-CL-T`).
+  - O mapeamento correto é: `CD-CL` (Caldeiraria), `CD-MC` (Mecânica), `CD-TO` (Topografia).
+- **Filtro de Retreinamento:** A query em `CourseDetails.jsx` busca todos os cursos com o mesmo code e filtra automaticamente retreinamentos (títulos contendo "retreinamento" ou codes começando com "R"). Nunca reverta essa lógica para `maybeSingle()` sem garantir unicidade de codes.
+
 ---
 
 ## 6. Checklist de Qualidade Pré-Commit / Pré-Push
