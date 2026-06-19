@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, X, UploadCloud, Image as ImageIcon, Video } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
 import { supabase } from '../../lib/supabase';
 
-const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável" }) => {
+const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável", compact = false }) => {
   const { isEditing, updateContent, content } = useEdit();
   const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState('url'); // 'url' | 'upload'
@@ -164,17 +165,22 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
 
   return (
     <>
-      <div key={currentValue} className={`editable-image-container ${className || ''}`} style={{ ...containerStyle, overflow: 'hidden' }}>
+      <div 
+        key={currentValue} 
+        className={`editable-image-container ${className || ''} ${compact ? 'compact-edit' : ''}`} 
+        style={{ ...containerStyle, overflow: compact ? 'visible' : 'hidden' }}
+        onClick={() => setIsOpen(true)}
+      >
         <div className="img-wrapper-fluid h-100">
           {renderMedia(currentValue, mediaStyle)}
         </div>
-        <div className="image-edit-overlay" onClick={() => setIsOpen(true)}>
-          <Camera size={22} />
-          <span>Trocar / Vídeo</span>
+        <div className="image-edit-overlay">
+          <Camera size={compact ? 14 : 22} />
+          {!compact && <span>Trocar / Vídeo</span>}
         </div>
       </div>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           onClick={handleCancel}
           style={{
@@ -324,7 +330,8 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

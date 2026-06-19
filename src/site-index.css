@@ -172,6 +172,48 @@
 .editable-image-container:hover .image-edit-overlay {
   opacity: 1;
 }
+
+/* Variante Compacta para Imagens Pequenas e Logos */
+.editable-image-container.compact-edit {
+  overflow: visible !important;
+}
+.editable-image-container.compact-edit .image-edit-overlay {
+  position: absolute;
+  inset: auto !important;
+  top: -8px !important;
+  right: -8px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  background: #10b981 !important;
+  border: 2px solid white !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  opacity: 0.8 !important;
+  z-index: 10 !important;
+  transition: all 0.3s ease !important;
+  flex-direction: row !important;
+  transform: none !important;
+}
+.editable-image-container.compact-edit:hover .image-edit-overlay {
+  opacity: 1 !important;
+  transform: scale(1.1) !important;
+  background: #059669 !important;
+}
+.editable-image-container.compact-edit .image-edit-overlay span {
+  display: none !important;
+}
+.editable-image-container.compact-edit .image-edit-overlay svg {
+  width: 14px !important;
+  height: 14px !important;
+  margin: 0 !important;
+}
+
 .image-url-prompt {
   position: fixed;
   top: 50%;

@@ -33,6 +33,7 @@ const Navbar = () => {
               initialValue={navbar.logo_img} 
               className="logo-img-main"
               alt="CEC Logo"
+              compact={true}
             />
           </div>
           
@@ -389,6 +390,7 @@ const Navbar = () => {
           justify-content: center;
           width: 200px;
           height: 85px;
+          flex-shrink: 0;
           transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         

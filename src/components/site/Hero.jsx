@@ -134,6 +134,7 @@ const Hero = () => {
                         path={`hero.certifications.${index}.icon`} 
                         initialValue={cert.icon} 
                         className="icon-editable-mini-hero"
+                        compact={true}
                       />
                     </div>
                     <div>
@@ -184,6 +185,7 @@ const Hero = () => {
                   path="hero.cert_badge"
                   initialValue={hero.cert_badge}
                   className="cert-badge-img"
+                  compact={true}
                 />
               </div>
             </DraggableInEdit>
