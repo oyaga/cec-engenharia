@@ -35,6 +35,26 @@ const isImageUrl = (url) => {
            cleanPath.endsWith('.svg')
 }
 
+const MATH_SYMBOLS = [
+    { label: '° (Grau)', value: '°' },
+    { label: 'Ø (Diâmetro)', value: 'Ø' },
+    { label: '± (Tolerância)', value: '±' },
+    { label: '√ (Raiz)', value: '√' },
+    { label: 'π (Pi)', value: 'π' },
+    { label: '× (Multiplicação)', value: '×' },
+    { label: '÷ (Divisão)', value: '÷' },
+    { label: '≤ (Menor/Igual)', value: '≤' },
+    { label: '≥ (Maior/Igual)', value: '≥' },
+    { label: 'Δ (Delta)', value: 'Δ' },
+    { label: 'α (Alfa)', value: 'α' },
+    { label: 'β (Beta)', value: 'β' },
+    { label: 'θ (Teta)', value: 'θ' },
+    { label: 'µ (Micro)', value: 'µ' },
+    { label: '² (Quadrado)', value: '²' },
+    { label: '³ (Cubo)', value: '³' },
+    { label: '→ (Seta)', value: '→' }
+]
+
 export default function LMSAdmin() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState([])
@@ -856,6 +876,41 @@ export default function LMSAdmin() {
         }
     }
 
+    const insertSymbol = (symbol) => {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+            const start = activeEl.selectionStart;
+            const end = activeEl.selectionEnd;
+            const text = activeEl.value;
+            const before = text.substring(0, start);
+            const after = text.substring(end, text.length);
+            const newValue = before + symbol + after;
+            
+            // Atualiza o elemento ativo no DOM e o cursor
+            activeEl.value = newValue;
+            activeEl.selectionStart = activeEl.selectionEnd = start + symbol.length;
+            
+            // Atualiza o estado no React correspondente
+            const fieldType = activeEl.getAttribute('data-field-type');
+            if (fieldType === 'question') {
+                setQuestionForm(prev => ({ ...prev, text: newValue }));
+            } else if (fieldType === 'option') {
+                const optionIdx = parseInt(activeEl.getAttribute('data-option-idx'), 10);
+                if (!isNaN(optionIdx)) {
+                    const newOpt = [...questionForm.options];
+                    newOpt[optionIdx].text = newValue;
+                    setQuestionForm(prev => ({ ...prev, options: newOpt }));
+                }
+            }
+            
+            // Foca de volta
+            activeEl.focus();
+        } else {
+            // Fallback: se nenhum elemento estiver focado, insere na pergunta principal
+            setQuestionForm(prev => ({ ...prev, text: prev.text + symbol }));
+        }
+    }
+
     const handleTogglePublishCourse = async (courseId, currentStatus) => {
         const { error } = await supabase
             .from('lms_courses')
@@ -1302,12 +1357,62 @@ export default function LMSAdmin() {
                             ))}
                             {quizQuestions.length === 0 && <p className="text-center text-muted">Nenhuma questão cadastrada.</p>}
                             
-                            {showQuestionBuilder ? (
+                             {showQuestionBuilder ? (
                                 <div className="card animate-fade-in" style={{ marginTop: '1.5rem', backgroundColor: '#f8fafc', border: '2px solid var(--primary-alpha)' }}>
                                     <h4 style={{ fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary)' }}>{editingQuestionId ? 'Editar Questão' : 'Construtor de Questão'}</h4>
+                                    
+                                    {/* Barra de Ferramentas de Símbolos Matemáticos */}
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        flexWrap: 'wrap', 
+                                        gap: '0.4rem', 
+                                        marginBottom: '1.5rem', 
+                                        padding: '0.6rem', 
+                                        backgroundColor: '#f1f5f9', 
+                                        borderRadius: '6px', 
+                                        border: '1px solid #cbd5e1' 
+                                    }}>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginRight: '0.5rem' }}>
+                                            Símbolos Rápidos:
+                                        </span>
+                                        {MATH_SYMBOLS.map((sym, sIdx) => (
+                                            <button
+                                                key={sIdx}
+                                                type="button"
+                                                onMouseDown={e => {
+                                                    e.preventDefault(); // Impede perda do foco no input/textarea ativo
+                                                    insertSymbol(sym.value);
+                                                }}
+                                                style={{
+                                                    padding: '0.25rem 0.6rem',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    backgroundColor: 'white',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s ease',
+                                                    color: 'var(--primary)'
+                                                }}
+                                                onMouseOver={e => e.target.style.backgroundColor = '#e2e8f0'}
+                                                onMouseOut={e => e.target.style.backgroundColor = 'white'}
+                                                title={sym.label}
+                                            >
+                                                {sym.value}
+                                            </button>
+                                        ))}
+                                    </div>
+
                                     <div style={{ marginBottom: '1.5rem' }}>
                                         <label className="form-label" style={{ fontWeight: 600 }}>Enunciado da Questão</label>
-                                        <textarea className="form-control" rows="3" value={questionForm.text} onChange={e => setQuestionForm(prev => ({...prev, text: e.target.value}))} placeholder="Escreva a pergunta aqui..."></textarea>
+                                        <textarea 
+                                            className="form-control" 
+                                            rows="3" 
+                                            value={questionForm.text} 
+                                            onChange={e => setQuestionForm(prev => ({...prev, text: e.target.value}))} 
+                                            placeholder="Escreva a pergunta aqui..."
+                                            data-field-type="question"
+                                        ></textarea>
                                         
                                         {uploadingImageQuestion && (
                                             <div style={{ marginTop: '0.75rem', padding: '0.75rem', border: '1px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', backgroundColor: '#f1f5f9', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -1352,9 +1457,17 @@ export default function LMSAdmin() {
                                                 </div>
                                                 <div style={{ flex: 1 }}>
                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                        <input type="text" className="form-control" value={opt.text} onChange={e => {
-                                                            const newOpt = [...questionForm.options]; newOpt[oidx].text = e.target.value; setQuestionForm(prev => ({...prev, options: newOpt}))
-                                                        }} placeholder={`Texto da opção ${String.fromCharCode(65+oidx)}`} />
+                                                        <input 
+                                                            type="text" 
+                                                            className="form-control" 
+                                                            value={opt.text} 
+                                                            onChange={e => {
+                                                                const newOpt = [...questionForm.options]; newOpt[oidx].text = e.target.value; setQuestionForm(prev => ({...prev, options: newOpt}))
+                                                            }} 
+                                                            placeholder={`Texto da opção ${String.fromCharCode(65+oidx)}`} 
+                                                            data-field-type="option"
+                                                            data-option-idx={oidx}
+                                                        />
                                                         <button className="btn btn-secondary" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={() => handleOptionImageClick(oidx)}>
                                                             <UploadCloud size={14} />
                                                         </button>
