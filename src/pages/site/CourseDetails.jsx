@@ -30,19 +30,37 @@ const CourseDetails = () => {
   }, [slug, course, navigate, isEditing]);
 
   // Buscar preços do Supabase pelo code do curso (slug = code em lowercase)
+  // Busca todos os cursos com o mesmo code e seleciona o principal (não retreinamento)
   useEffect(() => {
     const fetchPricing = async () => {
       try {
+        const codeUpper = slug.toUpperCase().replace(/-/g, '-');
+        const codeUnderscore = slug.toUpperCase().replace(/-/g, '_');
+        
         const { data, error } = await supabase
           .from('lms_courses')
           .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link, retrain_teorico_days, retrain_teorico_price_day, retrain_pratico_days, retrain_pratico_price_day')
           .or(`code.ilike.${slug},code.ilike.${slug.replace(/-/g, '_')}`)
-          .eq('is_published', true)
-          .limit(1)
-          .maybeSingle();
+          .eq('is_published', true);
 
-        if (!error && data && (data.price_pix || data.price_card)) {
-          setDbPricing(data);
+        if (!error && data && data.length > 0) {
+          // Filtrar retreinamentos — priorizar o curso principal
+          const mainCourses = data.filter(c => {
+            const t = (c.title || '').toLowerCase();
+            const code = (c.code || '').toUpperCase();
+            // Exclui cursos cujo título indica retreinamento
+            const isRetrain = t.includes('retreinamento') || t.includes('retrain');
+            // Exclui cursos cujo code começa com R (ex: RCD-CL)
+            const isRetrainCode = code.startsWith('R') && code.length > 3;
+            return !isRetrain && !isRetrainCode;
+          });
+
+          // Usar o curso principal se encontrado, senão qualquer um
+          const best = mainCourses.length > 0 ? mainCourses[0] : data[0];
+          
+          if (best && (best.price_pix || best.price_card)) {
+            setDbPricing(best);
+          }
         }
       } catch (err) {
         console.warn('Preços dinâmicos indisponíveis, usando CMS editável');
