@@ -70,6 +70,9 @@ export default function LMSAdmin() {
         correctIndex: 0
     })
     const [isSavingQuestion, setIsSavingQuestion] = useState(false)
+    const [editingQuestionId, setEditingQuestionId] = useState(null)
+    const [uploadingImageQuestion, setUploadingImageQuestion] = useState(false)
+    const [uploadingImageOptionIdx, setUploadingImageOptionIdx] = useState(null)
 
     // Refs para inputs de arquivo
     const questionImageRef = useRef(null)
@@ -723,6 +726,7 @@ export default function LMSAdmin() {
     }
 
     const handleOpenQuestionBuilder = () => {
+        setEditingQuestionId(null)
         setQuestionForm({
             text: '',
             image_url: null,
@@ -733,6 +737,24 @@ export default function LMSAdmin() {
                 { text: '', image_url: null }
             ],
             correctIndex: 0
+        })
+        setShowQuestionBuilder(true)
+    }
+
+    const handleEditQuestion = (q) => {
+        setEditingQuestionId(q.id)
+        setQuestionForm({
+            text: q.question_text || '',
+            image_url: q.image_url || null,
+            options: Array.isArray(q.options) 
+                ? q.options.map(opt => typeof opt === 'object' ? { text: opt.text || '', image_url: opt.image_url || null } : { text: opt, image_url: null })
+                : [
+                    { text: '', image_url: null },
+                    { text: '', image_url: null },
+                    { text: '', image_url: null },
+                    { text: '', image_url: null }
+                ],
+            correctIndex: q.correct_option_index
         })
         setShowQuestionBuilder(true)
     }
@@ -751,41 +773,68 @@ export default function LMSAdmin() {
         }
 
         setIsSavingQuestion(true)
-        const { error } = await supabase
-            .from('lms_questions')
-            .insert([{
-                quiz_id: selectedQuiz.id,
-                question_text: questionForm.text,
-                image_url: questionForm.image_url,
-                options: questionForm.options.filter(o => o.text.trim() || o.image_url),
-                correct_option_index: questionForm.correctIndex
-            }])
-        
-        // Sync with Central Question Bank for future automated use
-        if (!error) {
-            await supabase
-                .from('lms_question_bank')
-                .insert([{
-                    question_text: questionForm.text,
-                    image_url: questionForm.image_url,
-                    options: questionForm.options.filter(o => o.text.trim() || o.image_url),
-                    correct_option_index: questionForm.correctIndex,
-                    category: selectedCourse?.title || 'Geral',
-                    original_quiz_id: selectedQuiz.id
-                }])
+        const payload = {
+            quiz_id: selectedQuiz.id,
+            question_text: questionForm.text,
+            image_url: questionForm.image_url,
+            options: questionForm.options.filter(o => o.text.trim() || o.image_url),
+            correct_option_index: questionForm.correctIndex
+        }
+
+        let error
+        if (editingQuestionId) {
+            const { error: err } = await supabase
+                .from('lms_questions')
+                .update(payload)
+                .eq('id', editingQuestionId)
+            error = err
+        } else {
+            const { error: err } = await supabase
+                .from('lms_questions')
+                .insert([payload])
+            error = err
+            
+            // Sync with Central Question Bank for future automated use (only for new questions)
+            if (!err) {
+                await supabase
+                    .from('lms_question_bank')
+                    .insert([{
+                        question_text: questionForm.text,
+                        image_url: questionForm.image_url,
+                        options: questionForm.options.filter(o => o.text.trim() || o.image_url),
+                        correct_option_index: questionForm.correctIndex,
+                        category: selectedCourse?.title || 'Geral',
+                        original_quiz_id: selectedQuiz.id
+                    }])
+            }
         }
         
         setIsSavingQuestion(false)
         if (error) alert('Erro ao salvar questão: ' + error.message)
         else {
+            setEditingQuestionId(null)
             setShowQuestionBuilder(false)
             handleManageQuiz(selectedQuiz)
         }
     }
 
+    const handleOptionImageClick = (index) => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*'
+        input.onchange = (e) => handleFileChange(e, 'option', index)
+        input.click()
+    }
+
     const handleFileChange = async (e, type, index = null) => {
         const file = e.target.files[0]
         if (!file) return
+
+        if (type === 'question') {
+            setUploadingImageQuestion(true)
+        } else {
+            setUploadingImageOptionIdx(index)
+        }
 
         const path = type === 'question' ? 'questions/' : 'options/'
         const url = await handleQuizImageUpload(file, path)
@@ -798,6 +847,12 @@ export default function LMSAdmin() {
                 newOptions[index].image_url = url
                 setQuestionForm(prev => ({ ...prev, options: newOptions }))
             }
+        }
+
+        if (type === 'question') {
+            setUploadingImageQuestion(false)
+        } else {
+            setUploadingImageOptionIdx(null)
         }
     }
 
@@ -1222,7 +1277,10 @@ export default function LMSAdmin() {
                                                 <img src={q.image_url} alt="Referência" style={{ maxWidth: '200px', maxHeight: '150px', borderRadius: '4px', marginTop: '0.5rem', border: '1px solid #ddd' }} />
                                             )}
                                         </div>
-                                        <Trash2 size={16} style={{ color: 'var(--danger)', cursor: 'pointer', flexShrink: 0 }} onClick={() => handleDeleteQuestion(q.id)} />
+                                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexShrink: 0 }}>
+                                            <Edit size={16} style={{ color: 'var(--primary)', cursor: 'pointer' }} onClick={() => handleEditQuestion(q)} title="Editar Questão" />
+                                            <Trash2 size={16} style={{ color: 'var(--danger)', cursor: 'pointer' }} onClick={() => handleDeleteQuestion(q.id)} title="Excluir Questão" />
+                                        </div>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: q.options.length > 3 ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
                                         {q.options.map((opt, oidx) => (
@@ -1246,10 +1304,37 @@ export default function LMSAdmin() {
                             
                             {showQuestionBuilder ? (
                                 <div className="card animate-fade-in" style={{ marginTop: '1.5rem', backgroundColor: '#f8fafc', border: '2px solid var(--primary-alpha)' }}>
-                                    <h4 style={{ fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary)' }}>Construtor de Questão</h4>
+                                    <h4 style={{ fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary)' }}>{editingQuestionId ? 'Editar Questão' : 'Construtor de Questão'}</h4>
                                     <div style={{ marginBottom: '1.5rem' }}>
                                         <label className="form-label" style={{ fontWeight: 600 }}>Enunciado da Questão</label>
                                         <textarea className="form-control" rows="3" value={questionForm.text} onChange={e => setQuestionForm(prev => ({...prev, text: e.target.value}))} placeholder="Escreva a pergunta aqui..."></textarea>
+                                        
+                                        {uploadingImageQuestion && (
+                                            <div style={{ marginTop: '0.75rem', padding: '0.75rem', border: '1px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', backgroundColor: '#f1f5f9', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                                Enviando imagem...
+                                            </div>
+                                        )}
+
+                                        {!uploadingImageQuestion && questionForm.image_url && (
+                                            <div style={{ marginTop: '0.75rem', position: 'relative', display: 'inline-block' }}>
+                                                <img src={questionForm.image_url} alt="Referência da Pergunta" style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid #cbd5e1', display: 'block' }} />
+                                                <button 
+                                                    style={{ 
+                                                        position: 'absolute', top: '-8px', right: '-8px', 
+                                                        backgroundColor: 'var(--danger)', color: 'white', 
+                                                        border: 'none', borderRadius: '50%', 
+                                                        width: '20px', height: '20px', fontSize: '12px', 
+                                                        cursor: 'pointer', display: 'flex', 
+                                                        alignItems: 'center', justifyContent: 'center',
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                                        zIndex: 10
+                                                    }}
+                                                    onClick={() => setQuestionForm(prev => ({...prev, image_url: null}))}
+                                                    title="Remover Imagem"
+                                                >×</button>
+                                            </div>
+                                        )}
+
                                         <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                             <button className="btn btn-secondary" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }} onClick={() => questionImageRef.current.click()}>
                                                 <UploadCloud size={14} /> {questionForm.image_url ? 'Alterar Imagem' : 'Anexar Imagem'}
@@ -1270,19 +1355,27 @@ export default function LMSAdmin() {
                                                         <input type="text" className="form-control" value={opt.text} onChange={e => {
                                                             const newOpt = [...questionForm.options]; newOpt[oidx].text = e.target.value; setQuestionForm(prev => ({...prev, options: newOpt}))
                                                         }} placeholder={`Texto da opção ${String.fromCharCode(65+oidx)}`} />
-                                                        <button className="btn btn-secondary" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={() => {
-                                                            const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
-                                                            input.onchange = (e) => handleFileChange(e, 'option', oidx);
-                                                            input.click();
-                                                        }}>
+                                                        <button className="btn btn-secondary" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={() => handleOptionImageClick(oidx)}>
                                                             <UploadCloud size={14} />
                                                         </button>
                                                     </div>
-                                                    {opt.image_url && (
+                                                    {uploadingImageOptionIdx === oidx && (
+                                                        <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                            Enviando imagem...
+                                                        </div>
+                                                    )}
+                                                    {uploadingImageOptionIdx !== oidx && opt.image_url && (
                                                         <div style={{ marginTop: '0.5rem', position: 'relative', display: 'inline-block' }}>
                                                             <img src={opt.image_url} alt="Opção" style={{ height: '50px', borderRadius: '4px', border: '1px solid #ddd' }} />
                                                             <button 
-                                                                style={{ position: 'absolute', top: '-5px', right: '-5px', backgroundColor: 'var(--danger)', color: 'white', border: 'none', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                style={{ 
+                                                                    position: 'absolute', top: '-5px', right: '-5px', 
+                                                                    backgroundColor: 'var(--danger)', color: 'white', 
+                                                                    border: 'none', borderRadius: '50%', 
+                                                                    width: '16px', height: '16px', fontSize: '10px', 
+                                                                    cursor: 'pointer', display: 'flex', 
+                                                                    alignItems: 'center', justifyContent: 'center' 
+                                                                }}
                                                                 onClick={() => {
                                                                     const newOpt = [...questionForm.options]; newOpt[oidx].image_url = null; setQuestionForm(prev => ({...prev, options: newOpt}))
                                                                 }}
@@ -1294,7 +1387,7 @@ export default function LMSAdmin() {
                                         ))}
                                     </div>
                                     <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
-                                        <button className="btn btn-secondary" onClick={() => setShowQuestionBuilder(false)}>Cancelar</button>
+                                        <button className="btn btn-secondary" onClick={() => { setShowQuestionBuilder(false); setEditingQuestionId(null); }}>Cancelar</button>
                                         <button className="btn btn-primary" onClick={handleSaveFullQuestion} disabled={isSavingQuestion}>
                                             {isSavingQuestion ? 'Salvando...' : 'Salvar Questão'}
                                         </button>
