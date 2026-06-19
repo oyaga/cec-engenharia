@@ -116,6 +116,12 @@ A secretaria é o núcleo operacional da escola, lidando com informações acad�
 - Devido à estrutura de layout em colunas com rolagem interna (`overflowY: 'auto'`) no painel de lições do `LessonPlayer.jsx`, a navegação do React Router não reseta automaticamente a posição vertical da tela interna.
 - **Regra:** Sempre resete a propriedade `scrollTop` do contêiner de conteúdo principal para `0` programaticamente através de uma referência `useRef` ao disparar o efeito colateral de mudança de lição (`lessonId`).
 
+### 📝 Construtor de Exercícios de Fixação (Quiz)
+- O construtor de questionários em [LMSAdmin.jsx](file:///Users/piticalyn/site%20cec/src/pages/LMSAdmin.jsx) lida com o gerenciamento de provas e enunciados de questões com anexação opcional de imagens (para perguntas e alternativas).
+- **Regra de Edição:** Certifique-se de que o botão de editar questão (`Edit`) preencha todos os campos do formulário `questionForm`, incluindo o ID da questão em `editingQuestionId` (que deve ser redefinido para `null` no sucesso ou cancelamento).
+- **Upload e Pré-visualização de Imagens:** Sempre exiba feedback em tempo real ("Enviando imagem...") monitorando os estados `uploadingImageQuestion` (enunciado) e `uploadingImageOptionIdx` (alternativas) durante o upload de mídia para o Supabase. Adicione controles explícitos para o usuário pré-visualizar a imagem enviada e removê-la, caso necessário.
+- **Funções Auxiliares de Upload:** Evite embutir inputs ou lógica complexa de manipulação do DOM de forma inline no JSX (como a geração e clique de inputs de file). Sempre utilize funções auxiliares isoladas (ex: `handleOptionImageClick`) para prevenir problemas de compilação com o bundler/esbuild decorrentes do parser do JSX lendo o caractere `/` como delimitador de expressão regular.
+
 ---
 
 ## 6. Checklist de Qualidade Pré-Commit / Pré-Push
