@@ -79,13 +79,13 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       # Roteador HTTPS
-      - "traefik.http.routers.cec.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.cec.rule=Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)"
       - "traefik.http.routers.cec.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.cec.tls=true"
       - "traefik.http.routers.cec.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
       - "traefik.http.services.cec.loadbalancer.server.port=8080"
       # Redireciona HTTP -> HTTPS
-      - "traefik.http.routers.cec-http.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.cec-http.rule=Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)"
       - "traefik.http.routers.cec-http.entrypoints=web"
       - "traefik.http.routers.cec-http.middlewares=cec-redirect"
       - "traefik.http.middlewares.cec-redirect.redirectscheme.scheme=https"
