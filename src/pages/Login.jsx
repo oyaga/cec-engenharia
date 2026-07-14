@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
 
 export default function Login({ title = "Acesso ao Sistema", isSecretaria = false, isWebdesigner = false, redirectTo = null }) {
@@ -9,38 +9,25 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
     const [showPassword, setShowPassword] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
-    const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false)
-    const [currentSessionUser, setCurrentSessionUser] = useState(null)
-    const [currentUserProfile, setCurrentUserProfile] = useState(null)
     const [rememberMe, setRememberMe] = useState(false)
     const navigate = useNavigate()
 
-    // Verificar se já está logado ao carregar
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) {
-                setIsAlreadyLoggedIn(true)
-                setCurrentSessionUser(session.user)
-                
-                // Busca perfil correspondente ao usuário ativo
-                supabase.from('users')
-                    .select('role')
-                    .eq('id', session.user.id)
-                    .maybeSingle()
-                    .then(({ data }) => {
-                        if (data) setCurrentUserProfile(data)
-                    })
-            }
-        })
-    }, [])
+    // Sessão ativa vem do contexto (backend Go), não mais do Supabase.
+    const { session, userProfile, login, logout } = useAuth()
+    const isAlreadyLoggedIn = !!session
+    const currentSessionUser = session?.user
+    const currentUserProfile = userProfile
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut()
-        sessionStorage.clear()
-        localStorage.clear()
-        setIsAlreadyLoggedIn(false)
-        setCurrentSessionUser(null)
-        setCurrentUserProfile(null)
+    const handleLogout = () => {
+        logout()
+    }
+
+    const redirectByRole = (role) => {
+        if (redirectTo && redirectTo !== '/') return navigate(redirectTo)
+        if (role === 'aluno') return window.location.replace('/meus-cursos')
+        if (role === 'instrutor') return window.location.replace('/professor')
+        if (redirectTo === '/') return window.location.replace('/')
+        return window.location.replace('/dashboard')
     }
 
     const handleLogin = async (e) => {
@@ -48,76 +35,19 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
         setLoading(true)
         setError(null)
 
-        // Salvar a preferência do usuário antes de efetuar o login para o CustomStorage ler
-        localStorage.setItem('cec_remember_me', rememberMe ? 'true' : 'false')
-
         try {
-            // Se já há um usuário ativo, desloga silenciosamente primeiro para permitir a troca limpa de conta
-            const { data: { session } } = await supabase.auth.getSession()
-            if (session) {
-                await supabase.auth.signOut()
-                sessionStorage.clear()
-                localStorage.clear()
-                // Preservar a flag mesmo limpando tudo
-                localStorage.setItem('cec_remember_me', rememberMe ? 'true' : 'false')
+            const user = await login(email, password, rememberMe)
+
+            if (user?.must_change_password) {
+                navigate('/trocar-senha')
+                return
             }
+            redirectByRole(user?.role)
         } catch (err) {
-            console.warn("Erro ao limpar sessão anterior:", err)
-        }
-
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        })
-
-        if (error) {
-            setError(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : error.message)
+            setError(err.status === 401 || err.status === 403
+                ? 'E-mail ou senha incorretos.'
+                : (err.message || 'Falha ao entrar.'))
             setLoading(false)
-        } else {
-            try {
-                // Tenta buscar se precisa trocar senha, mas não deixa isso travar o login
-                const { data: { user } } = await supabase.auth.getUser()
-                
-                if (user) {
-                    const { data: profile } = await supabase
-                        .from('users')
-                        .select('role, must_change_password')
-                        .eq('id', user.id)
-                        .maybeSingle()
-
-                    if (profile?.must_change_password) {
-                        navigate('/trocar-senha')
-                        setLoading(false)
-                        return
-                    }
-
-                    // Redirecionamento dinâmico baseado no role se nenhum redirectTo específico for definido
-                    if (!redirectTo) {
-                        if (profile?.role === 'aluno') {
-                            window.location.replace('/meus-cursos')
-                            return
-                        } else if (profile?.role === 'instrutor') {
-                            window.location.replace('/professor')
-                            return
-                        } else {
-                            window.location.replace('/dashboard')
-                            return
-                        }
-                    }
-                }
-
-                // Se chegou aqui, redireciona conforme planejado ou fallback para Home
-                if (redirectTo === '/') {
-                    window.location.replace('/')
-                } else if (redirectTo) {
-                    navigate(redirectTo)
-                } else {
-                    window.location.replace('/')
-                }
-            } catch (err) {
-                console.warn("Erro ao buscar perfil pós-login, seguindo para Home:", err)
-                window.location.replace('/')
-            }
         }
     }
 

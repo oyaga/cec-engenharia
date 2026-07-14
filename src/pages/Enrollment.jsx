@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, Send, Phone, User, Mail, BookOpen } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
-import { supabase } from '../lib/supabaseClient';
+import { enrollmentsApi } from '../services/site';
 import EditableText from '../components/EditableText';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -26,17 +26,13 @@ const Enrollment = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase
-      const { error } = await supabase
-        .from('enrollments')
-        .insert([{
-          name: formData.name,
-          phone: formData.phone,
-          email: formData.email,
-          course_name: formData.course
-        }]);
-
-      if (error) throw error;
+      // 1. Salvar via API pública
+      await enrollmentsApi.createPublic({
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        course_name: formData.course
+      });
 
       // 2. Preparar mensagem do WhatsApp
       const message = `*NOVA MATRÍCULA - CEC ENGENHARIA*%0A%0A*Nome:* ${formData.name}%0A*Telefone:* ${formData.phone}%0A*E-mail:* ${formData.email}%0A*Curso:* ${formData.course}`;

@@ -7,7 +7,9 @@ import {
   Smartphone, FileText, Calendar, Clock
 } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { coursesApi } from '../../services/academic';
+import { enrollmentsApi } from '../../services/site';
+import { publicCheckout } from '../../services/asaas';
 import { useAuth } from '../../contexts/AuthContext';
 import EditableText from '../../components/site/EditableText';
 import Navbar from '../../components/site/Navbar';
@@ -64,48 +66,14 @@ const Enrollment = () => {
       
       setLoadingPrice(true);
       try {
-        // Busca os dados de preço oficial do curso
-        const { data: cData } = await supabase
-          .from('lms_courses')
-          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, default_value')
-          .eq('title', formData.course)
-          .maybeSingle();
-        setSelectedCourseData(cData || null);
-
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Tenta extrair a sigla (ex: CD-CL) ou usar partes do nome
-        const match = formData.course.match(/\((.*?)\)/);
-        const acronym = match ? match[1] : formData.course.split(' ')[0];
-
-        // Busca por turmas futuras que contenham a sigla ou parte do nome
-        const { data, error } = await supabase
-          .from('classes')
-          .select('*')
-          .or(`course_name.ilike.%${acronym}%,course_name.ilike.%${formData.course.substring(0, 10)}%`)
-          .gte('start_date', today)
-          .order('start_date', { ascending: true })
-          .limit(1);
-
-        if (data && data.length > 0) {
-          setSelectedClass(data[0]);
-        } else {
-          // Fallback: busca qualquer turma futura se a busca específica falhar
-          const { data: fallbackData } = await supabase
-            .from('classes')
-            .select('*')
-            .gte('start_date', today)
-            .order('start_date', { ascending: true })
-            .limit(1);
-          
-          if (fallbackData && fallbackData.length > 0) {
-             setSelectedClass(fallbackData[0]);
-          } else {
-             setSelectedClass(null);
-          }
-        }
+        // Preço oficial do curso (catálogo público)
+        const { courses } = await coursesApi.listPublic();
+        const cData = (courses || []).find(c => c.title === formData.course) || null;
+        setSelectedCourseData(cData);
+        // Turma específica é resolvida no servidor no checkout; aqui só exibimos preço do curso.
+        setSelectedClass(null);
       } catch (err) {
-        console.error("Erro ao buscar info da turma:", err);
+        console.error("Erro ao buscar info do curso:", err);
       } finally {
         setLoadingPrice(false);
       }
@@ -167,74 +135,36 @@ const Enrollment = () => {
         });
       })();
 
-      // 1. Salvar intenção de matrícula no Supabase (apenas insert, sem select para evitar erro de privilégio de leitura RLS da role anon)
-      let insertError = null;
+      // 1. Salvar a intenção de matrícula (endpoint público).
+      let createdId = enrollmentId;
       try {
-        const { error } = await supabase
-          .from('enrollments')
-          .insert([{
-            id: enrollmentId,
-            name: formData.name,
-            social_name: formData.social_name,
-            phone: formData.phone,
-            email: formData.email,
-            course_name: formData.course,
-            payment_method: formData.paymentMethod,
-            status: 'pending_payment',
-            turma_id: selectedClass?.id || null,
-            cpf: formData.cpf
-          }]);
-        
-        if (error) {
-          // Se deu erro de coluna inexistente (PGRST204 ou 42703), tentamos o insert simplificado como fallback resiliente
-          if (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema')) {
-            console.warn("Colunas estendidas não encontradas no banco. Executando insert de contingência...");
-            const { error: fallbackError } = await supabase
-              .from('enrollments')
-              .insert([{
-                id: enrollmentId,
-                name: formData.name,
-                phone: formData.phone,
-                email: formData.email,
-                course_name: formData.course,
-                status: 'pending_payment'
-              }]);
-            
-            if (fallbackError) insertError = fallbackError;
-          } else {
-            insertError = error;
-          }
-        }
+        const created = await enrollmentsApi.createPublic({
+          name: formData.name,
+          social_name: formData.social_name,
+          phone: formData.phone,
+          email: formData.email,
+          course_name: formData.course,
+          payment_method: formData.paymentMethod,
+          turma_id: selectedClass?.id || null,
+          cpf: formData.cpf,
+        });
+        if (created?.enrollment?.id) createdId = created.enrollment.id;
       } catch (e) {
-        insertError = e;
+        throw new Error(e.message || 'Falha ao registrar a matrícula.');
       }
 
-      if (insertError) throw new Error(insertError.message);
-
-      // 2. Chamar a Edge Function do Supabase via fetch para melhor captura de erros
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || supabase.supabaseUrl;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase.supabaseKey;
-      
-      const funcUrl = `${supabaseUrl}/functions/v1/asaas-checkout`;
-      const response = await fetch(funcUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey
-        },
-        body: JSON.stringify({
-          ...formData,
-          price: getSelectedPrice(),
-          enrollmentId: enrollmentId,
-          turmaId: selectedClass?.id || null
-        })
+      // 2. Checkout server-side (a chave do Asaas nunca vai ao browser; preço calculado no servidor).
+      const result = await publicCheckout({
+        name: formData.name,
+        cpf: formData.cpf,
+        email: formData.email,
+        phone: formData.phone,
+        course_id: selectedCourseData?.id || null,
+        course_name: formData.course,
+        payment_method: formData.paymentMethod,
+        enrollment_id: createdId,
       });
-      
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Não foi possível gerar o link de pagamento.');
-      }
-      
+
       if (result && result.invoiceUrl) {
         setPaymentInfo(result);
         // Redireciona o aluno imediatamente para o checkout do Asaas
@@ -593,7 +523,7 @@ const Enrollment = () => {
         .footer-warning { color: #f59e0b; font-weight: 700; font-size: 0.9rem; }
 
         @media (max-width: 1100px) { .enroll-grid { grid-template-columns: 1fr; gap: 4rem; } .enroll-form-card { max-width: 600px; margin-inline: auto; width: 100%; } }
-        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .methods-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .methods-grid { grid-template-columns: 1fr; } .class-details-row { flex-wrap: wrap; gap: 1rem; } .enroll-title { font-size: 2.5rem; } .enroll-form-card { padding: 1.75rem; } .enroll-main { padding-top: 8rem; } }
       `}</style>
     </div>
   );

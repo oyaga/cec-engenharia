@@ -1,51 +1,16 @@
 import { useState, useEffect } from 'react'
-import { supabase, createTempClient } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { usersApi } from '../services/users'
+import { qualificationsApi } from '../services/staff'
+import { useAuth } from '../contexts/AuthContext'
 import { 
   GraduationCap, Award, Calendar, ShieldCheck, Search, Plus, 
   Trash2, FileText, CheckCircle, AlertTriangle, AlertCircle, Eye, 
   Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX 
 } from 'lucide-react'
 
-const MOCK_QUALIFICATIONS = [
-    {
-        id: 'mock-qual-1',
-        user_id: 'mock-inst-1',
-        method: 'CD-CL',
-        qualification_type: 'snqc',
-        training_hours: 4,
-        training_date: '2026-05-10',
-        status: 'ativo',
-        valid_until: '2029-05-15',
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Dr. Carlos Mendonça', email: 'carlos.mendonca@cec.com.br', cpf: '123.456.789-00', phone: '(21) 98888-1111' }
-    },
-    {
-        id: 'mock-qual-2',
-        user_id: 'mock-inst-2',
-        method: 'CD-MC',
-        qualification_type: 'experience',
-        training_hours: 8,
-        training_date: '2026-04-12',
-        status: 'pendente_aprovacao',
-        valid_until: null,
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Prof.ª Roberta Costa', email: 'roberta.costa@cec.com.br', cpf: '987.654.321-11', phone: '(21) 97777-2222' }
-    },
-    {
-        id: 'mock-qual-3',
-        user_id: 'mock-inst-3',
-        method: 'CD-TO',
-        qualification_type: 'snqc',
-        training_hours: 4,
-        training_date: '2025-05-15',
-        status: 'vencido',
-        valid_until: '2026-05-15',
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Insp. Marcos Silva', email: 'marcos.silva@cec.com.br', cpf: '456.789.123-22', phone: '(21) 96666-3333' }
-    }
-]
-
 export default function Instrutores() {
+    const { session, userProfile } = useAuth()
     const [qualifications, setQualifications] = useState([])
     const [loading, setLoading] = useState(true)
     const [showWizard, setShowWizard] = useState(false)
@@ -94,31 +59,22 @@ export default function Instrutores() {
     const fetchInitialData = async () => {
         setLoading(true)
         try {
-            // Obter cargo do usuário logado
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
-                setCurrentUserProfile(profile)
-            }
+            setCurrentUserProfile(userProfile || null)
 
             // 1. Carregar as qualificações PR-127
-            const { data: qualData, error: qualError } = await supabase
-                .from('instructor_qualifications')
-                .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
-            
-            if (qualError) throw qualError
+            const { qualifications: qualData } = await qualificationsApi.list()
 
             if (qualData && qualData.length > 0) {
                 setQualifications(qualData)
                 await fetchCapacities(qualData)
             } else {
-                setQualifications(MOCK_QUALIFICATIONS)
-                await fetchCapacities(MOCK_QUALIFICATIONS)
+                setQualifications([])
+                await fetchCapacities([])
             }
         } catch (err) {
-            console.warn('Erro ao carregar qualificações (usando emulador local):', err)
-            setQualifications(MOCK_QUALIFICATIONS)
-            await fetchCapacities(MOCK_QUALIFICATIONS)
+            console.warn('Erro ao carregar qualificações:', err)
+            setQualifications([])
+            await fetchCapacities([])
         }
         setLoading(false)
     }
@@ -135,47 +91,17 @@ export default function Instrutores() {
                     }
                 })
             } else {
-                // Se não foi passado dados, fazemos a consulta no banco de dados.
-                // Mas antes, vamos verificar se ela está totalmente vazia.
-                const { count, error: countError } = await supabase
-                    .from('instructor_qualifications')
-                    .select('*', { count: 'exact', head: true })
-                
-                if (countError) throw countError
-
-                if (count > 0) {
-                    const { data, error } = await supabase
-                        .from('instructor_qualifications')
-                        .select('method')
-                        .eq('status', 'ativo')
-                    
-                    if (error) throw error
-                    
-                    if (data) {
-                        data.forEach(item => {
-                            if (counts[item.method] !== undefined) counts[item.method]++
-                        })
-                    }
-                } else {
-                    // Se a tabela está vazia, usa os mocks ativos
-                    MOCK_QUALIFICATIONS.forEach(item => {
-                        if (item.status === 'ativo' && counts[item.method] !== undefined) {
-                            counts[item.method]++
-                        }
+                const { qualifications: data } = await qualificationsApi.list({ status: 'ativo' })
+                if (data && data.length > 0) {
+                    data.forEach(item => {
+                        if (counts[item.method] !== undefined) counts[item.method]++
                     })
                 }
             }
             setCapacities(counts)
         } catch (err) {
             console.error('Erro ao buscar capacidades:', err)
-            // Fallback para capacidades dos mocks
-            const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
-            MOCK_QUALIFICATIONS.forEach(item => {
-                if (item.status === 'ativo' && counts[item.method] !== undefined) {
-                    counts[item.method]++
-                }
-            })
-            setCapacities(counts)
+            setCapacities({ 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 })
         } finally {
             setLoadingCapacities(false)
         }
@@ -268,35 +194,20 @@ export default function Instrutores() {
             const uniqueId = Date.now()
             const passwordToSave = 'CEC@inst_' + Math.floor(1000 + Math.random() * 9000)
 
-            const tempClient = createTempClient()
-            const { data: authData, error: authError } = await tempClient.auth.signUp({
-                email: prForm.email,
-                password: passwordToSave,
-                options: {
-                    data: {
-                        full_name: prForm.full_name,
-                        role: 'instrutor'
-                    }
-                }
-            })
-
-            if (!authError && authData?.user) {
-                instructorUserId = authData.user.id
-                
-                // Salvar/Atualizar em public.users (upsert evita conflito com trigger auth)
-                await supabase.from('users').upsert({
-                    id: instructorUserId,
+            try {
+                const { user } = await usersApi.create({
                     email: prForm.email,
+                    password: passwordToSave,
                     full_name: prForm.full_name,
                     role: 'instrutor',
                     cpf: prForm.cpf,
                     phone: prForm.phone,
-                    is_active: true,
                     permissions: { has_erp_access: true }
-                }, { onConflict: 'id' })
-            }
+                })
+                if (user?.id) instructorUserId = user.id
+            } catch (e) { console.warn('Login do instrutor já existe ou falhou:', e.message) }
 
-            // 2. Salvar Habilitações em instructor_qualifications do Supabase
+            // 2. Salvar habilitações PR-127
             for (const method of prForm.methods) {
                 const payload = {
                     user_id: instructorUserId,
@@ -313,12 +224,7 @@ export default function Instrutores() {
                     photo_url: prForm.photo_url,
                     status: 'pendente_aprovacao'
                 }
-
-                const { error } = await supabase
-                    .from('instructor_qualifications')
-                    .upsert(payload, { onConflict: 'user_id, method' })
-
-                if (error) throw error
+                await qualificationsApi.create(payload)
             }
 
             alert(`Instrutor cadastrado com sucesso e qualificações enviadas para aprovação!\n\nDados de Acesso Provisórios para o Portal:\nE-mail: ${prForm.email}\nSenha: ${passwordToSave}\n\nPor favor, copie e envie estas credenciais para o instrutor.`);
@@ -326,30 +232,7 @@ export default function Instrutores() {
             fetchInitialData()
         } catch (err) {
             console.error('Erro ao salvar no banco:', err)
-            
-            // Fallback Resiliente local
-            const mockId = 'mock-new-qual-' + Date.now()
-            const newMock = {
-                id: mockId,
-                user_id: 'mock-user-' + Date.now(),
-                method: prForm.methods[0] || 'CD-CL',
-                qualification_type: prForm.methodComprovations[prForm.methods[0]] || 'snqc',
-                training_hours: parseInt(prForm.training_hours),
-                training_date: prForm.training_date || new Date().toISOString().split('T')[0],
-                status: 'pendente_aprovacao',
-                valid_until: null,
-                created_at: new Date().toISOString(),
-                users: {
-                    full_name: prForm.full_name,
-                    email: prForm.email,
-                    cpf: prForm.cpf,
-                    phone: prForm.phone
-                }
-            }
-
-            setQualifications(prev => [newMock, ...prev])
-            setShowWizard(false)
-            alert('Cadastro efetuado localmente em cache para testes!')
+            alert('Erro ao cadastrar instrutor: ' + (err.message || 'tente novamente.'))
         } finally {
             setLoading(false)
         }
@@ -360,24 +243,17 @@ export default function Instrutores() {
         if (!confirm(`Aprovar a habilitação técnica no método ${qual.method} para o instrutor ${qual.users?.full_name}?`)) return
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            
             // Validade = hoje + 36 meses conforme norma PR-127
             const validUntil = new Date()
             validUntil.setMonth(validUntil.getMonth() + 36)
 
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'ativo',
-                    approved_by: user.id,
-                    approved_at: new Date(),
-                    valid_until: validUntil.toISOString().split('T')[0],
-                    rejection_reason: null
-                })
-                .eq('id', qual.id)
-
-            if (error) throw error
+            await qualificationsApi.update(qual.id, {
+                status: 'ativo',
+                approved_by: session?.user?.id,
+                approved_at: new Date().toISOString(),
+                valid_until: validUntil.toISOString().split('T')[0],
+                rejection_reason: null
+            })
 
             alert('Habilitação técnica aprovada com sucesso! Validade estendida por 36 meses.')
             setShowApprovalModal(false)
@@ -404,18 +280,11 @@ export default function Instrutores() {
         }
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'reprovado',
-                    approved_by: user.id,
-                    rejection_reason: rejectionReason
-                })
-                .eq('id', selectedQualForApproval.id)
-
-            if (error) throw error
+            await qualificationsApi.update(selectedQualForApproval.id, {
+                status: 'reprovado',
+                approved_by: session?.user?.id,
+                rejection_reason: rejectionReason
+            })
 
             alert('Habilitação reprovada. O instrutor receberá o motivo.')
             setShowApprovalModal(false)
@@ -659,11 +528,11 @@ export default function Instrutores() {
             </div>
 
             {/* MODAL 1: ASSISTENTE COMPLETO PR-127 EM 5 ABAS */}
-            {showWizard && (
+            {showWizard && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '1rem'
                 }}>
                     <div className="card animate-slide-up" style={{ maxWidth: '650px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -676,7 +545,7 @@ export default function Instrutores() {
                         </div>
 
                         {/* Barra de Progresso do Assistente */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
                             <span style={{ color: wizardStep === 1 ? 'var(--primary)' : '#64748B' }}>1. Pessoal</span>
                             <span style={{ color: wizardStep === 2 ? 'var(--primary)' : '#64748B' }}>2. Métodos</span>
                             <span style={{ color: wizardStep === 3 ? 'var(--primary)' : '#64748B' }}>3. Treinamento</span>
@@ -974,14 +843,14 @@ export default function Instrutores() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL 2: JULGAMENTO DA APROVAÇÃO TÉCNICA */}
-            {showApprovalModal && selectedQualForApproval && (
+            {showApprovalModal && selectedQualForApproval && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999, padding: '1rem'
                 }}>
                     <div className="card animate-slide-up" style={{ maxWidth: '600px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -1067,7 +936,7 @@ export default function Instrutores() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
         </div>
     )

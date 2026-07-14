@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, X, UploadCloud, Image as ImageIcon, Video } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { uploadFile } from '../../lib/api';
 
 const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável", compact = false }) => {
   const { isEditing, updateContent, content } = useEdit();
@@ -79,18 +79,8 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
         return;
       }
       setIsUploading(true);
-      const ext = file.name.split('.').pop();
-      const name = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-      
-      console.log('Iniciando upload para site_assets:', name);
-      const { error } = await supabase.storage.from('site_assets').upload(name, file);
-      if (error) throw error;
-      
-      const { data } = supabase.storage.from('site_assets').getPublicUrl(name);
-      const publicUrl = data?.publicUrl;
-      
-      console.log('Upload concluído. URL Gerada:', publicUrl);
-      
+      const { url: publicUrl } = await uploadFile(file, 'site-assets');
+
       if (!publicUrl) throw new Error("Não foi possível gerar a URL pública do arquivo.");
 
       updateContent(path, publicUrl);
@@ -186,7 +176,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
             zIndex: 99999, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: '1rem', backdropFilter: 'blur(4px)'
+            justifyContent: 'center', padding: '1rem'
           }}
         >
           <div

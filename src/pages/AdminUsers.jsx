@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, createTempClient } from '../lib/supabaseClient';
+import { usersApi } from '../services/users';
 import { Plus, Trash2, RefreshCw, ShieldCheck, User, Eye, EyeOff, AlertCircle, CheckCircle, Award } from 'lucide-react';
 import AdminToolbar from '../components/AdminToolbar';
 import { useEdit } from '../context/EditContext';
@@ -32,24 +32,11 @@ const AdminUsers = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // Filtrar apenas usuários que possuem cargos administrativos/editor (admin e webdesigner)
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .in('role', ['admin', 'webdesigner'])
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        // Fallback robusto se a tabela users estiver indisponível ou vazia
-        setUsers([
-          { id: '1', email: 'webdesigner@cec.com.br', role: 'webdesigner', created_at: new Date().toISOString(), permissions: { can_add_webdesigners: true } },
-          { id: '2', email: 'admin@cec.com.br', role: 'admin', created_at: new Date().toISOString(), permissions: { can_add_webdesigners: true } },
-        ]);
-      } else {
-        setUsers(data || []);
-      }
+      const { users } = await usersApi.list(['admin', 'webdesigner']);
+      setUsers(users || []);
     } catch (err) {
       console.error('Erro ao buscar usuários:', err);
+      setStatus({ type: 'error', msg: err.message || 'Falha ao carregar usuários.' });
     } finally {
       setLoading(false);
     }
@@ -61,33 +48,16 @@ const AdminUsers = () => {
       alert('Você não tem permissão para adicionar novos webdesigners.');
       return;
     }
-    
+
     setStatus(null);
     setSaving(true);
     try {
-      const tempClient = createTempClient();
-      const { data, error } = await tempClient.auth.signUp({
+      await usersApi.create({
         email: form.email,
         password: form.password,
-        options: { data: { role: 'webdesigner' } }
-      });
-
-      if (error) throw error;
-
-      if (!data?.user) {
-        throw new Error('Não foi possível obter os dados do usuário criado no Auth.');
-      }
-
-      // Salva na tabela users pública
-      const { error: dbError } = await supabase.from('users').upsert({
-        id: data.user.id,
-        email: form.email,
         role: 'webdesigner',
         permissions: { can_add_webdesigners: form.canAddWebdesigners },
-        created_at: new Date().toISOString()
       });
-
-      if (dbError) throw dbError;
 
       setStatus({ type: 'success', msg: `Usuário ${form.email} criado como Webdesigner com sucesso!` });
       setForm({ email: '', password: '', canAddWebdesigners: false });
@@ -110,13 +80,10 @@ const AdminUsers = () => {
       return;
     }
     if (!window.confirm(`Excluir o usuário ${userItem.email}?`)) return;
-    
-    try {
-      // Remove da tabela pública
-      const { error } = await supabase.from('users').delete().eq('email', userItem.email);
-      if (error) throw error;
 
-      setUsers(prev => prev.filter(u => u.email !== userItem.email));
+    try {
+      await usersApi.remove(userItem.id);
+      setUsers(prev => prev.filter(u => u.id !== userItem.id));
       setStatus({ type: 'success', msg: `Usuário ${userItem.email} removido do sistema.` });
     } catch (err) {
       setStatus({ type: 'error', msg: err.message });
@@ -130,37 +97,19 @@ const AdminUsers = () => {
     try {
       const currentPerms = userItem.permissions || {};
       const newPermission = !currentPerms.can_add_webdesigners;
-      
-      const { error } = await supabase
-        .from('users')
-        .update({
-          permissions: {
-            ...currentPerms,
-            can_add_webdesigners: newPermission
-          }
-        })
-        .eq('email', userItem.email);
 
-      if (error) throw error;
+      await usersApi.update(userItem.id, {
+        permissions: { ...currentPerms, can_add_webdesigners: newPermission },
+      });
 
       // Atualiza localmente
-      setUsers(prev => prev.map(u => {
-        if (u.email === userItem.email) {
-          return {
-            ...u,
-            permissions: {
-              ...(u.permissions || {}),
-              can_add_webdesigners: newPermission
-            }
-          };
-        }
-        return u;
-      }));
+      setUsers(prev => prev.map(u => (
+        u.id === userItem.id
+          ? { ...u, permissions: { ...(u.permissions || {}), can_add_webdesigners: newPermission } }
+          : u
+      )));
 
-      setStatus({ 
-        type: 'success', 
-        msg: `Permissão de ${userItem.email} atualizada com sucesso!` 
-      });
+      setStatus({ type: 'success', msg: `Permissão de ${userItem.email} atualizada com sucesso!` });
     } catch (err) {
       setStatus({ type: 'error', msg: err.message });
     }
@@ -492,7 +441,7 @@ const AdminUsers = () => {
         .users-table tr:last-child td { border-bottom: none; }
         .users-table tr:hover td { background: #f8fafc; }
 
-        .email-cell { display: flex; align-items: center; gap: 0.5rem; }
+        .email-cell { display: flex; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
         .icon-admin { color: #f59e0b; }
         .icon-user  { color: #94a3b8; }
         .badge-master { background: #fef3c7; color: #92400e; font-size: 0.65rem; font-weight: 800; padding: 1px 6px; border-radius: 4px; }
@@ -533,6 +482,9 @@ const AdminUsers = () => {
         @media (max-width: 768px) {
           .form-row { grid-template-columns: 1fr; }
           .users-table th:nth-child(4), .users-table td:nth-child(4) { display: none; }
+          .users-card { overflow-x: auto; }
+          .users-table { min-width: 560px; }
+          .container { padding: 1.5rem 1rem; }
         }
       `}</style>
     </div>

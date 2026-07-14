@@ -209,7 +209,6 @@ const Navbar = () => {
           width: 100%;
           height: 100%;
           background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(4px);
           opacity: 0;
           visibility: hidden;
           transition: all 0.3s ease;

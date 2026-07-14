@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import { 
-    BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3, 
-    ShieldAlert, Users, Plus, X, Loader2, Info, Check, 
+import { createPortal } from 'react-dom'
+import { classesApi, studentsApi, attendanceApi } from '../services/academic'
+import { lmsApi } from '../services/lms'
+import { messagesApi } from '../services/misc'
+import { useAuth } from '../contexts/AuthContext'
+import {
+    BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
+    ShieldAlert, Users, Plus, X, Loader2, Info, Check,
     AlertCircle, AlertTriangle, MessageCircle, Clock, Send,
     BarChart3, TrendingUp, Award
 } from 'lucide-react'
@@ -20,10 +24,19 @@ const JUSTIFICATION_OPTIONS = [
 ]
 
 export default function Professor() {
+    const { session, userProfile } = useAuth()
+    const uid = session?.user?.id
     const [activeTab, setActiveTab] = useState('minhasTurmas') // minhasTurmas | duvidasEad | diario
     const [selectedClass, setSelectedClass] = useState(null)
     const [loading, setLoading] = useState(true)
     const [userRole, setUserRole] = useState('instrutor')
+
+    // "Minhas turmas": admin/coord veem todas; instrutor vê onde é vinculado.
+    const filterMyClasses = (all) => {
+        const role = userProfile?.role
+        if (role === 'admin' || role === 'coordenador') return all || []
+        return (all || []).filter(c => (c.instructors || []).some(i => i.user?.id === uid))
+    }
 
     // Data from Supabase
     const [classes, setClasses] = useState([])
@@ -50,55 +63,13 @@ export default function Professor() {
     const [forumLoading, setForumLoading] = useState(false)
     const [repliesLoading, setRepliesLoading] = useState(false)
 
-    // Mocks do Fórum para o Instrutor
+    // Fórum do instrutor: sem dados fabricados (retorna vazio quando não há dados reais)
     const getMockForumDataForInstructor = () => {
-        return [
-            {
-                id: 'topic-1',
-                title: 'Calibração e Zeramento de Micrômetro',
-                content: 'Gostaria de saber qual o procedimento ideal para fazer o zeramento correto do micrômetro no padrão de 25mm antes de medir tubulações de alta pressão nas aulas práticas.',
-                created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-                replies_count: 2,
-                student: { full_name: 'Carlos Adriano Macias' },
-                lesson: { title: 'Uso de Paquímetro e Micrômetro', lms_modules: { lms_courses: { title: 'Controle Dimensional – Caldeiraria' } } }
-            },
-            {
-                id: 'topic-2',
-                title: 'Tolerâncias de Concentricidade - Norma Abendi PR-127',
-                content: 'Qual a tolerância de concentricidade máxima admissível para flanges de caldeiraria fina nas avaliações oficiais de homologação da Abendi?',
-                created_at: new Date(Date.now() - 3600000 * 48).toISOString(),
-                replies_count: 1,
-                student: { full_name: 'Patrícia Mendes Abreu' },
-                lesson: { title: 'Tolerâncias Geométricas de Concentricidade', lms_modules: { lms_courses: { title: 'Controle Dimensional - Tolerâncias Geométricas' } } }
-            }
-        ]
+        return []
     }
 
-    const getMockRepliesForInstructor = (topicId) => {
-        if (topicId === 'topic-1') {
-            return [
-                {
-                    id: 'rep-1',
-                    content: 'Carlos, o ideal é limpar as faces de medição com um papel de precisão livre de fiapos, ajustar no padrão de calibração, travar e verificar se o traço coincidiu exatamente com a linha de referência do tambor.',
-                    created_at: new Date(Date.now() - 3600000 * 20).toISOString(),
-                    author: { full_name: 'Juliana Vieira Costa', role: 'student' }
-                },
-                {
-                    id: 'rep-2',
-                    content: 'Excelente, Juliana! Lembre-se também, Carlos, de que a calibração deve ser feita com o micrômetro fixado em um suporte isolado para evitar a dilatação térmica provocada pelo calor das mãos no arco do instrumento. Isso garante a precisão de milésimos exigida na norma Abendi PR-127.',
-                    created_at: new Date(Date.now() - 3600000 * 18).toISOString(),
-                    author: { full_name: 'Marcos Silva (Instrutor)', role: 'instrutor' }
-                }
-            ]
-        }
-        return [
-            {
-                id: 'rep-3',
-                content: 'Patrícia, as tolerâncias de concentricidade são baseadas na classe de pressão do flange (geralmente entre 0.05mm e 0.10mm). Você deve utilizar o relógio comparador fixado magneticamente na mesa de desempeno para aferir com exatidão durante a prova.',
-                created_at: new Date(Date.now() - 3600000 * 40).toISOString(),
-                author: { full_name: 'Marcos Silva (Instrutor)', role: 'instrutor' }
-            }
-        ]
+    const getMockRepliesForInstructor = () => {
+        return []
     }
 
     // Estados do Analytics (Aproveitamento & Progresso)
@@ -117,49 +88,27 @@ export default function Professor() {
 
     const fetchDirectChats = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+            if (!uid) return
+            if (userProfile?.role) setUserRole(userProfile.role)
 
-            // 1. Buscar todas as turmas do instrutor para saber quais alunos ele pode conversar
-            const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-            if (profile?.role) {
-                setUserRole(profile.role)
-            }
-            const isAdminOrCoord = profile?.role === 'admin' || profile?.role === 'coordenador'
-
-            let classesQuery = supabase.from('classes').select('id, course_id')
-            if (!isAdminOrCoord) {
-                classesQuery = classesQuery.eq('instructor_id', user.id)
-            }
-            const { data: myClasses } = await classesQuery
+            const { classes: allClasses } = await classesApi.list()
+            const myClasses = filterMyClasses(allClasses)
 
             let studentsList = []
-            if (myClasses && myClasses.length > 0) {
-                const classIds = myClasses.map(c => c.id)
-                // Buscar alunos vinculados a essas turmas
-                const { data: stds } = await supabase
-                    .from('students')
-                    .select('id, full_name, user_id, classes(name)')
-                    .in('turma_id', classIds)
-
-                if (stds) {
-                    studentsList = stds.map(s => ({
-                        id: s.user_id || s.id,
-                        full_name: s.full_name,
-                        className: s.classes?.name || 'Sem Turma'
-                    })).filter(s => s.id)
-                }
+            if (myClasses.length > 0) {
+                const classIds = new Set(myClasses.map(c => c.id))
+                const { students: stds } = await studentsApi.list()
+                studentsList = (stds || [])
+                    .filter(s => classIds.has(s.turma_id))
+                    .map(s => ({ id: s.user_id || s.id, full_name: s.full_name, className: s.turma_name || 'Sem Turma' }))
+                    .filter(s => s.id)
             }
 
-            // 2. Buscar todas as mensagens em que o instrutor é remetente ou destinatário
-            const { data: msgs, error: msgsErr } = await supabase
-                .from('messages')
-                .select('*')
-                .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-                .order('created_at', { ascending: true })
-
-            if (msgsErr) {
-                console.warn("Tabela messages não configurada no Supabase:", msgsErr.message)
+            // 2. Mensagens do instrutor
+            let msgs = []
+            try {
+                msgs = (await messagesApi.list()).messages || []
+            } catch (msgsErr) {
                 setDirectError(true)
                 return
             }
@@ -183,8 +132,8 @@ export default function Professor() {
             // Adicionar dados de mensagens
             if (msgs) {
                 msgs.forEach(m => {
-                    const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id
-                    
+                    const partnerId = m.sender_id === uid ? m.receiver_id : m.sender_id
+
                     if (!chatsMap[partnerId]) {
                         chatsMap[partnerId] = {
                             id: partnerId,
@@ -201,7 +150,7 @@ export default function Professor() {
                     chatsMap[partnerId].lastMessage = m.content
                     chatsMap[partnerId].lastTime = m.created_at
 
-                    if (m.receiver_id === user.id && !m.is_read) {
+                    if (m.receiver_id === uid && !m.is_read) {
                         chatsMap[partnerId].unreadCount += 1
                     }
                 })
@@ -225,35 +174,11 @@ export default function Professor() {
     const fetchActiveChat = async (studentId) => {
         setLoadingDirect(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            // 1. Buscar mensagens
-            const { data: msgs } = await supabase
-                .from('messages')
-                .select('*')
-                .or(`and(sender_id.eq.${user.id},receiver_id.eq.${studentId}),and(sender_id.eq.${studentId},receiver_id.eq.${user.id})`)
-                .order('created_at', { ascending: true })
-
+            if (!uid) return
+            const { messages: msgs } = await messagesApi.list(studentId)
             setDirectMessages(msgs || [])
 
-            // 2. Marcar recebidas como lidas
-            const { error: updErr } = await supabase
-                .from('messages')
-                .update({ is_read: true })
-                .eq('sender_id', studentId)
-                .eq('receiver_id', user.id)
-                .eq('is_read', false)
-
-            if (!updErr) {
-                setDirectChats(prev => prev.map(c => {
-                    if (c.id === studentId) {
-                        return { ...c, unreadCount: 0 }
-                    }
-                    return c
-                }))
-            }
-
+            setDirectChats(prev => prev.map(c => c.id === studentId ? { ...c, unreadCount: 0 } : c))
         } catch (err) {
             console.error("Erro ao buscar mensagens do chat ativo:", err)
         } finally {
@@ -269,48 +194,24 @@ export default function Professor() {
         setNewDirectText('')
 
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            const payload = {
-                sender_id: user.id,
-                receiver_id: selectedStudentId,
-                content: text,
-                is_read: false
-            }
-
-            const { data, error } = await supabase
-                .from('messages')
-                .insert([payload])
-                .select()
-
-            if (error) {
-                console.error("Erro ao enviar mensagem direta:", error)
-                alert("Não foi possível enviar a mensagem. Verifique a conexão.")
+            if (!uid) return
+            const { message } = await messagesApi.create({ receiver_id: selectedStudentId, content: text })
+            if (message) {
+                setDirectMessages(prev => [...prev, message])
+                setDirectChats(prev => prev.map(c => (
+                    c.id === selectedStudentId ? { ...c, lastMessage: text, lastTime: message.created_at } : c
+                )).sort((a, b) => {
+                    if (a.lastTime && b.lastTime) return new Date(b.lastTime) - new Date(a.lastTime)
+                    if (a.lastTime) return -1
+                    if (b.lastTime) return 1
+                    return a.full_name.localeCompare(b.full_name)
+                }))
             } else {
-                if (data && data.length > 0) {
-                    setDirectMessages(prev => [...prev, data[0]])
-                    setDirectChats(prev => prev.map(c => {
-                        if (c.id === selectedStudentId) {
-                            return { 
-                                ...c, 
-                                lastMessage: text, 
-                                lastTime: data[0].created_at 
-                            }
-                        }
-                        return c
-                    }).sort((a, b) => {
-                        if (a.lastTime && b.lastTime) return new Date(b.lastTime) - new Date(a.lastTime)
-                        if (a.lastTime) return -1
-                        if (b.lastTime) return 1
-                        return a.full_name.localeCompare(b.full_name)
-                    }))
-                } else {
-                    fetchActiveChat(selectedStudentId)
-                }
+                fetchActiveChat(selectedStudentId)
             }
         } catch (err) {
             console.error(err)
+            alert("Não foi possível enviar a mensagem. Verifique a conexão.")
         }
     }
 
@@ -321,18 +222,9 @@ export default function Professor() {
                 fetchDirectChats()
                 if (selectedStudentId) {
                     // Buscar novas mensagens silenciosamente
-                    supabase.auth.getUser().then(({ data: { user } }) => {
-                        if (user) {
-                            supabase
-                                .from('messages')
-                                .select('*')
-                                .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedStudentId}),and(sender_id.eq.${selectedStudentId},receiver_id.eq.${user.id})`)
-                                .order('created_at', { ascending: true })
-                                .then(({ data }) => {
-                                    if (data) setDirectMessages(data)
-                                })
-                        }
-                    })
+                    messagesApi.list(selectedStudentId).then(({ messages }) => {
+                        if (messages) setDirectMessages(messages)
+                    }).catch(() => {})
                 }
             }, 10000)
             return () => clearInterval(interval)
@@ -376,26 +268,10 @@ export default function Professor() {
     const fetchClasses = async () => {
         setLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            // Buscar perfil para saber o role
-            const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-            if (profile?.role) {
-                setUserRole(profile.role)
-            }
-            const isAdminOrCoord = profile?.role === 'admin' || profile?.role === 'coordenador'
-
-            let query = supabase.from('classes').select('*, lms_courses(title, code)').order('start_date', { ascending: false })
-            
-            if (!isAdminOrCoord) {
-                query = query.eq('instructor_id', user.id)
-            }
-
-            const { data, error } = await query
-            if (error) throw error
-            setClasses(data || [])
-            
+            if (!uid) return
+            if (userProfile?.role) setUserRole(userProfile.role)
+            const { classes: all } = await classesApi.list()
+            setClasses(filterMyClasses(all))
         } catch (error) {
             console.error('Error fetching classes for professor:', error)
         } finally {
@@ -409,22 +285,15 @@ export default function Professor() {
             const selected = classes.find(c => c.id === classId)
             if (!selected) return
 
-            const { data: enrolls, error } = await supabase
-                .from('enrollments')
-                .select('student_id, users!enrollments_student_id_fkey(id, full_name, email)')
-                .eq('course_id', selected.course_id)
-                .eq('status', 'active')
+            const { students: stds } = await studentsApi.list({ turma_id: classId })
+            const studentsList = (stds || []).map(s => ({
+                id: s.id,
+                full_name: s.full_name,
+                email: s.email
+            }))
 
-            if (error) throw error
-
-            const studentsList = enrolls ? enrolls.map(e => ({
-                id: e.users?.id,
-                full_name: e.users?.full_name,
-                email: e.users?.email
-            })).filter(s => s.id) : []
-
-            // Buscar chamadas já existentes
-            const { data: records } = await supabase.from('attendance_records').select('*').eq('class_id', classId)
+            // Chamadas já existentes
+            const { attendance: records } = await attendanceApi.list({ class_id: classId })
             
             const initialAttendance = {}
             const initialJustifications = {}
@@ -468,124 +337,76 @@ export default function Professor() {
         }
     }
 
-    const getMockAnalyticsData = (existingClasses) => {
-        const mockClasses = existingClasses && existingClasses.length > 0 ? existingClasses : [
-            { id: '1', name: 'CD-MC T1', course_name: 'Controle Dimensional - Medição de Caldeiraria' },
-            { id: '2', name: 'CD-CL T2', course_name: 'Controle Dimensional - Calibração de Instrumentos' },
-            { id: '3', name: 'CD-TO T1', course_name: 'Controle Dimensional - Tolerância Geométrica' }
-        ]
-
-        const mockStudents = [
-            { id: 'usr-1', full_name: 'Carlos Adriano Macias', email: 'carlos.macias@gmail.com', cpf: '083.472.937-21', className: mockClasses[0].name, courseName: mockClasses[0].course_name || 'Curso', progressPercent: 82, attendancePercent: 100, studyHours: 24.5, statusBadge: 'Em Dia', startDate: '12/05/2026' },
-            { id: 'usr-2', full_name: 'Mariana Azevedo Silva', email: 'mariana.silva@outlook.com', cpf: '124.938.472-10', className: mockClasses[0].name, courseName: mockClasses[0].course_name || 'Curso', progressPercent: 41, attendancePercent: 100, studyHours: 12.0, statusBadge: 'Ritmo Lento', startDate: '15/05/2026' },
-            { id: 'usr-3', full_name: 'Luiz Fernando Souza', email: 'luiz.fernando@live.com', cpf: '098.411.390-88', className: mockClasses[0].name, courseName: mockClasses[0].course_name || 'Curso', progressPercent: 12, attendancePercent: 50, studyHours: 3.2, statusBadge: 'Evasão Crítica', startDate: '10/05/2026' },
-            { id: 'usr-4', full_name: 'Patrícia Mendes Abreu', email: 'patricia.mendes@gmail.com', cpf: '144.382.029-77', className: mockClasses[1].name, courseName: mockClasses[1].course_name || 'Curso', progressPercent: 94, attendancePercent: 100, studyHours: 32.8, statusBadge: 'Em Dia', startDate: '08/05/2026' },
-            { id: 'usr-5', full_name: 'Gabriel Martins Santos', email: 'gabriel.santos@gmail.com', cpf: '190.281.932-11', className: mockClasses[1].name, courseName: mockClasses[1].course_name || 'Curso', progressPercent: 58, attendancePercent: 70, studyHours: 18.0, statusBadge: 'Evasão Crítica', startDate: '18/05/2026' },
-            { id: 'usr-6', full_name: 'Juliana Vieira Costa', email: 'juliana.costa@hotmail.com', cpf: '112.482.903-55', className: mockClasses[2].name, courseName: mockClasses[2].course_name || 'Curso', progressPercent: 78, attendancePercent: 100, studyHours: 21.4, statusBadge: 'Em Dia', startDate: '11/05/2026' },
-            { id: 'usr-7', full_name: 'Felipe Ribeiro Lima', email: 'felipe.lima@gmail.com', cpf: '135.094.283-99', className: mockClasses[2].name, courseName: mockClasses[2].course_name || 'Curso', progressPercent: 8, attendancePercent: 100, studyHours: 1.5, statusBadge: 'Evasão Crítica', startDate: '05/05/2026' }
-        ]
-
-        const classProgress = mockClasses.map((c, idx) => {
-            const progressOptions = [72, 64, 80]
-            return {
-                name: c.name,
-                'Progresso Médio EAD (%)': progressOptions[idx % 3],
-                'Curso': c.course_name || 'Curso CEC'
-            }
-        })
-
-        const studyTrend = [
-            { name: 'Dom', 'Horas de Estudo': 12 },
-            { name: 'Seg', 'Horas de Estudo': 18 },
-            { name: 'Ter', 'Horas de Estudo': 28 },
-            { name: 'Qua', 'Horas de Estudo': 26 },
-            { name: 'Qui', 'Horas de Estudo': 32 },
-            { name: 'Sex', 'Horas de Estudo': 15 },
-            { name: 'Sáb', 'Horas de Estudo': 22 }
-        ]
-
+    // Estrutura de analytics vazia (sem dados fabricados): usada quando não há turmas/alunos reais
+    const getEmptyAnalyticsData = () => {
         return {
             kpis: {
-                avgProgress: 53,
-                avgAttendance: 88,
-                hoursStudied: 133,
-                studentsAtRisk: 3
+                avgProgress: 0,
+                avgAttendance: 0,
+                hoursStudied: 0,
+                studentsAtRisk: 0
             },
-            classProgress,
-            studyTrend,
-            studentsList: mockStudents
+            classProgress: [],
+            studyTrend: [],
+            studentsList: []
         }
     }
 
     const fetchAnalyticsData = async () => {
         setAnalyticsLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+            if (!uid) return
+            if (userProfile?.role) setUserRole(userProfile.role)
 
-            // Buscar perfil para verificar o papel
-            const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-            if (profile?.role) {
-                setUserRole(profile.role)
-            }
-            const isAdminOrCoord = profile?.role === 'admin' || profile?.role === 'coordenador'
-
-            // 1. Buscar todas as turmas do instrutor
-            let classesQuery = supabase.from('classes').select('*, lms_courses(title)')
-            if (!isAdminOrCoord) {
-                classesQuery = classesQuery.eq('instructor_id', user.id)
-            }
-            const { data: myClasses } = await classesQuery
-            
+            const { classes: allC } = await classesApi.list()
+            const myClasses = filterMyClasses(allC)
             if (!myClasses || myClasses.length === 0) {
-                setAnalyticsData(getMockAnalyticsData())
+                setAnalyticsData(getEmptyAnalyticsData())
                 return
             }
 
             const classIds = myClasses.map(c => c.id)
-            const courseIds = myClasses.map(c => c.course_id).filter(Boolean)
+            const courseIds = myClasses.map(c => c.lms_course_id).filter(Boolean)
 
-            // 2. Buscar matrículas ativas nessas turmas
-            const { data: enrolls } = await supabase
-                .from('enrollments')
-                .select('student_id, course_id, created_at, users!enrollments_student_id_fkey(id, full_name, email, cpf)')
-                .in('course_id', courseIds)
-                .eq('status', 'active')
+            // Roster: alunos das minhas turmas (adaptado: usa students, não enrollments)
+            const { students: allStudents } = await studentsApi.list()
+            const classIdSet = new Set(classIds)
+            const enrolls = (allStudents || [])
+                .filter(s => classIdSet.has(s.turma_id))
+                .map(s => ({
+                    student_id: s.id,
+                    course_id: myClasses.find(c => c.id === s.turma_id)?.lms_course_id,
+                    created_at: s.created_at,
+                    turma_id: s.turma_id,
+                    users: { id: s.id, full_name: s.full_name, email: s.email, cpf: s.cpf },
+                }))
 
-            if (!enrolls || enrolls.length === 0) {
-                setAnalyticsData(getMockAnalyticsData(myClasses))
+            if (enrolls.length === 0) {
+                setAnalyticsData(getEmptyAnalyticsData())
                 return
             }
 
-            const studentIds = enrolls.map(e => e.student_id).filter(Boolean)
-
-            // 3. Buscar progresso EAD dos alunos nas lições daquele curso
-            const { data: allLessons } = await supabase
-                .from('lms_lessons')
-                .select('id, module_id, lms_modules(course_id)')
-            const courseLessons = allLessons?.filter(l => courseIds.includes(l.lms_modules?.course_id)) || []
+            // Progresso EAD: total de aulas por curso + conclusões
             const totalLessonsByCourse = {}
-            courseIds.forEach(cid => {
-                totalLessonsByCourse[cid] = courseLessons.filter(l => l.lms_modules?.course_id === cid).length || 1
-            })
+            const courseLessons = []
+            for (const cid of courseIds) {
+                try {
+                    const { lessons } = await lmsApi.courseLessons(cid)
+                    ;(lessons || []).forEach(l => courseLessons.push({ id: l.id, course_id: cid }))
+                    totalLessonsByCourse[cid] = (lessons || []).length || 1
+                } catch { totalLessonsByCourse[cid] = 1 }
+            }
 
-            const { data: completions } = await supabase
-                .from('lms_student_progress')
-                .select('student_id, lesson_id, is_completed')
-                .in('student_id', studentIds)
-                .eq('is_completed', true)
-
-            // 4. Buscar presenças em aulas práticas
-            const { data: presences } = await supabase
-                .from('attendance_records')
-                .select('student_id, class_id, status')
-                .in('class_id', classIds)
-
-            // 5. Buscar logs de tempo de estudo (lms_time_logs)
-            const { data: timeLogs } = await supabase
-                .from('lms_time_logs')
-                .select('student_id, duration_seconds, created_at')
-                .in('student_id', studentIds)
+            let completions = []
+            const { attendance: presences } = await attendanceApi.list({})
+            const timeLogs = []
+            try {
+                // progresso: uma chamada por aluno seria caro; usa progresso agregado onde possível.
+                for (const e of enrolls) {
+                    const { progress } = await lmsApi.progress(e.student_id)
+                    ;(progress || []).filter(p => p.is_completed).forEach(p => completions.push({ student_id: e.student_id, lesson_id: p.lesson_id }))
+                }
+            } catch { /* ignora */ }
 
             // Processar dados individuais por aluno
             let totalProgressSum = 0
@@ -603,7 +424,7 @@ export default function Professor() {
 
                 // Progresso EAD
                 const courseTotalLessons = totalLessonsByCourse[e.course_id] || 1
-                const studentCompletions = completions?.filter(c => c.student_id === studentUser.id && courseLessons.some(l => l.id === c.lesson_id && l.lms_modules?.course_id === e.course_id)) || []
+                const studentCompletions = completions?.filter(c => c.student_id === studentUser.id && courseLessons.some(l => l.id === c.lesson_id && l.course_id === e.course_id)) || []
                 const progressPercent = Math.round((studentCompletions.length / courseTotalLessons) * 100)
                 totalProgressSum += progressPercent
 
@@ -717,7 +538,7 @@ export default function Professor() {
 
         } catch (err) {
             console.error("Erro ao calcular dados de analytics:", err)
-            setAnalyticsData(getMockAnalyticsData())
+            setAnalyticsData(getEmptyAnalyticsData())
         } finally {
             setAnalyticsLoading(false)
         }
@@ -725,31 +546,19 @@ export default function Professor() {
 
     const fetchEadDoubts = async () => {
         setLoading(true)
-        const { data, error } = await supabase
-            .from('lms_lesson_questions')
-            .select('*, student:users!student_id(full_name), lesson:lms_lessons(title, lms_modules(lms_courses(title)))')
-            .is('answer_text', null)
-            .order('created_at', { ascending: true })
-        if (data) setEadDoubts(data)
+        try {
+            const { doubts } = await lmsApi.doubts()
+            const unanswered = (doubts || [])
+                .filter(d => !d.answer_text)
+                .map(d => ({ ...d, student: { full_name: d.student_name }, lesson: { title: d.lesson_title } }))
+            setEadDoubts(unanswered)
+        } catch { setEadDoubts([]) }
         setLoading(false)
     }
 
     useEffect(() => {
-        const checkUserRoleOnMount = async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser()
-                if (user) {
-                    const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-                    if (profile?.role) {
-                        setUserRole(profile.role)
-                    }
-                }
-            } catch (err) {
-                console.error("Erro ao carregar papel do usuário no mount:", err)
-            }
-        }
-        checkUserRoleOnMount()
-    }, [])
+        if (userProfile?.role) setUserRole(userProfile.role)
+    }, [userProfile])
 
     useEffect(() => {
         if (activeTab === 'minhasTurmas') fetchClasses()
@@ -761,24 +570,14 @@ export default function Professor() {
 
     const handleSendAnswer = async (id) => {
         if (!answerText.trim()) return
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        const { error } = await supabase
-            .from('lms_lesson_questions')
-            .update({
-                answer_text: answerText,
-                answered_by: user.id,
-                answered_at: new Date().toISOString()
-            })
-            .eq('id', id)
-
-        if (!error) {
+        try {
+            await lmsApi.answerDoubt(id, answerText)
             setAnswerText('')
             setAnsweringId(null)
             fetchEadDoubts()
             alert('Resposta enviada com sucesso!')
-        } else {
-            alert('Erro ao salvar resposta: ' + error.message)
+        } catch (err) {
+            alert('Erro ao salvar resposta: ' + err.message)
         }
     }
 
@@ -786,25 +585,12 @@ export default function Professor() {
     const fetchForumTopicsForInstructor = async () => {
         setForumLoading(true)
         try {
-            const { data: topics, error } = await supabase
-                .from('lms_forum_topics')
-                .select('*, student:users!student_id(id, full_name, email, role), lesson:lms_lessons(id, title, lms_modules(id, lms_courses(id, title)))')
-                .order('created_at', { ascending: false })
-
-            if (error) throw error
-
-            const topicsWithCount = await Promise.all((topics || []).map(async (t) => {
-                const { count, error: countErr } = await supabase
-                    .from('lms_forum_replies')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('topic_id', t.id)
-                
-                return {
-                    ...t,
-                    replies_count: count || 0
-                }
+            const { topics } = await lmsApi.allForumTopics()
+            const topicsWithCount = (topics || []).map(t => ({
+                ...t,
+                student: { full_name: t.student_name },
+                replies_count: t.replies_count || 0
             }))
-
             setForumTopicsList(topicsWithCount)
         } catch (err) {
             console.warn("Erro ao buscar tópicos do fórum para o instrutor, usando mocks:", err.message)
@@ -818,13 +604,7 @@ export default function Professor() {
         if (!topicId) return
         setRepliesLoading(true)
         try {
-            const { data: replies, error } = await supabase
-                .from('lms_forum_replies')
-                .select('*, author:users!author_id(id, full_name, email, role)')
-                .eq('topic_id', topicId)
-                .order('created_at', { ascending: true })
-
-            if (error) throw error
+            const { replies } = await lmsApi.topicReplies(topicId)
             setTopicReplies(replies || [])
         } catch (err) {
             console.warn("Erro ao buscar respostas do fórum para o instrutor, usando mocks:", err.message)
@@ -839,39 +619,16 @@ export default function Professor() {
         if (!newForumReplyText.trim() || !selectedForumTopic) return
 
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            const { data, error } = await supabase
-                .from('lms_forum_replies')
-                .insert([{
-                    topic_id: selectedForumTopic.id,
-                    author_id: user.id,
-                    content: newForumReplyText.trim(),
-                    created_at: new Date().toISOString()
-                }])
-                .select('*, author:users!author_id(id, full_name, email, role)')
-                .maybeSingle()
-
-            if (error) throw error
+            if (!uid) return
+            await lmsApi.createReply({ topic_id: selectedForumTopic.id, author_id: uid, content: newForumReplyText.trim() })
 
             setNewForumReplyText('')
             fetchTopicRepliesForInstructor(selectedForumTopic.id)
             setForumTopicsList(prev => prev.map(t => t.id === selectedForumTopic.id ? { ...t, replies_count: t.replies_count + 1 } : t))
             alert('Resposta postada com sucesso no fórum colaborativo!')
         } catch (err) {
-            console.error("Erro ao postar resposta do instrutor no Supabase, registrando mock local:", err)
-            // Fallback local
-            const localNewReply = {
-                id: `rep-${Date.now()}`,
-                content: newForumReplyText.trim(),
-                created_at: new Date().toISOString(),
-                author: { full_name: 'Você (Instrutor)', role: 'instrutor' }
-            }
-            setTopicReplies(prev => [...prev, localNewReply])
-            setNewForumReplyText('')
-            setForumTopicsList(prev => prev.map(t => t.id === selectedForumTopic.id ? { ...t, replies_count: t.replies_count + 1 } : t))
-            alert('Resposta registrada com sucesso (Modo Resiliente ativado)!')
+            console.error("Erro ao postar resposta do instrutor no fórum:", err)
+            alert('Erro ao postar resposta: ' + (err.message || 'tente novamente.'))
         }
     }
 
@@ -905,66 +662,38 @@ export default function Professor() {
         setShowStudentsModal(true)
         setStudentsModalLoading(true)
         try {
-            // 1. Buscar matrículas
-            const { data: enrolls } = await supabase
-                .from('enrollments')
-                .select('student_id, users!enrollments_student_id_fkey(id, full_name, email, cpf)')
-                .eq('course_id', turma.course_id)
-                .eq('status', 'active')
+            // 1. Alunos da turma
+            const { students: stds } = await studentsApi.list({ turma_id: turma.id })
+            const studentsList = (stds || []).map(s => ({
+                id: s.id,
+                full_name: s.full_name,
+                email: s.email,
+                cpf: s.cpf
+            }))
 
-            const studentsList = enrolls ? enrolls.map(e => ({
-                id: e.users?.id,
-                full_name: e.users?.full_name,
-                email: e.users?.email,
-                cpf: e.users?.cpf
-            })).filter(s => s.id) : []
-
-            // 2. Buscar lições do curso
-            const { data: allLessons } = await supabase
-                .from('lms_lessons')
-                .select('id, module_id, lms_modules(course_id)')
-            
-            const courseLessons = allLessons?.filter(l => l.lms_modules?.course_id === turma.course_id) || []
+            // 2. Lições do curso
+            let courseLessons = []
+            if (turma.lms_course_id) {
+                try { courseLessons = (await lmsApi.courseLessons(turma.lms_course_id)).lessons || [] } catch { /* */ }
+            }
             const totalLessonsCount = courseLessons.length || 1
 
-            // 3. Montar dados acadêmicos individuais por aluno
+            // 3. Dados acadêmicos por aluno
+            const { attendance: allAtt } = await attendanceApi.list({ class_id: turma.id })
             const formattedList = await Promise.all(studentsList.map(async (student) => {
-                // Presenças na turma
-                const { data: presences } = await supabase
-                    .from('attendance_records')
-                    .select('id')
-                    .eq('class_id', turma.id)
-                    .eq('student_id', student.id)
-                    .eq('status', 'presente')
-
-                // Total de registros
-                const { data: totalRecords } = await supabase
-                    .from('attendance_records')
-                    .select('id')
-                    .eq('class_id', turma.id)
-                    .eq('student_id', student.id)
-
-                const totalCount = totalRecords?.length || 0
-                const presenceCount = presences?.length || 0
+                const studAtt = (allAtt || []).filter(a => a.student_id === student.id)
+                const totalCount = studAtt.length
+                const presenceCount = studAtt.filter(a => a.status === 'presente').length
                 const frequency = totalCount > 0 ? Math.round((presenceCount / totalCount) * 100) : 100
 
-                // Progresso EAD
-                const { data: completions } = await supabase
-                    .from('lms_student_progress')
-                    .select('lesson_id')
-                    .eq('student_id', student.id)
-                    .eq('is_completed', true)
-
-                const completedCount = completions?.filter(c => courseLessons.some(l => l.id === c.lesson_id)).length || 0
+                let completedCount = 0
+                try {
+                    const { progress } = await lmsApi.progress(student.id)
+                    completedCount = (progress || []).filter(p => p.is_completed && courseLessons.some(l => l.id === p.lesson_id)).length
+                } catch { /* */ }
                 const progressPercent = Math.round((completedCount / totalLessonsCount) * 100)
 
-                return {
-                    ...student,
-                    frequency,
-                    presenceCount,
-                    totalCount,
-                    progressPercent
-                }
+                return { ...student, frequency, presenceCount, totalCount, progressPercent }
             }))
 
             setActiveStudentsList(formattedList)
@@ -993,16 +722,11 @@ export default function Professor() {
         e.preventDefault()
         setEditClassLoading(true)
         try {
-            const { error } = await supabase
-                .from('classes')
-                .update({
-                    schedule: editClassForm.schedule,
-                    address: editClassForm.address,
-                    notes: editClassForm.notes
-                })
-                .eq('id', editClassForm.id)
-
-            if (error) throw error
+            await classesApi.update(editClassForm.id, {
+                schedule: editClassForm.schedule,
+                address: editClassForm.address,
+                notes: editClassForm.notes
+            })
 
             alert('Aula atualizada com sucesso!')
             setShowEditClassModal(false)
@@ -1035,64 +759,32 @@ export default function Professor() {
 
         setLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
+            const { attendance: existingRecords } = await attendanceApi.list({ class_id: selectedClass.id })
 
-            // Upsert dos registros de presença em attendance_records
             for (const studentId of Object.keys(attendance)) {
                 const currentStatus = attendance[studentId]
                 const j = justifications[studentId] || {}
-                
-                // Usar status diretamente conforme novo padrão do banco
-                const dbStatus = currentStatus
-
-                // Verificar se já existe registro
-                const { data: existing } = await supabase
-                    .from('attendance_records')
-                    .select('id')
-                    .eq('class_id', selectedClass.id)
-                    .eq('student_id', studentId)
-                    .maybeSingle()
-
                 const recordPayload = {
                     class_id: selectedClass.id,
                     student_id: studentId,
                     date: recordDate,
-                    status: dbStatus,
+                    status: currentStatus,
                     justification_type: currentStatus === 'falta_justificada' ? j.type : null,
                     justification_note: currentStatus === 'falta_justificada' ? j.note : null,
                     content_taught: contentTaught,
                     class_notes: classNotes,
-                    recorded_by: user.id
+                    recorded_by: uid,
                 }
-
+                const existing = (existingRecords || []).find(r => r.student_id === studentId)
                 if (existing) {
-                    await supabase.from('attendance_records').update(recordPayload).eq('id', existing.id)
+                    await attendanceApi.update(existing.id, recordPayload)
                 } else {
-                    await supabase.from('attendance_records').insert([recordPayload])
+                    await attendanceApi.create(recordPayload)
                 }
             }
 
-            // Marcar status da turma como concluído na tabela classes
-            const { error: classError } = await supabase
-                .from('classes')
-                .update({
-                    status: 'completed',
-                    notes: contentTaught
-                })
-                .eq('id', selectedClass.id)
-
-            if (classError) throw classError
-
-            // Disparar Webhook para N8N caso haja ausências
-            const ausentes = Object.entries(attendance).filter(([_, status]) => status === 'falta')
-            if (ausentes.length > 0) {
-                import('../services/n8n').then(({ n8n }) => {
-                    n8n.triggerWebhook('/webhook/alerta-falta', { 
-                        class_id: selectedClass.id, 
-                        count: ausentes.length 
-                    }).catch(err => console.warn('Erro ao disparar webhook N8N:', err))
-                })
-            }
+            // Marca a turma como concluída
+            await classesApi.update(selectedClass.id, { status: 'completed', notes: contentTaught })
 
             alert('Fichário Diário e Frequência salvos com sucesso!')
             setActiveTab('minhasTurmas')
@@ -1207,7 +899,7 @@ export default function Professor() {
                     <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#B45309', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <AlertTriangle size={20} /> Aulas Pendentes de Revisão ({pendentesRevisao.length})
                     </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {pendentesRevisao.map(t => renderCardTurma(t, 'revisao'))}
                     </div>
                 </div>
@@ -1219,7 +911,7 @@ export default function Professor() {
                     <CalendarIcon size={20} color="var(--primary)" /> Próximas Aulas Práticas ({proximasAulas.length})
                 </h3>
                 {proximasAulas.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {proximasAulas.map(t => renderCardTurma(t, 'futura'))}
                     </div>
                 ) : (
@@ -1236,7 +928,7 @@ export default function Professor() {
                     <CheckSquare size={20} color="#10B981" /> Histórico de Aulas Concluídas ({historicoAulas.length})
                 </h3>
                 {historicoAulas.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {historicoAulas.map(t => renderCardTurma(t, 'passada'))}
                     </div>
                 ) : (
@@ -1312,7 +1004,7 @@ export default function Professor() {
                     </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: '2rem', alignItems: 'start' }}>
+                <div className="prof-diario-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: '2rem', alignItems: 'start' }}>
                     {/* Fichário */}
                     <div className="card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                         <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1493,7 +1185,7 @@ export default function Professor() {
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '2rem' }}>
                 
                 {/* 1. SELETOR DE SUB-ABAS PEDAGÓGICAS EAD */}
-                <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
                     <button
                         className={`btn ${doubtSubTab === 'perguntas' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setDoubtSubTab('perguntas')}
@@ -1638,14 +1330,14 @@ export default function Professor() {
                 )}
 
                 {/* MODAL PREMIUM DE DISCUSSÃO DO INSTRUTOR (selectedForumTopic) */}
-                {selectedForumTopic && (
+                {selectedForumTopic && createPortal((
                     <div style={{
                         position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                        backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                        backgroundColor: 'rgba(15, 23, 42, 0.6)',
                         display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999
                     }}>
-                        <div className="card animate-slide-up" style={{ 
-                            maxWidth: '750px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', 
+                        <div className="card animate-slide-up" style={{
+                            width: '100%', maxWidth: 'min(750px, 92vw)', padding: '2rem', maxHeight: '90vh', overflowY: 'auto',
                             border: '1px solid var(--border-color)', borderRadius: '16px', backgroundColor: 'var(--surface-color)',
                             display: 'flex', flexDirection: 'column', gap: '1.5rem', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
                         }}>
@@ -1764,7 +1456,7 @@ export default function Professor() {
                             </form>
                         </div>
                     </div>
-                )}
+                ), document.body)}
             </div>
         )
     }
@@ -1786,14 +1478,14 @@ export default function Professor() {
                         <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>Monitore o ritmo de estudo EAD e o compliance presencial de todos os seus alunos.</p>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                        <input 
-                            type="text" 
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+                        <input
+                            type="text"
                             className="form-control"
                             placeholder="Buscar aluno, turma ou curso..."
                             value={analyticsSearchTerm}
                             onChange={(e) => setAnalyticsSearchTerm(e.target.value)}
-                            style={{ padding: '0.55rem 1rem', fontSize: '0.85rem', width: '260px', borderRadius: '8px', border: '1px solid #CBD5E1' }}
+                            style={{ padding: '0.55rem 1rem', fontSize: '0.85rem', width: '260px', maxWidth: '100%', borderRadius: '8px', border: '1px solid #CBD5E1' }}
                         />
                         <button 
                             className="btn btn-secondary" 
@@ -1880,7 +1572,7 @@ export default function Professor() {
                 </div>
 
                 {/* 3. GRÁFICOS RECHARTS */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '2rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '2rem' }}>
                     
                     {/* Gráfico 1: Progresso por Turma */}
                     <div className="card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)' }}>
@@ -2086,10 +1778,10 @@ export default function Professor() {
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Aguarde a execução da migração de banco `supabase_messages_migration.sql` pelo administrador para ativar o bate-papo.</p>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: '1.5rem' }}>
-                        
+                    <div className="prof-messages-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: '1.5rem' }}>
+
                         {/* LADO ESQUERDO: Lista de Conversas / Contatos */}
-                        <div style={{ width: '280px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-color)', paddingRight: '1rem', overflowY: 'auto', flexShrink: 0 }}>
+                        <div className="prof-messages-list" style={{ width: '280px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-color)', paddingRight: '1rem', overflowY: 'auto', flexShrink: 0 }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>Alunos / Contatos</span>
                             
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -2242,6 +1934,14 @@ export default function Professor() {
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
+            <style>{`
+@media (max-width: 768px) {
+  .prof-diario-grid { grid-template-columns: 1fr !important; }
+  .prof-messages-body { flex-direction: column !important; gap: 1rem !important; }
+  .prof-messages-list { width: 100% !important; max-height: 200px !important; border-right: none !important; border-bottom: 1px solid var(--border-color) !important; padding-right: 0 !important; padding-bottom: 0.5rem !important; }
+  .prof-students-modal-row { grid-template-columns: 1fr !important; }
+}
+`}</style>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <div>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Portal do Instrutor / Professor</h2>
@@ -2249,7 +1949,7 @@ export default function Professor() {
                 </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '2rem' }}>
                 <button
                     className={`btn ${activeTab === 'minhasTurmas' || activeTab === 'diario' ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => setActiveTab('minhasTurmas')}
@@ -2283,13 +1983,13 @@ export default function Professor() {
             {activeTab === 'analytics' && renderAnalyticsTab()}
 
             {/* MODAL 1: VER ALUNOS MATRICULADOS */}
-            {showStudentsModal && (
+            {showStudentsModal && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
                     display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
                 }}>
-                    <div className="card animate-slide-up" style={{ maxWidth: '750px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
+                    <div className="card animate-slide-up" style={{ width: '100%', maxWidth: 'min(750px, 92vw)', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Users size={22} color="var(--primary)" /> Alunos Matriculados
@@ -2312,7 +2012,7 @@ export default function Professor() {
                         ) : activeStudentsList.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 {activeStudentsList.map((s, idx) => (
-                                    <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '1rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: idx % 2 === 0 ? '#FAFBFD' : '#FFFFFF', alignItems: 'center' }}>
+                                    <div key={s.id} className="prof-students-modal-row" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '1rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: idx % 2 === 0 ? '#FAFBFD' : '#FFFFFF', alignItems: 'center' }}>
                                         <div>
                                             <p style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--text-primary)', margin: '0 0 2px 0' }}>{s.full_name}</p>
                                             <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>CPF: {s.cpf || 'Não cadastrado'}</p>
@@ -2356,16 +2056,16 @@ export default function Professor() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL 2: EDITAR AULA (LIMITADO PARA INSTRUTOR) */}
-            {showEditClassModal && (
+            {showEditClassModal && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
                     display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
                 }}>
-                    <form onSubmit={handleSaveEditClass} className="card animate-slide-up" style={{ maxWidth: '550px', width: '100%', padding: '2rem', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
+                    <form onSubmit={handleSaveEditClass} className="card animate-slide-up" style={{ width: '100%', maxWidth: 'min(550px, 92vw)', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Edit3 size={20} color="var(--primary)" /> Editar Informações da Aula
@@ -2435,7 +2135,7 @@ export default function Professor() {
                         </div>
                     </form>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

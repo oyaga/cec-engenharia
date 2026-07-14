@@ -144,7 +144,7 @@ const MapWidget = () => {
         /* Modal */
         .map-modal-overlay {
           position: fixed; inset: 0;
-          background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+          background: rgba(0,0,0,0.6);
           z-index: 20000; display: flex;
           align-items: center; justify-content: center; padding: 1rem;
         }

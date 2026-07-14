@@ -1,0 +1,76 @@
+# PRODUÇÃO — segredos vêm de um arquivo .env NESTE diretório (backend/.env).
+# Suba com:  docker compose -f docker-compose.prod.yml up -d --build
+# Variáveis com ${VAR:?...} ABORTAM o deploy se estiverem faltando (evita
+# subir com segredo fraco). Veja GO-LIVE.md para o passo a passo.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cec-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-cec}
+    volumes:
+      - cec_pgdata:/var/lib/postgresql/data
+    # Sem porta pública: o banco só é acessível na rede interna do Compose.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cec} -d ${POSTGRES_DB:-cec}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build: .
+    container_name: cec-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      HTTP_PORT: "8080"
+      CORS_ORIGINS: "${CORS_ORIGINS:?defina o dominio de producao no .env}"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-cec}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-cec}?sslmode=disable"
+      JWT_SECRET: "${JWT_SECRET:?gere com openssl rand -base64 48}"
+      JWT_TTL_HOURS: ${JWT_TTL_HOURS:-12}
+      # Seed DESLIGADO em produção (crie o admin real manualmente).
+      SEED_DEV: "false"
+      STORAGE_DIR: "/app/uploads"
+      PUBLIC_URL: "${PUBLIC_URL:?defina o dominio publico no .env}"
+      # Integrações (podem ficar vazias e ser configuradas na tela /agente-maria e ConfigAsaas)
+      ASAAS_ENV: ${ASAAS_ENV:-production}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      MARIA_ATTENDANT: ${MARIA_ATTENDANT:-}
+    volumes:
+      - cec_uploads:/app/uploads
+    # Sem porta pública: o nginx (web) faz o proxy interno para api:8080.
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile.web.prod
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: cec-web
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      # TLS: recomendado terminar HTTPS num proxy à frente (Caddy/Traefik/certbot).
+      # Se for terminar aqui, monte os certificados e ajuste o nginx.prod.conf:
+      # - "443:443"
+      # volumes:
+      #   - ./certs:/etc/nginx/certs:ro
+
+volumes:
+  cec_pgdata:
+  cec_uploads:

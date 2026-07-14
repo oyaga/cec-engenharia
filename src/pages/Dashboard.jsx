@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { studentsApi } from '../services/academic';
+import { ordersApi, upcomingClassesApi } from '../services/misc';
+import { enrollmentsApi } from '../services/site';
+import { financialApi } from '../services/financial';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   AlertCircle, 
   CheckCircle, 
@@ -33,6 +37,7 @@ const COLORS = ['#004b49', '#14b8a6', '#0ea5e9', '#8b5cf6', '#d946ef', '#f97316'
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { userProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   
@@ -64,22 +69,9 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // 1. Controle de Acesso e Autenticação
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const email = user.email?.toLowerCase() || '';
-        const metadataRole = user.user_metadata?.role;
-        const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle();
-        
-        let effectiveRole = profile?.role || metadataRole;
-
-        // Bypass absoluto para Administradores / Master
-        const masterEmails = ['webdesigner@cec.com.br', 'admin@cec.com.br', 'piticalyn@cec.com.br', 'secretaria@cursocec.com.br'];
-        if (masterEmails.includes(email) || effectiveRole === 'admin') {
-          setUserRole('admin');
-        } else {
-          setUserRole(effectiveRole || 'atendente');
-        }
+      // 1. Papel do usuário (via contexto de auth)
+      if (userProfile) {
+        setUserRole(userProfile.role || 'atendente');
       }
 
       const now = new Date();
@@ -91,24 +83,18 @@ export default function Dashboard() {
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
       const thirtyDaysLaterStr = thirtyDaysLater.toISOString().split('T')[0];
 
-      // 2. Consulta 1: Alunos Ativos (students)
-      const { data: studentsData, error: stError } = await supabase
-        .from('students')
-        .select('id, status');
-      
+      // 2. Alunos Ativos
+      let studentsData = null, stError = null;
+      try { studentsData = (await studentsApi.list()).students; } catch (e) { stError = e; }
+
       let activeStudents = 0;
       if (!stError && studentsData) {
         activeStudents = studentsData.filter(s => s.status !== 'inativo').length || studentsData.length;
-      } else {
-        // Fallback de desenvolvimento
-        activeStudents = 42;
       }
 
-      // 3. Consulta 2: Faturamento e Histórico de Vendas (orders)
-      const { data: ordersData, error: ordError } = await supabase
-        .from('orders')
-        .select('*')
-        .gte('created_at', sixMonthsAgo.toISOString());
+      // 3. Faturamento e Histórico de Vendas (orders)
+      let ordersData = null, ordError = null;
+      try { ordersData = (await ordersApi.list()).orders; } catch (e) { ordError = e; }
 
       let monthlyRevenue = 0;
       let overdueCount = 0;
@@ -126,18 +112,21 @@ export default function Dashboard() {
         // Cobranças vencidas
         overdueCount = ordersData.filter(o => o.status === 'overdue').length;
 
+        // Data de compensação: usa paid_at quando existir, senão created_at.
+        const paidDate = (o) => o.paid_at || o.created_at;
+
         // Faturamento mensal do mês atual
-        const currentPaid = ordersData.filter(o => 
-          o.status === 'paid' && 
-          o.paid_at && 
-          new Date(o.paid_at) >= startOfMonth
+        const currentPaid = ordersData.filter(o =>
+          o.status === 'paid' &&
+          paidDate(o) &&
+          new Date(paidDate(o)) >= startOfMonth
         );
         monthlyRevenue = currentPaid.reduce((sum, o) => sum + Number(o.amount || 0), 0);
 
         // Agrupamento para gráfico de faturamento
         ordersData.forEach(o => {
-          if (o.status === 'paid' && o.paid_at) {
-            const date = new Date(o.paid_at);
+          if (o.status === 'paid' && paidDate(o)) {
+            const date = new Date(paidDate(o));
             if (date >= sixMonthsAgo) {
               const label = date.toLocaleString('pt-BR', { month: 'short' }).toUpperCase();
               if (salesByMonth[label] !== undefined) {
@@ -148,28 +137,15 @@ export default function Dashboard() {
         });
 
         // Filtrar PIX pendentes para verificação
-        pendingPixList = ordersData.filter(o => 
-          o.payment_method === 'pix' && 
+        pendingPixList = ordersData.filter(o =>
+          o.payment_method === 'pix' &&
           o.status === 'pending'
         ).slice(0, 5).map(o => ({
           id: o.id,
-          student: o.student_name || 'Aluno CEC',
+          student: o.customer_name || o.student_name || 'Aluno CEC',
           amount: Number(o.amount || 0),
           date: o.created_at ? o.created_at.split('T')[0] : todayStr
         }));
-      } else {
-        // Fallback de desenvolvimento
-        monthlyRevenue = 28500;
-        overdueCount = 2;
-        pendingPixList = [
-          { id: 'pix1', student: 'João Guilherme Silva', amount: 1500, date: todayStr },
-          { id: 'pix2', student: 'Maria Oliveira Gomes', amount: 1200, date: todayStr }
-        ];
-        
-        // Simulação de faturamento
-        Object.keys(salesByMonth).forEach((m, idx) => {
-          salesByMonth[m] = 15000 + (idx * 4000) + (Math.random() * 3000);
-        });
       }
 
       const formattedSalesHistory = Object.entries(salesByMonth).map(([name, count]) => ({ name, count }));
@@ -177,11 +153,9 @@ export default function Dashboard() {
       setOverdueOrdersCount(overdueCount);
       setPixPendingList(pendingPixList);
 
-      // 4. Consulta 3: Matrículas e Cursos (enrollments)
-      const { data: enrollmentsData, error: enrError } = await supabase
-        .from('enrollments')
-        .select('*, lms_courses(title)')
-        .gte('created_at', sixMonthsAgo.toISOString());
+      // 4. Matrículas e Cursos (enrollments)
+      let enrollmentsData = null, enrError = null;
+      try { enrollmentsData = (await enrollmentsApi.list()).enrollments; } catch (e) { enrError = e; }
 
       let monthlyEnrollments = 0;
       const courseCounts = {};
@@ -194,15 +168,9 @@ export default function Dashboard() {
 
         // Ranking de matrículas por curso
         enrollmentsData.forEach(e => {
-          const title = e.lms_courses?.title || 'Curso EAD';
+          const title = e.course_name || 'Curso EAD';
           courseCounts[title] = (courseCounts[title] || 0) + 1;
         });
-      } else {
-        // Fallback de desenvolvimento
-        monthlyEnrollments = 14;
-        courseCounts['Curso de CD-MC (Medição de Espessura)'] = 24;
-        courseCounts['Curso de CD-CL (Líquido Penetrável)'] = 18;
-        courseCounts['Curso de CD-TO (Ultrassom)'] = 12;
       }
 
       const formattedCourseRanking = Object.entries(courseCounts)
@@ -212,13 +180,9 @@ export default function Dashboard() {
       
       setCourseRanking(formattedCourseRanking);
       
-      // 5. Consulta 4: Turmas Abertas e Aulas Práticas (upcoming_classes)
-      const { data: upcomingClasses, error: classError } = await supabase
-        .from('upcoming_classes')
-        .select('*, lms_courses(title)')
-        .gte('date', todayStr)
-        .lte('date', thirtyDaysLaterStr)
-        .order('date', { ascending: true });
+      // 5. Turmas Abertas e Aulas Práticas (upcoming_classes)
+      let upcomingClasses = null, classError = null;
+      try { upcomingClasses = (await upcomingClassesApi.list()).classes; } catch (e) { classError = e; }
 
       let upcomingCount = 0;
       let criticalList = [];
@@ -239,48 +203,14 @@ export default function Dashboard() {
           c.lesson_type === 'pratica' && 
           c.status === 'scheduled'
         ).slice(0, 5);
-      } else {
-        // Fallback de desenvolvimento
-        upcomingCount = 3;
-        
-        criticalList = [
-          { id: 'c1', lms_courses: { title: 'Curso de CD-MC (Medição)' }, date: todayStr, capacity: 20, enrolled_count: 18 }
-        ];
-
-        practicalClasses = [
-          { 
-            id: 'p1', 
-            lms_courses: { title: 'Curso de CD-MC (Medição de Espessura)' }, 
-            date: '2026-06-06', // Sábado
-            start_time: '08:00',
-            end_time: '17:00',
-            address: 'Sede C&C Engenharia - Rio de Janeiro',
-            capacity: 20,
-            enrolled_count: 18,
-            instructor_name: 'Carlos Adriano'
-          },
-          { 
-            id: 'p2', 
-            lms_courses: { title: 'Curso de CD-CL (Líquido Penetrável)' }, 
-            date: '2026-06-07', // Domingo
-            start_time: '08:00',
-            end_time: '12:00',
-            address: 'Sede C&C Engenharia - Rio de Janeiro',
-            capacity: 15,
-            enrolled_count: 10,
-            instructor_name: 'Mariana Costa'
-          }
-        ];
       }
 
       setCriticalClasses(criticalList);
       setUpcomingPracticalClasses(practicalClasses);
 
-      // 6. Consulta 5: Custos Financeiros (financial_records)
-      const { data: costsData, error: costsError } = await supabase
-        .from('financial_records')
-        .select('*')
-        .order('due_date', { ascending: true });
+      // 6. Custos Financeiros (financial_records)
+      let costsData = null, costsError = null;
+      try { costsData = (await financialApi.listRecords()).records; } catch (e) { costsError = e; }
 
       let pendingCosts = [];
       if (!costsError && costsData) {
@@ -290,12 +220,6 @@ export default function Dashboard() {
           amount: Number(c.amount || 0),
           date: c.due_date || todayStr
         }));
-      } else {
-        // Fallback de desenvolvimento
-        pendingCosts = [
-          { id: 'cost1', description: 'Manutenção de Equipamentos Ultrassom', amount: 850, date: todayStr },
-          { id: 'cost2', description: 'Materiais de Consumo (Líquido Penetrável)', amount: 450, date: todayStr }
-        ];
       }
       setPayables(pendingCosts);
 
@@ -640,19 +564,13 @@ export default function Dashboard() {
                       <p style={{ fontWeight: '800', color: 'var(--primary)', margin: 0, fontSize: '0.9rem' }}>{formatMoney(pix.amount)}</p>
                       <button
                         onClick={async () => {
-                          // Confirmar o recebimento no banco de dados (exemplo updates status para paid)
-                          const { error } = await supabase
-                            .from('orders')
-                            .update({ status: 'paid', paid_at: new Date().toISOString() })
-                            .eq('id', pix.id);
-                          
-                          if (error) {
-                            alert('Erro ao confirmar recebimento: ' + error.message);
-                          } else {
-                            // Remover da lista localmente
+                          try {
+                            await ordersApi.update(pix.id, { status: 'paid', paid_at: new Date().toISOString() });
                             setPixPendingList(prev => prev.filter(p => p.id !== pix.id));
                             setKpis(prev => ({ ...prev, monthlyRevenue: prev.monthlyRevenue + pix.amount }));
                             alert('PIX confirmado com sucesso!');
+                          } catch (err) {
+                            alert('Erro ao confirmar recebimento: ' + err.message);
                           }
                         }}
                         className="btn"

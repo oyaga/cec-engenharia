@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { lmsApi } from '../services/lms';
 import { Award, CheckCircle, AlertTriangle, ShieldCheck, Calendar, Clock, User, BookOpen, FileText } from 'lucide-react';
 
 export default function ValidarCertificado() {
@@ -14,48 +14,17 @@ export default function ValidarCertificado() {
     setLoading(true);
     setErrorMsg('');
     try {
-      // 1. Tentar buscar na tabela public.lms_issued_certificates no Supabase Cloud
-      const { data, error } = await supabase
-        .from('lms_issued_certificates')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
+      // 1. Validar via endpoint público
+      const { certificate: data } = await lmsApi.validateCertificate(id);
 
       if (data) {
         setCertData(data);
       } else {
-        // Se for um ID de simulação/teste local, podemos fornecer dados mocks graciosos
-        if (id && id.startsWith('fbb-')) {
-          setCertData({
-            id: id,
-            student_name: 'ALUNO DE TESTE DO ERP CEC',
-            student_cpf: '111.***.***-11',
-            course_name: 'Inspetor de Controle Dimensional - Campo (CD-CL)',
-            hours: 136,
-            issued_at: new Date().toISOString()
-          });
-        } else {
-          setErrorMsg('Código de certificado não encontrado em nossos registros oficiais.');
-        }
+        setErrorMsg('Código de certificado não encontrado em nossos registros oficiais.');
       }
     } catch (err) {
-      console.warn("Erro ao buscar no banco (desviando para fallback de simulação):", err.message);
-      
-      // Fallback gracioso para testes e resiliência absoluta
-      if (id && id.startsWith('fbb-')) {
-        setCertData({
-          id: id,
-          student_name: 'ALUNO DE TESTE DO ERP CEC',
-          student_cpf: '111.***.***-11',
-          course_name: 'Inspetor de Controle Dimensional - Campo (CD-CL)',
-          hours: 136,
-          issued_at: new Date().toISOString()
-        });
-      } else {
-        setErrorMsg('Erro de conexão ao consultar autenticidade. Por favor, tente novamente.');
-      }
+      console.warn("Erro ao buscar no banco:", err.message);
+      setErrorMsg('Erro de conexão ao consultar autenticidade. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -23,108 +22,34 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const dropdownRef = useRef(null);
 
-  // Mocks realistas se a tabela física falhar ou estiver vazia
-  const getMockNotifications = () => {
-    return [
-      {
-        id: 'mock-1',
-        title: 'Bem-vindo ao Curso CEC! 🎓',
-        content: 'Parabéns por iniciar sua jornada educacional. Acesse a aba Meus Cursos e comece hoje mesmo!',
-        type: 'info',
-        link: '/meus-cursos',
-        is_read: false,
-        created_at: new Date(Date.now() - 3600000 * 2).toISOString()
-      },
-      {
-        id: 'mock-2',
-        title: 'Calibração PR-127 🛠️',
-        content: 'Seu instrutor enviou uma nova resposta no tópico de debate sobre concentricidade no fórum.',
-        type: 'forum',
-        link: '/meus-cursos',
-        is_read: false,
-        created_at: new Date(Date.now() - 3600000 * 18).toISOString()
-      }
-    ];
-  };
-
+  // Notificações são mantidas localmente (sem gerador no backend por ora).
   const fetchNotifications = async () => {
     if (!session?.user?.id) return;
-    try {
-      const { data, error } = await supabase
-        .from('lms_notifications')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.is_read).length);
-        localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(data));
-      }
-    } catch (err) {
-      console.warn("Erro ao buscar notificações físicas, usando localStorage/mocks:", err.message);
-      const local = localStorage.getItem(`notifications_${session.user.id}`);
-      if (local) {
-        const parsed = JSON.parse(local);
-        setNotifications(parsed);
-        setUnreadCount(parsed.filter(n => !n.is_read).length);
-      } else {
-        const mocks = getMockNotifications();
-        setNotifications(mocks);
-        setUnreadCount(mocks.filter(n => !n.is_read).length);
-        localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(mocks));
-      }
+    const local = localStorage.getItem(`notifications_${session.user.id}`);
+    if (local) {
+      const parsed = JSON.parse(local);
+      setNotifications(parsed);
+      setUnreadCount(parsed.filter(n => !n.is_read).length);
+    } else {
+      setNotifications([]);
+      setUnreadCount(0);
     }
   };
 
   const handleMarkAsRead = async (notificationId) => {
     if (!session?.user?.id) return;
-    try {
-      const { error } = await supabase
-        .from('lms_notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId)
-        .eq('user_id', session.user.id);
-
-      if (error) throw error;
-
-      const updated = notifications.map(n => n.id === notificationId ? { ...n, is_read: true } : n);
-      setNotifications(updated);
-      setUnreadCount(updated.filter(n => !n.is_read).length);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
-    } catch (err) {
-      console.warn("Erro ao atualizar notificação física:", err.message);
-      const updated = notifications.map(n => n.id === notificationId ? { ...n, is_read: true } : n);
-      setNotifications(updated);
-      setUnreadCount(updated.filter(n => !n.is_read).length);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
-    }
+    const updated = notifications.map(n => n.id === notificationId ? { ...n, is_read: true } : n);
+    setNotifications(updated);
+    setUnreadCount(updated.filter(n => !n.is_read).length);
+    localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
   };
 
   const handleMarkAllAsRead = async () => {
     if (!session?.user?.id || notifications.length === 0) return;
-    try {
-      const { error } = await supabase
-        .from('lms_notifications')
-        .update({ is_read: true })
-        .eq('user_id', session.user.id)
-        .eq('is_read', false);
-
-      if (error) throw error;
-
-      const updated = notifications.map(n => ({ ...n, is_read: true }));
-      setNotifications(updated);
-      setUnreadCount(0);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
-    } catch (err) {
-      console.warn("Erro ao marcar todas como lidas física:", err.message);
-      const updated = notifications.map(n => ({ ...n, is_read: true }));
-      setNotifications(updated);
-      setUnreadCount(0);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
-    }
+    const updated = notifications.map(n => ({ ...n, is_read: true }));
+    setNotifications(updated);
+    setUnreadCount(0);
+    localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify(updated));
   };
 
   const handleNotificationClick = (notification) => {
@@ -137,23 +62,9 @@ export default function NotificationBell() {
 
   const handleClearAll = async () => {
     if (!session?.user?.id || notifications.length === 0) return;
-    try {
-      const { error } = await supabase
-        .from('lms_notifications')
-        .delete()
-        .eq('user_id', session.user.id);
-
-      if (error) throw error;
-
-      setNotifications([]);
-      setUnreadCount(0);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify([]));
-    } catch (err) {
-      console.warn("Erro ao limpar notificações físicas:", err.message);
-      setNotifications([]);
-      setUnreadCount(0);
-      localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify([]));
-    }
+    setNotifications([]);
+    setUnreadCount(0);
+    localStorage.setItem(`notifications_${session.user.id}`, JSON.stringify([]));
   };
 
   // Click away listener para fechar dropdown

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, Phone, User, Mail, MessageSquare, CheckCircle, MapPin, BookOpen } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { leadsApi } from '../../services/site';
 import EditableText from '../../components/site/EditableText';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
@@ -38,18 +38,13 @@ const Contact = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase (Upsert para evitar erros caso o telefone já exista)
-      const { error } = await supabase
-        .from('leads')
-        .upsert([{
-          name: formData.name,
-          phone: formData.phone,
-          course_interest: formData.courseInterest,
-          message: formData.message,
-          status: 'novo'
-        }], { onConflict: 'phone' });
-
-      if (error) throw error;
+      // 1. Registrar o lead via API (upsert por telefone no backend)
+      await leadsApi.createPublic({
+        name: formData.name,
+        phone: formData.phone,
+        course_interest: formData.courseInterest,
+        message: formData.message,
+      });
 
       // 2. Preparar mensagem do WhatsApp (Aviso Diretoria)
       const messageText = `*NOVA DÚVIDA/CONTATO - CEC*%0A%0A*Nome:* ${formData.name}%0A*Telefone:* ${formData.phone}%0A*Interesse:* ${formData.courseInterest}%0A*Dúvida:* ${formData.message}`;

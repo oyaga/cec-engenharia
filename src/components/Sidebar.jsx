@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone, Bot } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Sidebar() {
+    const { session, userProfile: authProfile, logout } = useAuth()
     const [userRole, setUserRole] = useState(null)
     const [userProfile, setUserProfile] = useState(null)
     const [mobileOpen, setMobileOpen] = useState(false)
@@ -21,27 +22,17 @@ export default function Sidebar() {
     }
 
     useEffect(() => {
-        const fetchProfile = async () => {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle()
-                const email = user.email?.toLowerCase() || ''
-                const metadataRole = user.user_metadata?.role || profile?.role
-
-                setUserProfile(profile)
-
-                // Bypass absoluto para Desenvolvedor ou se o metadado do Auth disser que é admin
-                if (isDeveloperAccount(email) || metadataRole === 'admin') {
-                    setUserRole('admin')
-                } else if (profile) {
-                    setUserRole(profile.role)
-                } else if (metadataRole) {
-                    setUserRole(metadataRole)
-                }
+        const profile = authProfile
+        if (profile) {
+            const email = (profile.email || session?.user?.email || '').toLowerCase()
+            setUserProfile(profile)
+            if (isDeveloperAccount(email) || profile.role === 'admin') {
+                setUserRole('admin')
+            } else {
+                setUserRole(profile.role)
             }
         }
-        fetchProfile()
-    }, [])
+    }, [authProfile, session])
 
     const hasAccess = (permissionKey, defaultAllowedRoles = []) => {
         if (!userProfile && !userRole) return false
@@ -63,7 +54,7 @@ export default function Sidebar() {
     }
 
     const handleLogout = async () => {
-        await supabase.auth.signOut()
+        logout()
     }
 
     return (
@@ -469,6 +460,23 @@ export default function Sidebar() {
                                 <Settings size={20} />
                                 Configurações Asaas
                                 <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(API Gateway)</span>
+                            </NavLink>
+                        )}
+
+                        {hasAccess('access_config', ['admin', 'coordenador']) && (
+                            <NavLink
+                                to="/agente-maria"
+                                style={({ isActive }) => ({
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                                    fontWeight: isActive ? '600' : '500',
+                                    marginTop: '0.5rem'
+                                })}
+                            >
+                                <Bot size={20} />
+                                Agente Maria
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Chatbot WhatsApp)</span>
                             </NavLink>
                         )}
                     </div>

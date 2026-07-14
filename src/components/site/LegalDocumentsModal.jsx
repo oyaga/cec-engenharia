@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Save, FileText, Upload, CheckCircle, Loader2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { uploadFile } from '../../lib/api';
 import { useEdit } from '../../context/EditContext';
 
 const LegalDocumentsModal = ({ isOpen, onClose }) => {
@@ -19,23 +19,9 @@ const LegalDocumentsModal = ({ isOpen, onClose }) => {
     setUploadSuccess(false);
 
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${activeTab}_${Date.now()}.${fileExt}`;
-      const filePath = `legal-docs/${fileName}`;
+      const { url: publicUrl } = await uploadFile(file, 'legal-docs');
 
-      // 1. Upload para o Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('public')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      // 2. Pegar a URL pública
-      const { data: { publicUrl } } = supabase.storage
-        .from('public')
-        .getPublicUrl(filePath);
-
-      // 3. Atualizar o link no conteúdo do site
+      // Atualizar o link no conteúdo do site
       const contentPath = activeTab === 'manual' ? 'manual_do_aluno.pdf_url' : 'termos_de_uso.pdf_url';
       updateContent(contentPath, publicUrl);
 
@@ -43,7 +29,7 @@ const LegalDocumentsModal = ({ isOpen, onClose }) => {
       setTimeout(() => setUploadSuccess(false), 3000);
     } catch (err) {
       console.error('Error uploading PDF:', err);
-      alert('Erro ao carregar PDF. Verifique se o bucket "public" existe no seu Supabase Storage.');
+      alert('Erro ao carregar PDF: ' + err.message);
     } finally {
       setIsUploading(false);
     }

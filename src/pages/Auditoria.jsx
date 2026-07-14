@@ -1,16 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Shield, FileText, User, Trash2, Key, Search, Calendar as CalendarIcon } from 'lucide-react'
-
-const MOCK_LOGS = [
-    { id: 1, action: 'IMPRESSAO_CONTRATO_ALUNO', user: 'atendimento1@icc.com', date: '2026-03-09T14:30:00', details: 'Contrato gerado - ID Aluno 45' },
-    { id: 2, action: 'MODIFICACAO_FICHARIO_PROFESSOR', user: 'coordenador@icc.com', date: '2026-03-09T14:15:00', details: 'Alterou o Fichário da Turma T1 (Cd-to) de 05/03' },
-    { id: 3, action: 'EXCLUSAO_PARCELA_FINANCEIRO', user: 'admin@icc.com', date: '2026-03-09T10:00:00', details: 'Excluiu parcela R$ 1.500,00 - ID 992' },
-    { id: 4, action: 'LOGIN_SISTEMA', user: 'professor_rt@icc.com', date: '2026-03-09T08:00:00', details: 'Sessão iniciada via MacOS' },
-    { id: 5, action: 'BAIXA_PIX_PARCELADO', user: 'coordenador@icc.com', date: '2026-03-08T17:45:00', details: 'PIX validado para o Aluno Maxwel Lima da Costa' },
-]
+import { auditApi } from '../services/financial'
 
 export default function Auditoria() {
     const [searchTerm, setSearchTerm] = useState('')
+    const [logs, setLogs] = useState([])
+
+    useEffect(() => {
+        auditApi.list()
+            .then(({ logs }) => setLogs((logs || []).map(l => ({
+                id: l.id,
+                action: l.action,
+                user: l.user_id || '—',
+                date: l.created_at,
+                details: l.details ? (typeof l.details === 'string' ? l.details : JSON.stringify(l.details)) : `${l.entity_type}${l.entity_id ? ' · ' + l.entity_id : ''}`,
+            }))))
+            .catch(() => setLogs([]))
+    }, [])
 
     const getActionIcon = (action) => {
         if (action.includes('IMPRESSAO')) return <FileText size={18} className="text-primary" />
@@ -36,8 +42,8 @@ export default function Auditoria() {
             </div>
 
             <div className="card">
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-                    <div style={{ position: 'relative', flex: 1 }}>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
                         <div style={{ position: 'absolute', top: '50%', left: '12px', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                             <Search size={18} />
                         </div>
@@ -55,6 +61,7 @@ export default function Auditoria() {
                     </button>
                 </div>
 
+                <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                         <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
@@ -66,7 +73,7 @@ export default function Auditoria() {
                         </tr>
                     </thead>
                     <tbody>
-                        {MOCK_LOGS.filter(l => l.user.includes(searchTerm) || l.action.toLowerCase().includes(searchTerm.toLowerCase())).map(log => (
+                        {logs.filter(l => String(l.user).includes(searchTerm) || l.action.toLowerCase().includes(searchTerm.toLowerCase())).map(log => (
                             <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: getLogColor(log.action) }}>
                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     {getActionIcon(log.action)}
@@ -81,6 +88,7 @@ export default function Auditoria() {
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     )

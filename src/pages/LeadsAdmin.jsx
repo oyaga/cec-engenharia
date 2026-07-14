@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { 
-  Users, MessageSquare, Phone, Calendar, 
-  CheckCircle, Clock, Trash2, Search, ExternalLink, Download, BookOpen 
+import { leadsApi } from '../services/site';
+import {
+  Users, MessageSquare, Phone, Calendar,
+  CheckCircle, Clock, Trash2, Search, ExternalLink, Download, BookOpen
 } from 'lucide-react';
 
 const LeadsAdmin = () => {
@@ -15,19 +15,8 @@ const LeadsAdmin = () => {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
-      
-      if (filterStatus !== 'todos') {
-        query = query.eq('status', filterStatus);
-      }
-      
-      if (filterCourse !== 'todos') {
-        query = query.eq('course_interest', filterCourse);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setLeads(data || []);
+      const { leads } = await leadsApi.list({ status: filterStatus, course_interest: filterCourse });
+      setLeads(leads || []);
     } catch (err) {
       console.error('Error fetching leads:', err);
     } finally {
@@ -41,8 +30,7 @@ const LeadsAdmin = () => {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const { error } = await supabase.from('leads').update({ status: newStatus }).eq('id', id);
-      if (error) throw error;
+      await leadsApi.update(id, { status: newStatus });
       fetchLeads();
     } catch (err) {
       alert('Erro ao atualizar status: ' + (err.message || JSON.stringify(err)));
@@ -52,8 +40,7 @@ const LeadsAdmin = () => {
   const deleteLead = async (id) => {
     if (!window.confirm('Excluir este contato permanentemente?')) return;
     try {
-      const { error } = await supabase.from('leads').delete().eq('id', id);
-      if (error) throw error;
+      await leadsApi.remove(id);
       fetchLeads();
     } catch (err) {
       alert('Erro ao excluir: ' + (err.message || JSON.stringify(err)));
@@ -111,15 +98,15 @@ const LeadsAdmin = () => {
 
   return (
     <div className="p-8 animate-fade-in">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <MessageSquare className="text-primary" /> Gestão de Leads e Contatos
           </h1>
           <p className="text-secondary">Interessados que entraram em contato pelo site.</p>
         </div>
-        
-        <div className="flex gap-4">
+
+        <div className="flex flex-wrap gap-3 items-center">
           <button 
             onClick={exportToCSV}
             className="btn btn-secondary flex items-center gap-2"
@@ -153,25 +140,14 @@ const LeadsAdmin = () => {
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-            <input 
-              type="text" 
-              placeholder="Buscar por nome ou fone..." 
+            <input
+              type="text"
+              placeholder="Buscar por nome ou fone..."
               className="pl-10 pr-4 py-2 border rounded-lg"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          
-          <select 
-            className="border rounded-lg px-4 py-2"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="todos">Todos os Status</option>
-            <option value="novo">Novos</option>
-            <option value="em_atendimento">Em Atendimento</option>
-            <option value="concluido">Concluídos</option>
-          </select>
         </div>
       </div>
 
@@ -181,19 +157,19 @@ const LeadsAdmin = () => {
         <div className="grid gap-4">
           {filteredLeads.map(lead => (
             <div key={lead.id} className="card hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start">
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-primary font-bold">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                <div className="flex gap-4 min-w-0">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-primary font-bold shrink-0">
                     {(lead.name || 'S').charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-3 mb-1">
                       <h3 className="font-bold text-lg">{lead.name || 'Sem Nome'}</h3>
                       <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getStatusColor(lead.status || 'novo')}`}>
                         {(lead.status || 'novo').replace('_', ' ')}
                       </span>
                     </div>
-                    <div className="flex gap-4 text-sm text-secondary mb-2">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary mb-2">
                       <span className="flex items-center gap-1"><Phone size={14} /> {lead.phone || 'Sem Telefone'}</span>
                       {lead.email && <span className="flex items-center gap-1">✉️ {lead.email}</span>}
                       <span className="flex items-center gap-1"><Calendar size={14} /> {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>

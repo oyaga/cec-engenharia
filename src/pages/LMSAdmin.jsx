@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { coursesApi, classesApi } from '../services/academic'
+import { lmsApi } from '../services/lms'
+import { uploadFile } from '../lib/api'
 import { Plus, Book, Video, FileText, ChevronRight, ChevronDown, Save, Trash2, Edit, CheckSquare, Clock, Trophy, Eye, Printer, Search, Award, UploadCloud, Megaphone } from 'lucide-react'
 
 const formatVideoUrl = (url) => {
@@ -137,102 +140,63 @@ export default function LMSAdmin() {
 
     const fetchCourses = async () => {
         setLoading(true)
-        const { data, error } = await supabase
-            .from('lms_courses')
-            .select('*')
-            .order('created_at', { ascending: false })
-        
-        if (!error) setCourses(data || [])
+        try {
+            const { courses } = await coursesApi.list()
+            setCourses(courses || [])
+        } catch { /* mantém lista */ }
         setLoading(false)
     }
 
     const fetchCourseDetails = async (courseId) => {
-        const { data: mods, error: modError } = await supabase
-            .from('lms_modules')
-            .select('*')
-            .eq('course_id', courseId)
-            .order('order_index', { ascending: true })
-        
-        if (!modError && mods) {
-            setModules(mods)
-            
-            // Buscar aulas para cada módulo
+        try {
+            const { modules: mods } = await lmsApi.structure(courseId)
+            setModules(mods || [])
+
             const lessonsData = {}
-            for (const mod of mods) {
-                const { data: less, error: lessError } = await supabase
-                    .from('lms_lessons')
-                    .select('*')
-                    .eq('module_id', mod.id)
-                    .order('order_index', { ascending: true })
-                
-                if (!lessError) lessonsData[mod.id] = less || []
-            }
+            ;(mods || []).forEach(mod => { lessonsData[mod.id] = mod.lessons || [] })
             setLessons(lessonsData)
 
-            // Buscar quizzes para cada módulo
+            const { quizzes: qzs } = await lmsApi.courseQuizzes(courseId)
             const quizzesData = {}
-            for (const mod of mods) {
-                const { data: qzs, error: qzError } = await supabase
-                    .from('lms_quizzes')
-                    .select('*')
-                    .eq('module_id', mod.id)
-                
-                if (!qzError && qzs) {
-                    qzs.forEach(qz => {
-                        quizzesData[`${mod.id}_${qz.quiz_type}`] = qz
-                    })
-                }
-            }
+            ;(qzs || []).forEach(qz => { quizzesData[`${qz.module_id}_${qz.quiz_type}`] = qz })
             setQuizzes(quizzesData)
+        } catch (err) {
+            console.error('Erro ao carregar detalhes do curso:', err)
         }
     }
 
     const fetchAllDoubts = async () => {
         setLoading(true)
-        const { data } = await supabase
-            .from('lms_lesson_questions')
-            .select('*, student:users!student_id(full_name), lesson:lms_lessons(title, lms_modules(lms_courses(title)))')
-            .order('created_at', { ascending: false })
-        if (data) setEadDoubts(data)
+        try {
+            const { doubts } = await lmsApi.doubts()
+            setEadDoubts(doubts || [])
+        } catch { /* ignora */ }
         setLoading(false)
     }
 
     const handleAnswerDoubt = async (id) => {
         if (!doubtAnswerText.trim()) return
-        const { data: { user } } = await supabase.auth.getUser()
-
-        const { error } = await supabase
-            .from('lms_lesson_questions')
-            .update({
-                answer_text: doubtAnswerText,
-                answered_by: user.id,
-                answered_at: new Date().toISOString()
-            })
-            .eq('id', id)
-        
-        if (!error) {
+        try {
+            await lmsApi.answerDoubt(id, doubtAnswerText)
             setDoubtAnswerText('')
             setAnsweringDoubtId(null)
             fetchAllDoubts()
             alert('Resposta enviada!')
+        } catch (err) {
+            alert('Erro ao responder: ' + err.message)
         }
     }
 
     const fetchCertConfigs = async () => {
-        const { data } = await supabase.from('lms_certificate_configs').select('*')
-        if (data) setCertConfigs(data)
+        // Modelos de certificado são geridos na tela Certificados (via settings).
+        setCertConfigs([])
     }
 
     const fetchAnnouncementsAdmin = async () => {
         setLoadingAnnouncements(true)
         try {
-            const { data, error } = await supabase
-                .from('lms_announcements')
-                .select('*, lms_courses(title)')
-                .order('created_at', { ascending: false })
-            
-            if (error) throw error
-            setAnnouncements(data || [])
+            const { announcements } = await lmsApi.announcements()
+            setAnnouncements(announcements || [])
         } catch (err) {
             console.error("Erro ao buscar avisos:", err)
         } finally {
@@ -246,32 +210,19 @@ export default function LMSAdmin() {
         setLoadingAnnouncements(true)
         
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            
             const payload = {
                 title: annForm.title.trim(),
                 content: annForm.content.trim(),
                 priority: annForm.priority,
                 course_id: annForm.course_id || null,
-                created_by: user.id
             }
 
-            let error
             if (annForm.id) {
-                const { error: err } = await supabase
-                    .from('lms_announcements')
-                    .update(payload)
-                    .eq('id', annForm.id)
-                error = err
+                await lmsApi.updateAnnouncement(annForm.id, payload)
             } else {
-                const { error: err } = await supabase
-                    .from('lms_announcements')
-                    .insert([payload])
-                error = err
+                await lmsApi.createAnnouncement(payload)
             }
 
-            if (error) throw error
-            
             alert('Aviso salvo com sucesso!')
             setShowAnnForm(false)
             setAnnForm({ id: null, title: '', content: '', priority: 'geral', course_id: '' })
@@ -287,12 +238,7 @@ export default function LMSAdmin() {
         if (!confirm('Deseja excluir este aviso permanentemente?')) return
         setLoadingAnnouncements(true)
         try {
-            const { error } = await supabase
-                .from('lms_announcements')
-                .delete()
-                .eq('id', id)
-            
-            if (error) throw error
+            await lmsApi.removeAnnouncement(id)
             alert('Aviso excluído com sucesso!')
             fetchAnnouncementsAdmin()
         } catch (err) {
@@ -317,12 +263,9 @@ export default function LMSAdmin() {
     const handleSaveCourse = async () => {
         if (!courseForm.title) return alert('Título é obrigatório')
         
-        let error
-        if (selectedCourse) {
-            // Update
-            const { error: err } = await supabase
-                .from('lms_courses')
-                .update({
+        try {
+            if (selectedCourse) {
+                await coursesApi.update(selectedCourse.id, {
                     title: courseForm.title,
                     description: courseForm.description,
                     thumbnail_url: courseForm.thumbnail_url,
@@ -330,55 +273,39 @@ export default function LMSAdmin() {
                     instructor_payment_type: courseForm.instructor_payment_type,
                     instructor_payment_value: parseFloat(courseForm.instructor_payment_value) || 0
                 })
-                .eq('id', selectedCourse.id)
-            error = err
-        } else {
-            // Create
-            const { create_class_container, ...cleanForm } = courseForm
-            const { data: newCourse, error: err } = await supabase
-                .from('lms_courses')
-                .insert([{
+            } else {
+                const { create_class_container, ...cleanForm } = courseForm
+                const { course: newCourse } = await coursesApi.create({
                     ...cleanForm,
                     instructor_payment_value: parseFloat(courseForm.instructor_payment_value) || 0
-                }])
-                .select()
-                .single()
-            
-            // Se pediu para criar container de turma (Início Imediato)
-            if (!err && create_class_container && newCourse) {
-                await supabase.from('classes').insert([{
-                    name: `Auto: ${newCourse.title}`,
-                    course_name: newCourse.title,
-                    is_immediate_start: true,
-                    lms_course_id: newCourse.id,
-                    instructor_payment_type: newCourse.instructor_payment_type,
-                    instructor_payment_value: newCourse.instructor_payment_value,
-                    duration: '0',
-                    schedule: 'Acesso Online Perpétuo'
-                }])
+                })
+                if (create_class_container && newCourse) {
+                    await classesApi.create({
+                        name: `Auto: ${newCourse.title}`,
+                        course_name: newCourse.title,
+                        is_immediate_start: true,
+                        lms_course_id: newCourse.id,
+                        instructor_payment_type: newCourse.instructor_payment_type,
+                        instructor_payment_value: newCourse.instructor_payment_value,
+                        duration: '0',
+                        schedule: 'Acesso Online Perpétuo'
+                    })
+                }
             }
-            error = err
-        }
-        
-        if (error) {
-            alert('Erro ao salvar curso: ' + error.message)
-        } else {
+
             alert('Curso salvo com sucesso!')
             setCourseForm({ title: '', description: '', thumbnail_url: '', min_theoretical_hours: 0, is_published: false, instructor_payment_type: 'fixed', instructor_payment_value: 0 })
             setSelectedCourse(null)
             setView('list')
             fetchCourses()
+        } catch (err) {
+            alert('Erro ao salvar curso: ' + err.message)
         }
     }
 
     const handleSaveCertConfig = async (id, text) => {
-        const { error } = await supabase
-            .from('lms_certificate_configs')
-            .update({ template_text: text, updated_at: new Date().toISOString() })
-            .eq('id', id)
-        
-        if (error) alert('Erro ao salvar modelo: ' + error.message)
-        else alert('Modelo atualizado com sucesso!')
+        // Modelos de certificado migrados para a tela Certificados (via settings).
+        alert('Configure os modelos de certificado na tela "Certificados".')
     }
 
     const handleSelectCourse = async (course) => {
@@ -389,9 +316,9 @@ export default function LMSAdmin() {
 
     const renderCourseList = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Gestão de Cursos EAD</h2>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button className="btn btn-secondary" onClick={() => { setView('doubts'); fetchAllDoubts(); }}>Central de Dúvidas</button>
                     <button className="btn btn-secondary" onClick={() => { setView('announcements'); fetchAnnouncementsAdmin(); }} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Megaphone size={14} /> Quadro de Avisos</button>
                     <button className="btn btn-secondary" onClick={() => { setView('certificate_models'); fetchCertConfigs(); }}>Modelos de Certificado</button>
@@ -491,7 +418,7 @@ export default function LMSAdmin() {
                         placeholder="Descreva o que o aluno aprenderá..."
                     />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                     <div className="form-group">
                         <label className="form-label">Thumbnail (URL)</label>
                         <input 
@@ -512,7 +439,7 @@ export default function LMSAdmin() {
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div className="form-group">
                         <label className="form-label" style={{ fontWeight: 600 }}>Tipo de Pagamento (Instrutor EAD)</label>
                         <select 
@@ -577,19 +504,16 @@ export default function LMSAdmin() {
     const handleSaveModule = async () => {
         if (!moduleForm.title.trim()) return alert('Título obrigatório')
         
-        let error
-        if (moduleForm.id) {
-            const { error: err } = await supabase.from('lms_modules').update({ title: moduleForm.title }).eq('id', moduleForm.id)
-            error = err
-        } else {
-            const { error: err } = await supabase.from('lms_modules').insert([{ course_id: selectedCourse.id, title: moduleForm.title, order_index: modules.length }])
-            error = err
-        }
-
-        if (error) alert('Erro ao salvar módulo: ' + error.message)
-        else {
+        try {
+            if (moduleForm.id) {
+                await lmsApi.updateModule(moduleForm.id, { title: moduleForm.title })
+            } else {
+                await lmsApi.createModule({ course_id: selectedCourse.id, title: moduleForm.title, order_index: modules.length })
+            }
             setShowModuleForm(false)
             fetchCourseDetails(selectedCourse.id)
+        } catch (err) {
+            alert('Erro ao salvar módulo: ' + err.message)
         }
     }
 
@@ -637,35 +561,30 @@ export default function LMSAdmin() {
             data.order_index = (lessons[lessonForm.moduleId]?.length || 0)
         }
 
-        let error
-        if (lessonForm.id) {
-            const { error: err } = await supabase.from('lms_lessons').update(data).eq('id', lessonForm.id)
-            error = err
-        } else {
-            const { error: err } = await supabase.from('lms_lessons').insert([data])
-            error = err
-        }
-
-        if (error) alert('Erro ao salvar aula: ' + error.message)
-        else {
+        try {
+            if (lessonForm.id) {
+                await lmsApi.updateLesson(lessonForm.id, data)
+            } else {
+                await lmsApi.createLesson(data)
+            }
             setShowLessonForm(false)
             fetchCourseDetails(selectedCourse.id)
+        } catch (err) {
+            alert('Erro ao salvar aula: ' + err.message)
         }
     }
 
 
     const handleDeleteModule = async (moduleId, title) => {
         if (!window.confirm(`Excluir módulo "${title}" e TODAS as suas aulas?`)) return
-        const { error } = await supabase.from('lms_modules').delete().eq('id', moduleId)
-        if (error) alert('Erro ao excluir module: ' + error.message)
-        else fetchCourseDetails(selectedCourse.id)
+        try { await lmsApi.removeModule(moduleId); fetchCourseDetails(selectedCourse.id) }
+        catch (err) { alert('Erro ao excluir módulo: ' + err.message) }
     }
 
     const handleDeleteLesson = async (lessonId, title) => {
         if (!window.confirm(`Excluir aula "${title}"?`)) return
-        const { error } = await supabase.from('lms_lessons').delete().eq('id', lessonId)
-        if (error) alert('Erro ao excluir aula: ' + error.message)
-        else fetchCourseDetails(selectedCourse.id)
+        try { await lmsApi.removeLesson(lessonId); fetchCourseDetails(selectedCourse.id) }
+        catch (err) { alert('Erro ao excluir aula: ' + err.message) }
     }
 
     const handleOpenQuizForm = (moduleId, type = 'exercise') => {
@@ -683,66 +602,49 @@ export default function LMSAdmin() {
     const handleSaveQuiz = async () => {
         if (!quizForm.title.trim()) return alert('Título obrigatório')
         
-        const { data, error } = await supabase
-            .from('lms_quizzes')
-            .insert([{ 
-                course_id: selectedCourse.id, 
-                module_id: quizForm.moduleId, 
+        try {
+            const { quiz } = await lmsApi.createQuiz({
+                course_id: selectedCourse.id,
+                module_id: quizForm.moduleId,
                 title: quizForm.title,
                 quiz_type: quizForm.type,
                 passing_grade: quizForm.passing_grade,
                 max_attempts: 3,
                 time_limit_minutes: parseInt(quizForm.time_limit) || 0
-            }])
-            .select()
-            .maybeSingle()
-        
-        if (error) alert('Erro ao salvar: ' + error.message)
-        else {
+            })
             setShowQuizForm(false)
             fetchCourseDetails(selectedCourse.id)
-            handleManageQuiz(data)
+            handleManageQuiz(quiz)
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message)
         }
     }
 
     const handleManageQuiz = async (quiz) => {
         setSelectedQuiz(quiz)
         setIsEditingQuiz(true)
-        const { data, error } = await supabase
-            .from('lms_questions')
-            .select('*')
-            .eq('quiz_id', quiz.id)
-        
-        if (!error) setQuizQuestions(data || [])
+        try {
+            const { questions } = await lmsApi.quiz(quiz.id)
+            setQuizQuestions(questions || [])
+        } catch { setQuizQuestions([]) }
     }
 
 
     const handleDeleteQuestion = async (qId) => {
         if (!window.confirm("Excluir esta questão?")) return
-        const { error } = await supabase.from('lms_questions').delete().eq('id', qId)
-        if (!error) handleManageQuiz(selectedQuiz)
+        try { await lmsApi.removeQuestion(qId); handleManageQuiz(selectedQuiz) }
+        catch (err) { alert('Erro ao excluir: ' + err.message) }
     }
 
     const handleQuizImageUpload = async (file, pathPrefix = '') => {
         if (!file) return null
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${selectedQuiz.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
-        const filePath = `${pathPrefix}${fileName}`
-
-        const { error: uploadError } = await supabase.storage
-            .from('lms-quiz-images')
-            .upload(filePath, file)
-
-        if (uploadError) {
-            alert('Erro no upload: ' + uploadError.message)
+        try {
+            const { url } = await uploadFile(file, 'lms-quiz-images')
+            return url
+        } catch (err) {
+            alert('Erro no upload: ' + err.message)
             return null
         }
-
-        const { data: { publicUrl } } = supabase.storage
-            .from('lms-quiz-images')
-            .getPublicUrl(filePath)
-        
-        return publicUrl
     }
 
     const handleOpenQuestionBuilder = () => {
@@ -801,34 +703,26 @@ export default function LMSAdmin() {
             correct_option_index: questionForm.correctIndex
         }
 
-        let error
-        if (editingQuestionId) {
-            const { error: err } = await supabase
-                .from('lms_questions')
-                .update(payload)
-                .eq('id', editingQuestionId)
-            error = err
-        } else {
-            const { error: err } = await supabase
-                .from('lms_questions')
-                .insert([payload])
-            error = err
-            
-            // Sync with Central Question Bank for future automated use (only for new questions)
-            if (!err) {
-                await supabase
-                    .from('lms_question_bank')
-                    .insert([{
-                        question_text: questionForm.text,
-                        image_url: questionForm.image_url,
-                        options: questionForm.options.filter(o => o.text.trim() || o.image_url),
-                        correct_option_index: questionForm.correctIndex,
-                        category: selectedCourse?.title || 'Geral',
-                        original_quiz_id: selectedQuiz.id
-                    }])
+        let error = null
+        try {
+            if (editingQuestionId) {
+                await lmsApi.updateQuestion(editingQuestionId, payload)
+            } else {
+                await lmsApi.createQuestion(payload)
+                // Sincroniza com o banco central de questões (só novas).
+                await lmsApi.addToBank({
+                    question_text: questionForm.text,
+                    image_url: questionForm.image_url,
+                    options: questionForm.options.filter(o => o.text.trim() || o.image_url),
+                    correct_option_index: questionForm.correctIndex,
+                    category: selectedCourse?.title || 'Geral',
+                    original_quiz_id: selectedQuiz.id
+                })
             }
+        } catch (err) {
+            error = err
         }
-        
+
         setIsSavingQuestion(false)
         if (error) alert('Erro ao salvar questão: ' + error.message)
         else {
@@ -912,15 +806,12 @@ export default function LMSAdmin() {
     }
 
     const handleTogglePublishCourse = async (courseId, currentStatus) => {
-        const { error } = await supabase
-            .from('lms_courses')
-            .update({ is_published: !currentStatus })
-            .eq('id', courseId)
-        
-        if (error) alert('Erro ao alterar status: ' + error.message)
-        else {
+        try {
+            await coursesApi.update(courseId, { is_published: !currentStatus })
             setSelectedCourse(prev => ({ ...prev, is_published: !currentStatus }))
             fetchCourses()
+        } catch (err) {
+            alert('Erro ao alterar status: ' + err.message)
         }
     }
 
@@ -940,10 +831,10 @@ export default function LMSAdmin() {
 
     const renderManageCourse = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <button className="btn btn-secondary" onClick={() => setView('list')}>&larr; Voltar</button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>{selectedCourse?.title}</h2>
                         <button 
                             className="btn" 
@@ -984,11 +875,13 @@ export default function LMSAdmin() {
                         padding: '1rem', 
                         backgroundColor: isUnder ? '#FEF2F2' : '#F0FDF4', 
                         border: `1px solid ${isUnder ? '#FECACA' : '#BBF7D0'}`, 
-                        borderRadius: '8px', 
+                        borderRadius: '8px',
                         marginBottom: '2rem',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '1rem'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <div style={{ padding: '0.5rem', backgroundColor: isUnder ? '#EF4444' : '#10B981', color: 'white', borderRadius: '50%' }}>
@@ -1082,7 +975,7 @@ export default function LMSAdmin() {
                                             <button className="btn" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', backgroundColor: '#fff' }} onClick={() => handleManageQuiz(quizzes[`${mod.id}_exercise`])}>Gerenciar Questões</button>
                                             <button className="btn" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', color: 'var(--danger)' }} onClick={async () => {
                                                 if (window.confirm("Excluir este exercício?")) {
-                                                    await supabase.from('lms_quizzes').delete().eq('id', quizzes[`${mod.id}_exercise`].id)
+                                                    await lmsApi.removeQuiz(quizzes[`${mod.id}_exercise`].id)
                                                     fetchCourseDetails(selectedCourse.id)
                                                 }
                                             }}>Excluir</button>
@@ -1108,7 +1001,7 @@ export default function LMSAdmin() {
                                             <button className="btn" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', backgroundColor: '#fff' }} onClick={() => handleManageQuiz(quizzes[`${mod.id}_final_exam`])}>Gerenciar Questões</button>
                                             <button className="btn" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', color: 'var(--danger)' }} onClick={async () => {
                                                 if (window.confirm("Excluir esta prova final?")) {
-                                                    await supabase.from('lms_quizzes').delete().eq('id', quizzes[`${mod.id}_final_exam`].id)
+                                                    await lmsApi.removeQuiz(quizzes[`${mod.id}_final_exam`].id)
                                                     fetchCourseDetails(selectedCourse.id)
                                                 }
                                             }}>Excluir</button>
@@ -1183,7 +1076,7 @@ export default function LMSAdmin() {
 
     const renderAnnouncements = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <button className="btn btn-secondary" style={{ marginBottom: '1rem' }} onClick={() => setView('list')}>&larr; Voltar para listagem</button>
                     <h3 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1270,7 +1163,7 @@ export default function LMSAdmin() {
 
                             <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                                 <h5 style={{ fontWeight: 700, fontSize: '0.8rem', color: '#475569', marginTop: 0, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Variáveis Suportadas:</h5>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.78rem', color: '#64748b' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem', fontSize: '0.78rem', color: '#64748b' }}>
                                     <span><code>{"{{nome_aluno}}"}</code> - Nome completo do estudante</span>
                                     <span><code>{"{{cpf_aluno}}"}</code> - CPF cadastrado do aluno</span>
                                     <span><code>{"{{nome_curso}}"}</code> - Título do curso concluído</span>
@@ -1306,7 +1199,7 @@ export default function LMSAdmin() {
             {view === 'certificate_models' && renderCertificateModels()}
 
             {/* MODAL DE GERENCIAMENTO DE PROVAS (QUESTÕES) */}
-            {isEditingQuiz && (
+            {isEditingQuiz && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
                     <div className="card animate-fade-in" style={{ width: '700px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
@@ -1514,12 +1407,12 @@ export default function LMSAdmin() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL DE MÓDULO */}
-            {showModuleForm && (
+            {showModuleForm && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '400px' }}>
+                    <div className="card animate-fade-in" style={{ width: '400px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ marginBottom: '1.5rem' }}>{moduleForm.id ? 'Editar Módulo' : 'Novo Módulo'}</h3>
                         <div className="form-group">
                             <label className="form-label">Título do Módulo</label>
@@ -1531,12 +1424,12 @@ export default function LMSAdmin() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL DE AULA */}
-            {showLessonForm && (
+            {showLessonForm && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '500px' }}>
+                    <div className="card animate-fade-in" style={{ width: '500px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ marginBottom: '1.5rem' }}>{lessonForm.id ? 'Editar Aula' : 'Nova Aula'}</h3>
                         <div className="form-group">
                             <label className="form-label">Título da Aula</label>
@@ -1577,12 +1470,10 @@ export default function LMSAdmin() {
                                     input.onchange = async (e) => {
                                         const file = e.target.files[0]
                                         if (file) {
-                                            const fileName = `${selectedCourse.id}_${Date.now()}.${file.name.split('.').pop()}`
-                                            const { error } = await supabase.storage.from('lms-docs').upload(`lessons/${fileName}`, file)
-                                            if (!error) {
-                                                const { data: { publicUrl } } = supabase.storage.from('lms-docs').getPublicUrl(`lessons/${fileName}`)
-                                                setLessonForm(prev => ({ ...prev, pdf_url: publicUrl }))
-                                            } else alert('Erro no upload: ' + error.message)
+                                            try {
+                                                const { url } = await uploadFile(file, 'lms-docs')
+                                                setLessonForm(prev => ({ ...prev, pdf_url: url }))
+                                            } catch (err) { alert('Erro no upload: ' + err.message) }
                                         }
                                     }
                                     input.click()
@@ -1639,12 +1530,12 @@ export default function LMSAdmin() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL DE QUIZ / PROVA */}
-            {showQuizForm && (
+            {showQuizForm && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '500px' }}>
+                    <div className="card animate-fade-in" style={{ width: '500px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ marginBottom: '1.5rem' }}>{quizForm.type === 'exercise' ? '📝 Novo Exercício' : '🏆 Nova Prova Final'}</h3>
                         <div className="form-group">
                             <label className="form-label">Título</label>
@@ -1666,14 +1557,14 @@ export default function LMSAdmin() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
 
 
             {/* MODAL DE QUADRO DE AVISOS (Prioridade 🟡 13) */}
-            {showAnnForm && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '500px', maxWidth: '90%', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'white', padding: '2rem' }}>
+            {showAnnForm && createPortal((
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
+                    <div className="card animate-fade-in" style={{ width: '500px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'white', padding: '2rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a' }}>
                                 <Megaphone color="var(--primary)" size={20} /> Novo Comunicado Pedagógico
@@ -1719,7 +1610,7 @@ export default function LMSAdmin() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

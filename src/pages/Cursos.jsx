@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { BookOpen, Plus, Search, Edit2, Loader2, Save, X, DollarSign, Clock, Award, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { coursesApi } from '../services/academic'
 
 const formatCurrencyBRL = (value) => {
     if (value === null || value === undefined || value === '') return '';
@@ -75,12 +76,7 @@ export default function Cursos() {
     const fetchCourses = async () => {
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('lms_courses')
-                .select('*')
-                .order('created_at', { ascending: false })
-            
-            if (error) throw error
+            const { courses: data } = await coursesApi.list()
 
             // Map standard database records to rich dashboard details with default fallbacks
             const mapped = (data || []).map(c => ({
@@ -114,52 +110,7 @@ export default function Cursos() {
             setCourses(mapped)
         } catch (err) {
             console.error('Erro ao buscar cursos reais:', err)
-            // Resilient Local fallback integration
-            const localMocks = [
-                {
-                    id: 'mock-1',
-                    title: 'Líquido Penetrante (LP - PR-127)',
-                    code: 'CD-CL',
-                    description: 'Qualificação profissional técnica voltada a Ensaios Não Destrutivos (END) por Líquido Penetrante de acordo com a norma Abendi PR-127.',
-                    min_theoretical_hours: 40,
-                    practical_hours: 20,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 1450.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=500&q=80'
-                },
-                {
-                    id: 'mock-2',
-                    title: 'Medição de Espessura por Ultrassom (ME - PR-127)',
-                    code: 'CD-MC',
-                    description: 'Treinamento técnico profissional voltado à inspeção de integridade física e medição de espessura de paredes metálicas por Ultrassom.',
-                    min_theoretical_hours: 40,
-                    practical_hours: 24,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 1680.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=500&q=80'
-                },
-                {
-                    id: 'mock-3',
-                    title: 'Ensaio de Ultrassom Geral (US - Abendi)',
-                    code: 'CD-TO',
-                    description: 'Inspeção avançada por técnica técnica de Ultrassom para detecção de descontinuidades internas em juntas soldadas e peças fundidas.',
-                    min_theoretical_hours: 60,
-                    practical_hours: 30,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 2200.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=500&q=80'
-                }
-            ]
-            setCourses(localMocks)
+            setCourses([])
         } finally {
             setLoading(false)
         }
@@ -273,92 +224,36 @@ export default function Cursos() {
                                      0.0
 
         try {
-            // Mapeamento padrão seguro para o Supabase
             const payload = {
                 title: form.title,
                 description: form.description,
                 min_theoretical_hours: parseInt(form.min_theoretical_hours) || 40,
-                thumbnail_url: form.thumbnail_url
+                thumbnail_url: form.thumbnail_url,
+                code: form.code,
+                practical_hours: parseFloat(form.practical_hours) || 0,
+                min_attendance: parseFloat(form.min_attendance) || 75,
+                min_grade: parseFloat(form.min_grade) || 6.0,
+                default_value: calculatedDefaultValue,
+                max_instructors: parseInt(form.max_instructors) || 8,
+                status: form.status,
+                price_card: cardVal || null,
+                price_pix: pixVal || null,
+                price_boleto: boletoVal || null,
+                price_financing: financingVal || null,
+                max_installments: parseInt(form.max_installments) || 10,
+                financing_installments: parseInt(form.financing_installments) || 6,
+                price_notes: form.price_notes || null,
+                asaas_product_id: form.asaas_product_id || null,
+                retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
+                retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
+                retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
+                retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
             }
 
-            // Tentar salvar de forma flexível incluindo campos estendidos se o DDL já foi executado
-            let saveError
-            if (selectedCourse) {
-                // Update
-                if (selectedCourse.id.toString().startsWith('mock-')) {
-                    // Atualizar apenas na memória local para fins de teste em mocks
-                    const updated = courses.map(c => c.id === selectedCourse.id ? { ...c, ...form, default_value: calculatedDefaultValue } : c)
-                    setCourses(updated)
-                } else {
-                    // Update Supabase
-                    const { error } = await supabase
-                        .from('lms_courses')
-                        .update({
-                            ...payload,
-                            code: form.code,
-                            practical_hours: parseFloat(form.practical_hours) || 0,
-                            min_attendance: parseFloat(form.min_attendance) || 75,
-                            min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: calculatedDefaultValue,
-                            max_instructors: parseInt(form.max_instructors) || 8,
-                            status: form.status,
-                            price_card: cardVal || null,
-                            price_pix: pixVal || null,
-                            price_boleto: boletoVal || null,
-                            price_financing: financingVal || null,
-                            max_installments: parseInt(form.max_installments) || 10,
-                            financing_installments: parseInt(form.financing_installments) || 6,
-                            price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null,
-                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
-                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
-                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
-                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
-                        })
-                        .eq('id', selectedCourse.id)
-                    
-                    if (error) throw error
-                }
+            if (selectedCourse && !selectedCourse.id.toString().startsWith('mock-')) {
+                await coursesApi.update(selectedCourse.id, payload)
             } else {
-                // Create
-                if (courses.length > 0 && courses[0].id.toString().startsWith('mock-')) {
-                    // Inserir apenas na memória local para ambiente mock
-                    const mockNew = {
-                        id: 'mock-' + Date.now(),
-                        ...form,
-                        default_value: calculatedDefaultValue
-                    }
-                    setCourses([mockNew, ...courses])
-                } else {
-                    // Create Supabase
-                    const { data, error } = await supabase
-                        .from('lms_courses')
-                        .insert([{
-                            ...payload,
-                            code: form.code,
-                            practical_hours: parseFloat(form.practical_hours) || 0,
-                            min_attendance: parseFloat(form.min_attendance) || 75,
-                            min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: calculatedDefaultValue,
-                            max_instructors: parseInt(form.max_instructors) || 8,
-                            status: form.status,
-                            price_card: cardVal || null,
-                            price_pix: pixVal || null,
-                            price_boleto: boletoVal || null,
-                            price_financing: financingVal || null,
-                            max_installments: parseInt(form.max_installments) || 10,
-                            financing_installments: parseInt(form.financing_installments) || 6,
-                            price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null,
-                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
-                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
-                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
-                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
-                        }])
-                        .select()
-                    
-                    if (error) throw error
-                }
+                await coursesApi.create(payload)
             }
 
             fetchCourses()
@@ -489,11 +384,11 @@ export default function Cursos() {
                                 onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
                             >
                                 {/* Imagem de Capa do Curso */}
-                                <div style={{ height: '150px', backgroundColor: '#0f172a', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ height: '150px', background: 'linear-gradient(135deg, #171E36 0%, #2AB0A5 100%)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                     {course.thumbnail_url ? (
                                         <img src={course.thumbnail_url} alt={course.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
-                                        <BookOpen size={48} color="white" style={{ opacity: 0.15 }} />
+                                        <BookOpen size={52} color="white" style={{ opacity: 0.35 }} />
                                     )}
                                     
                                     <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
@@ -599,12 +494,11 @@ export default function Cursos() {
                 </div>
             )}
 
-            {/* MODAL DE CADASTRO / EDIÇÃO */}
-            {showModal && (
+            {/* MODAL DE CADASTRO / EDIÇÃO — via Portal no body p/ cobrir a tela toda */}
+            {showModal && createPortal((
                 <div style={{
                     position: 'fixed', inset: 0,
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.55)',
                     zIndex: 2000,
                     display: 'flex',
                     alignItems: 'center',
@@ -625,7 +519,7 @@ export default function Cursos() {
                     }} className="animate-scale-up">
                         
                         {/* HEADER MODAL */}
-                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'white', zIndex: 3, borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <BookOpen size={20} color="var(--primary)" /> {selectedCourse ? 'Editar Curso' : 'Novo Curso Técnico'}
                             </h3>
@@ -976,7 +870,7 @@ export default function Cursos() {
                             </div>
 
                             {/* BOTOES MODAL */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', paddingBottom: '0.25rem', position: 'sticky', bottom: '-1.5rem', background: 'white', marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', paddingLeft: '1.5rem', paddingRight: '1.5rem', boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.08)' }}>
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
@@ -1017,7 +911,7 @@ export default function Cursos() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

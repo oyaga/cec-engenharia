@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { createPortal } from 'react-dom';
+import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
+import { lmsApi } from '../services/lms';
+import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi, upcomingClassesApi } from '../services/misc';
+import { financialApi, evaluationsApi } from '../services/financial';
+import { uploadFile } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   BookOpen, 
@@ -39,7 +44,7 @@ import { generateDocument } from '../lib/pdfGenerator';
 export default function AreaAluno() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session } = useAuth();
+  const { session, userProfile } = useAuth();
 
   // Estados principais
   const [userName, setUserName] = useState('');
@@ -65,37 +70,14 @@ export default function AreaAluno() {
 
   useEffect(() => {
     if (studentData && studentData.id) {
-      const loadSignedUrls = async () => {
-        const urls = {};
-        const docsToSign = [
-          { key: 'photo', url: studentData.doc_photo_url },
-          { key: 'id', url: studentData.doc_id_url },
-          { key: 'cpf', url: studentData.doc_cpf_url },
-          { key: 'address', url: studentData.doc_address_url },
-          { key: 'education', url: studentData.doc_education_url }
-        ];
-
-        for (const doc of docsToSign) {
-          if (doc.url) {
-            const parts = doc.url.split('/object/public/student_documents/');
-            const filePath = parts.length > 1 ? parts[1] : null;
-            if (filePath) {
-              try {
-                const { data, error } = await supabase.storage
-                  .from('student_documents')
-                  .createSignedUrl(filePath, 900); // 15 minutos
-                if (!error && data) {
-                  urls[doc.key] = data.signedUrl;
-                }
-              } catch (e) {
-                console.warn('[Segurança] Falha ao assinar URL para o aluno:', e);
-              }
-            }
-          }
-        }
-        setSignedUrls(urls);
-      };
-      loadSignedUrls();
+      // Storage do backend serve os arquivos por URL direta (sem assinatura).
+      setSignedUrls({
+        photo: studentData.doc_photo_url,
+        id: studentData.doc_id_url,
+        cpf: studentData.doc_cpf_url,
+        address: studentData.doc_address_url,
+        education: studentData.doc_education_url,
+      });
     } else {
       setSignedUrls({});
     }
@@ -154,214 +136,110 @@ export default function AreaAluno() {
     setLoading(true);
 
     try {
-      // 1. Buscar Perfil do Usuário
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', session.user.id)
-        .single();
-      
-      const fullName = profile?.full_name || session.user.email.split('@')[0];
+      // 1. Perfil (via contexto)
+      const fullName = userProfile?.full_name || session.user.email.split('@')[0];
       setUserName(fullName);
 
-      // 2. Buscar Cadastro do Aluno
-      const { data: student, error: stError } = await supabase
-        .from('students')
-        .select('*, classes:classes!turma_id(name, course_name), practical_class:classes!practical_class_id(name, course_name, start_date, address)')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
+      // 2. Cadastro do aluno
+      const { students } = await studentsApi.list({ user_id: session.user.id });
+      const student = students && students[0];
 
       let activeStudentId = null;
       let activeTurmaId = null;
+      const { classes: allClasses } = await classesApi.list();
 
-      if (!stError && student) {
+      if (student) {
         activeStudentId = student.id;
         activeTurmaId = student.turma_id;
         setStudentId(student.id);
         setTurmaId(student.turma_id);
         setStudentData(student);
-        
-        // Verificar pendência Abendi
-        const hasMissing = !student.doc_photo_url || 
-                           !student.doc_id_url || 
-                           !student.doc_cpf_url || 
-                           !student.doc_address_url || 
-                           !student.doc_education_url;
+        const hasMissing = !student.doc_photo_url || !student.doc_id_url || !student.doc_cpf_url || !student.doc_address_url || !student.doc_education_url;
         setMissingDocs(hasMissing);
       }
 
-      // 3. Buscar Cursos e calcular progresso real
-      const { data: lessonsData } = await supabase
-        .from('lms_lessons')
-        .select('id, module_id, lms_modules(course_id)');
-
-      const { data: progressData } = await supabase
-        .from('lms_student_progress')
-        .select('lesson_id, is_completed')
-        .eq('student_id', session.user.id)
-        .eq('is_completed', true);
-
-      const { data: enrollments } = await supabase
-        .from('students')
-        .select('has_lms_access, classes(lms_course_id)')
-        .eq('user_id', session.user.id);
-
-      const courseIds = enrollments
-        ?.filter(e => e.has_lms_access)
-        .map(e => e.classes?.lms_course_id)
-        .filter(Boolean) || [];
-
-      if (courseIds.length > 0) {
-        const { data: courses } = await supabase
-          .from('lms_courses')
-          .select('*')
-          .in('id', courseIds)
-          .eq('is_published', true);
-
-        if (courses) {
-          const coursesWithProgress = courses.map(course => {
-            const courseLessons = lessonsData?.filter(l => l.lms_modules?.course_id === course.id) || [];
-            const courseCompleted = courseLessons.filter(l => 
-              progressData?.some(p => p.lesson_id === l.id)
-            ).length;
-
-            const percentage = courseLessons.length > 0 
-              ? Math.round((courseCompleted / courseLessons.length) * 100) 
-              : 0;
-
-            return {
-              ...course,
-              progress_percent: percentage
-            };
-          });
-          setMyCourses(coursesWithProgress);
-        }
+      // 3. Cursos + progresso
+      const { progress: progressData } = await lmsApi.progress();
+      const turma = (allClasses || []).find(c => c.id === activeTurmaId);
+      const lmsCourseId = turma?.lms_course_id;
+      if (student?.has_lms_access && lmsCourseId) {
+        try {
+          const { course } = await coursesApi.get(lmsCourseId);
+          if (course && course.is_published) {
+            const { lessons: courseLessons } = await lmsApi.courseLessons(lmsCourseId);
+            const done = (courseLessons || []).filter(l => (progressData || []).some(p => p.lesson_id === l.id && p.is_completed)).length;
+            const percentage = courseLessons?.length ? Math.round((done / courseLessons.length) * 100) : 0;
+            setMyCourses([{ ...course, progress_percent: percentage }]);
+          }
+        } catch { /* sem curso liberado */ }
       }
 
-      // 4. Buscar Próxima Aula Prática Presencial
+      // 4. Próxima aula prática presencial
       if (activeTurmaId) {
-        const { data: upcoming } = await supabase
-          .from('upcoming_classes')
-          .select('*, lms_courses(title)')
-          .eq('id', activeTurmaId)
-          .maybeSingle();
-
+        const { classes: uc } = await upcomingClassesApi.list(activeTurmaId);
+        const upcoming = uc && uc[0];
         if (upcoming) {
           setUpcomingPractical(upcoming);
-
-          // Verificar confirmação de presença do aluno
           if (activeStudentId) {
-            const { data: attendanceCheck } = await supabase
-              .from('attendance_records')
-              .select('id')
-              .eq('student_id', activeStudentId)
-              .eq('class_id', activeTurmaId)
-              .eq('status', 'presente')
-              .maybeSingle();
-            
-            setHasConfirmedAttendance(!!attendanceCheck);
+            const { attendance } = await attendanceApi.list({ student_id: activeStudentId, class_id: activeTurmaId });
+            setHasConfirmedAttendance(!!(attendance && attendance.some(a => a.status === 'presente')));
           }
         }
       }
 
-      // 5. Histórico de Chamadas e Frequência Presencial
-      if (activeStudentId && activeTurmaId) {
-        const { data: attData } = await supabase
-          .from('attendance_records')
-          .select('*, classes(name)')
-          .eq('student_id', activeStudentId)
-          .order('created_at', { ascending: false });
-
+      // 5. Histórico de presença
+      if (activeStudentId) {
+        const { attendance: attData } = await attendanceApi.list({ student_id: activeStudentId });
         setAttendanceHistory(attData || []);
       }
 
-      // 6. Buscar Notas de Provas Online (Quizzes) e Presenciais
-      const { data: qResults } = await supabase
-        .from('lms_quiz_results')
-        .select('*, lms_quizzes(title, quiz_type)')
-        .eq('student_id', session.user.id)
-        .order('updated_at', { ascending: false });
+      // 6. Notas de provas + avaliações técnicas
+      const { results: qResults } = await lmsApi.results({});
       if (qResults) setQuizResults(qResults);
-
       if (activeStudentId) {
-        const { data: evals } = await supabase
-          .from('student_evaluations')
-          .select('*, classes(name, course_name)')
-          .eq('student_id', activeStudentId)
-          .order('date', { ascending: false });
-        if (evals) setTechnicalEvals(evals);
+        const { evaluations } = await evaluationsApi.list(activeStudentId);
+        if (evaluations) setTechnicalEvals(evaluations);
       }
 
-      // 7. Mural de Comunicados Reativo
-      const { data: annData } = await supabase
-        .from('announcements')
-        .select('*, author:users!created_by(full_name)')
-        .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false });
-
+      // 7. Mural de comunicados
+      const { announcements: annData } = await generalAnnouncementsApi.list();
       if (annData) {
-        const activeAnn = annData.filter(a => 
-          a.target_roles?.includes('aluno') && 
-          (!a.expires_at || new Date(a.expires_at) >= new Date())
-        );
-        setAnnouncements(activeAnn);
+        const activeAnn = annData.filter(a => {
+          const roles = Array.isArray(a.target_roles) ? a.target_roles : [];
+          return roles.includes('aluno');
+        });
+        setAnnouncements(activeAnn.length ? activeAnn : annData);
       }
 
-      // 8. Buscar Certificados Emitidos
+      // 8. Certificados
       if (activeStudentId) {
-        const { data: certs } = await supabase
-          .from('lms_issued_certificates')
-          .select('*')
-          .eq('student_id', activeStudentId);
-        
-        setIssuedCertificates(certs || []);
-        setCertificatesCount(certs?.length || 0);
+        const { certificates } = await lmsApi.certificates({ student_id: activeStudentId });
+        setIssuedCertificates(certificates || []);
+        setCertificatesCount(certificates?.length || 0);
       }
 
-      // 9. Buscar Financeiro (Receitas / Parcelas)
+      // 9. Financeiro
       if (activeStudentId) {
-        const { data: finData } = await supabase
-          .from('financial_records')
-          .select('*')
-          .eq('student_id', activeStudentId)
-          .maybeSingle();
-        setFinancialRecord(finData);
+        const { records } = await financialApi.listRecords(activeStudentId);
+        setFinancialRecord(records && records[0] ? records[0] : null);
       }
 
-      // 10. Carregar Fórum e Instrutores para Chat
+      // 10. Fórum, instrutores, vitrine
       loadForum(activeTurmaId);
       loadInstructors(activeTurmaId);
       loadAvailableCourses();
 
-      // 11. Carregar Aulas Práticas de Final de Semana Disponíveis (Fase 20.1)
-      if (student) {
-        const courseName = student.classes?.course_name;
-        if (courseName) {
-          const { data: practicals, error: prError } = await supabase
-            .from('classes')
-            .select(`
-              id, name, course_name, start_date, max_capacity, schedule, address,
-              practical_students:students!practical_class_id(id, practical_class_status)
-            `)
-            .eq('schedule', 'Aula prática - Final de semana')
-            .eq('course_name', courseName)
-            .gte('start_date', new Date().toISOString().split('T')[0])
-            .order('start_date', { ascending: true });
-
-          if (!prError && practicals) {
-            const mappedPracticals = practicals.map(p => {
-              const confirmedCount = p.practical_students?.filter(s => s.practical_class_status === 'confirmado').length || 0;
-              const pendingCount = p.practical_students?.filter(s => s.practical_class_status === 'pendente').length || 0;
-              return {
-                ...p,
-                confirmedCount,
-                pendingCount,
-                availableVacancies: Math.max(0, (p.max_capacity || 10) - confirmedCount)
-              };
-            });
-            setAvailablePracticalClasses(mappedPracticals);
-          }
-        }
+      // 11. Aulas práticas de fim de semana disponíveis
+      const courseName = turma?.course_name;
+      if (courseName) {
+        const practicals = (allClasses || []).filter(p => p.schedule === 'Aula prática - Final de semana' && p.course_name === courseName);
+        const mappedPracticals = practicals.map(p => ({
+          ...p,
+          confirmedCount: p.practical_confirmed || 0,
+          pendingCount: p.practical_pending || 0,
+          availableVacancies: Math.max(0, (p.max_capacity || 10) - (p.practical_confirmed || 0))
+        }));
+        setAvailablePracticalClasses(mappedPracticals);
       }
 
     } catch (err) {
@@ -378,25 +256,15 @@ export default function AreaAluno() {
   // Função para carregar fórum (com resiliência no localStorage)
   const loadForum = async (activeTurmaId) => {
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_topics')
-        .select('*, student:users!student_id(full_name)')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setForumTopics(data || []);
+      const { topics } = await lmsApi.allForumTopics();
+      setForumTopics((topics || []).map(t => ({ ...t, student: { full_name: t.student_name } })));
     } catch (err) {
       console.warn("Fórum: Usando fallback resiliente do localStorage");
       const localForum = localStorage.getItem('local_forum_topics');
       if (localForum) {
         setForumTopics(JSON.parse(localForum));
       } else {
-        const initialMock = [
-          { id: 'f-1', title: 'Dúvida sobre o ensaio de Líquido Penetrante', content: 'Quantas demãos de revelador são ideais no ensaio?', student: { full_name: 'Ana Maria Silva' }, created_at: new Date().toISOString() },
-          { id: 'f-2', title: 'Diferença entre CD e CL no Ultrassom', content: 'Gostaria de entender melhor a diferença conceitual das ondas.', student: { full_name: 'Bruno Lima' }, created_at: new Date().toISOString() }
-        ];
-        setForumTopics(initialMock);
-        localStorage.setItem('local_forum_topics', JSON.stringify(initialMock));
+        setForumTopics([]);
       }
     }
   };
@@ -404,22 +272,16 @@ export default function AreaAluno() {
   // Carregar cursos disponíveis para matrícula (Vitrine integrada ao CMS)
   const loadAvailableCourses = async () => {
     try {
-      // 1. Carregar cursos do LMS
-      const { data: lmsCourses } = await supabase
-        .from('lms_courses')
-        .select('id, title, description, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
-        .eq('is_published', true);
+      // 1. Cursos do LMS (catálogo público)
+      const { courses: lmsCourses } = await coursesApi.listPublic();
 
-      // 2. Carregar CMS do site público (site_content)
-      const { data: siteData, error: siteError } = await supabase
-        .from('site_content')
-        .select('data')
-        .eq('id', 'main-content')
-        .maybeSingle();
+      // 2. CMS do site (site_content)
+      let siteContent = {};
+      try {
+        const { content } = await siteContentApi.get();
+        siteContent = content?.['main-content'] || content || {};
+      } catch { siteContent = {}; }
 
-      if (siteError) throw siteError;
-
-      const siteContent = siteData?.data || {};
       const cmsCourses = siteContent.courses_section?.courses || [];
       const courseDetails = siteContent.course_details || {};
 
@@ -566,13 +428,9 @@ export default function AreaAluno() {
   const loadInstructors = async (activeTurmaId) => {
     try {
       if (activeTurmaId) {
-        const { data } = await supabase
-          .from('class_instructors')
-          .select('*, user:users(id, full_name, email)')
-          .eq('class_id', activeTurmaId);
-
-        if (data && data.length > 0) {
-          setInstructors(data.map(i => i.user).filter(Boolean));
+        const { instructors } = await classesApi.listInstructors(activeTurmaId);
+        if (instructors && instructors.length > 0) {
+          setInstructors(instructors.map(i => i.user).filter(Boolean));
           return;
         }
       }
@@ -595,13 +453,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_topics')
-        .insert([topicPayload])
-        .select('*, student:users!student_id(full_name)');
-
-      if (error) throw error;
-      setForumTopics(prev => [data[0], ...prev]);
+      const { topic } = await lmsApi.createTopic(topicPayload);
+      setForumTopics(prev => [{ ...topic, student: { full_name: userName } }, ...prev]);
     } catch (err) {
       // Fallback localstorage
       const newLocalTopic = {
@@ -626,14 +479,8 @@ export default function AreaAluno() {
     setSelectedTopic(topic);
     setTopicReplies([]);
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_replies')
-        .select('*, author:users!author_id(full_name, role)')
-        .eq('topic_id', topic.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setTopicReplies(data || []);
+      const { replies } = await lmsApi.topicReplies(topic.id);
+      setTopicReplies(replies || []);
     } catch (err) {
       // Fallback localstorage para respostas
       const localReplies = localStorage.getItem(`replies_${topic.id}`);
@@ -662,13 +509,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_replies')
-        .insert([replyPayload])
-        .select('*, author:users!author_id(full_name, role)');
-
-      if (error) throw error;
-      setTopicReplies(prev => [...prev, data[0]]);
+      const { reply } = await lmsApi.createReply(replyPayload);
+      setTopicReplies(prev => [...prev, { ...reply, author: { full_name: userName, role: 'aluno' } }]);
     } catch (err) {
       const newLocalReply = {
         id: 'r-' + Date.now(),
@@ -691,23 +533,8 @@ export default function AreaAluno() {
     if (!session?.user?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${inst.id}),and(sender_id.eq.${inst.id},receiver_id.eq.${session.user.id})`)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setChatMessages(data || []);
-      
-      // Marcar mensagens recebidas como lidas
-      await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('sender_id', inst.id)
-        .eq('receiver_id', session.user.id)
-        .eq('is_read', false);
-
+      const { messages } = await messagesApi.list(inst.id);
+      setChatMessages(messages || []);
     } catch (err) {
       // Fallback localstorage para chat
       const localChat = localStorage.getItem(`chat_${inst.id}`);
@@ -737,13 +564,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([payload])
-        .select();
-
-      if (error) throw error;
-      setChatMessages(prev => [...prev, data[0]]);
+      const { message } = await messagesApi.create({ receiver_id: selectedInstructor.id, content: newChatMessage.trim() });
+      setChatMessages(prev => [...prev, message]);
     } catch (err) {
       const newLocalMsg = {
         id: 'm-' + Date.now(),
@@ -762,17 +584,12 @@ export default function AreaAluno() {
     if (!studentId || !upcomingPractical) return;
     
     try {
-      const { error } = await supabase
-        .from('attendance_records')
-        .insert([{
-          student_id: studentId,
-          class_id: upcomingPractical.id,
-          status: 'presente',
-          confirmed_by_student: true,
-          created_at: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
+      await attendanceApi.create({
+        student_id: studentId,
+        class_id: upcomingPractical.id,
+        status: 'presente',
+        confirmed_by_student: true,
+      });
 
       setHasConfirmedAttendance(true);
       setUpcomingPractical(prev => ({
@@ -859,26 +676,8 @@ export default function AreaAluno() {
     if (!file || !studentId) return;
 
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${studentId}_${docType}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${studentId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('student_documents')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('student_documents')
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from('students')
-        .update({ [`doc_${docType}_url`]: publicUrl })
-        .eq('id', studentId);
-
-      if (updateError) throw updateError;
+      const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`);
+      await studentsApi.update(studentId, { [`doc_${docType}_url`]: publicUrl });
 
       alert(`Documento (${docType.toUpperCase()}) enviado com sucesso!`);
       fetchData();
@@ -893,12 +692,7 @@ export default function AreaAluno() {
     if (!studentId) return;
 
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({ terms_accepted: true })
-        .eq('id', studentId);
-
-      if (error) throw error;
+      await studentsApi.update(studentId, { terms_accepted: true });
 
       // Atualiza o estado local para fechar o modal imediatamente
       setStudentData(prev => prev ? { ...prev, terms_accepted: true } : null);
@@ -926,37 +720,11 @@ export default function AreaAluno() {
   // Redireciona o aluno para a primeira aula do curso EAD
   const handleStartCourse = async (courseId) => {
     try {
-      // Buscar módulos do curso ordenados
-      const { data: modules, error: modError } = await supabase
-        .from('lms_modules')
-        .select('id')
-        .eq('course_id', courseId)
-        .order('order_index', { ascending: true });
-
-      if (modError) throw modError;
-
-      if (!modules || modules.length === 0) {
-        alert('Este curso ainda não possui módulos teóricos EAD cadastrados.');
-        return;
-      }
-
-      // Buscar a primeira aula do primeiro módulo
-      const moduleIds = modules.map(m => m.id);
-      const { data: lessons, error: lesError } = await supabase
-        .from('lms_lessons')
-        .select('id')
-        .in('module_id', moduleIds)
-        .order('order_index', { ascending: true })
-        .limit(1);
-
-      if (lesError) throw lesError;
-
+      const { lessons } = await lmsApi.courseLessons(courseId);
       if (!lessons || lessons.length === 0) {
         alert('Este curso ainda não possui aulas teóricas EAD cadastradas.');
         return;
       }
-
-      // Navegar para a rota da lição
       navigate(`/curso/${courseId}/aula/${lessons[0].id}`);
     } catch (err) {
       console.error('Erro ao acessar o player do curso:', err);
@@ -1050,7 +818,7 @@ export default function AreaAluno() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* CURSOS EM ANDAMENTO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1403,13 +1171,8 @@ export default function AreaAluno() {
     if (!studentData?.id) return;
     setSchedulingActionLoading(classId);
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({
-          practical_class_id: classId,
-          practical_class_status: 'pendente'
-        })
-        .eq('id', studentData.id);
+      await studentsApi.update(studentData.id, { practical_class_id: classId, practical_class_status: 'pendente' });
+      const error = null;
 
       if (error) throw error;
 
@@ -1442,13 +1205,8 @@ export default function AreaAluno() {
 
     setSchedulingActionLoading(practicalClass.id);
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({
-          practical_class_id: null,
-          practical_class_status: null
-        })
-        .eq('id', studentData.id);
+      await studentsApi.update(studentData.id, { practical_class_id: null, practical_class_status: null });
+      const error = null;
 
       if (error) throw error;
 
@@ -1464,7 +1222,7 @@ export default function AreaAluno() {
   // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
   const renderPresencial = () => {
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* HISTÓRICO DE PRESENÇAS */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Frequência e Chamadas Presenciais</h3>
@@ -1509,7 +1267,8 @@ export default function AreaAluno() {
 
           <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1rem' }}>Lista de Chamadas Realizadas</h4>
           <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '480px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
                   <th style={{ padding: '1rem' }}>Data da Aula</th>
@@ -1546,6 +1305,7 @@ export default function AreaAluno() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -1895,7 +1655,7 @@ export default function AreaAluno() {
 
   // ABA 5: FÓRUM DE DÚVIDAS
   const renderForum = () => (
-    <div style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
+    <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
       {/* TÓPICOS DO FÓRUM */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -2044,7 +1804,7 @@ export default function AreaAluno() {
 
   // ABA 6: CHAT COM INSTRUTOR
   const renderMensagens = () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem', height: '70vh', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '16px', overflow: 'hidden' }}>
+    <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem', height: '70vh', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '16px', overflow: 'hidden' }}>
       {/* LISTA DE CONTATOS */}
       <div style={{ borderRight: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ padding: '1rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc' }}>
@@ -2167,7 +1927,7 @@ export default function AreaAluno() {
         <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrícula em conformidade com as regras da **Abendi** e garantir a emissão de certificados.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* Formulário de Upload */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {[
@@ -2306,13 +2066,14 @@ export default function AreaAluno() {
     const installments = financialRecord?.installments || [];
     
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* PARCELAS */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>Mensalidades e Faturas</h3>
           
           <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '560px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
                   <th style={{ padding: '1rem' }}>Parcela</th>
@@ -2368,6 +2129,7 @@ export default function AreaAluno() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -2965,11 +2727,16 @@ export default function AreaAluno() {
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .aa-stack { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       {getActiveTabContent()}
 
       {/* MODAL DE CAPTURA DE SELFIE INTERATIVA COM MÁSCARA REDONDA DE PRIVACIDADE */}
-      {showSelfieModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+      {showSelfieModal && createPortal((
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '440px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid #e2e8f0', textAlign: 'center', boxSizing: 'border-box' }} className="animate-scale-up">
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)' }}>
               Capturar Selfie
@@ -2981,8 +2748,8 @@ export default function AreaAluno() {
             {/* Vídeo com a Câmera */}
             <div style={{
               position: 'relative',
-              width: '280px',
-              height: '280px',
+              width: 'min(280px, 70vw)',
+              height: 'min(280px, 70vw)',
               borderRadius: '50%',
               overflow: 'hidden',
               border: '4px solid var(--primary)',
@@ -3085,7 +2852,7 @@ export default function AreaAluno() {
             />
           </div>
         </div>
-      )}
+      ), document.body)}
     </div>
   );
 }

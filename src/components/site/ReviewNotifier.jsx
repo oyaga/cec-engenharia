@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Quote, X, Star } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { testimonialsApi } from '../../services/site';
 
 const ReviewNotifier = () => {
   const [reviews, setReviews] = useState([]);
@@ -14,12 +14,8 @@ const ReviewNotifier = () => {
 
   const fetchReviews = async () => {
     try {
-      const { data } = await supabase
-        .from('testimonials')
-        .select('*')
-        .eq('status', 'approved')
-        .limit(10);
-      
+      const { testimonials: data } = await testimonialsApi.listPublic();
+
       if (data && data.length > 0) {
         setReviews(data);
         startCycling(data);

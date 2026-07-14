@@ -17,6 +17,7 @@ const Professor = lazy(() => import('./pages/Professor'))
 const Auditoria = lazy(() => import('./pages/Auditoria'))
 const ConfigDocs = lazy(() => import('./pages/ConfigDocs'))
 const ConfigAsaas = lazy(() => import('./pages/ConfigAsaas'))
+const AgenteMaria = lazy(() => import('./pages/AgenteMaria'))
 const Equipe = lazy(() => import('./pages/Equipe'))
 const Relatorios = lazy(() => import('./pages/Relatorios'))
 const LMSAdmin = lazy(() => import('./pages/LMSAdmin'))
@@ -64,7 +65,7 @@ const PrivateRoute = ({ children }) => {
   if (loading) return <div className="p-8 text-center">Carregando perfil...</div>
   if (!session) return <Navigate to="/login" replace />
   
-  if (userProfile?.requires_password_change && window.location.pathname !== '/trocar-senha') {
+  if ((userProfile?.requires_password_change || userProfile?.must_change_password) && window.location.pathname !== '/trocar-senha') {
     return <Navigate to="/trocar-senha" replace />
   }
 
@@ -183,6 +184,7 @@ function App() {
               <Route path="/secretaria/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente', 'administrativo']} requiredPermission="access_dashboard"><StaffChat /></RoleGuard>} />
               <Route path="/config" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config"><ConfigDocs /></RoleGuard>} />
               <Route path="/config-asaas" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config_asaas"><ConfigAsaas /></RoleGuard>} />
+              <Route path="/agente-maria" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config"><AgenteMaria /></RoleGuard>} />
               <Route path="/secretaria/instrutores" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_instrutores"><Instrutores /></RoleGuard>} />
               <Route path="/secretaria/perfil" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']}><MeuPerfil /></RoleGuard>} />
               <Route path="/professor/perfil" element={<RoleGuard allowedRoles={['instrutor']}><MeuPerfil /></RoleGuard>} />

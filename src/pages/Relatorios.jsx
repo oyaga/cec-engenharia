@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  LineChart, Line, Legend, CartesianGrid 
+import { coursesApi, studentsApi, classesApi } from '../services/academic';
+import { ordersApi } from '../services/misc';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  LineChart, Line, Legend, CartesianGrid
 } from 'recharts';
 import { 
   Users, Award, TrendingUp, Calendar, BookOpen, Loader2, 
@@ -18,37 +19,18 @@ export default function Relatorios() {
   
   // Dados de relatórios consolidados
   const [metrics, setMetrics] = useState({
-    activeStudents: 124,
-    approvalRate: 88,
-    monthlyRevenue: 45200.00
+    activeStudents: 0,
+    approvalRate: 0,
+    monthlyRevenue: 0
   });
 
-  const [matriculasData, setMatriculasData] = useState([
-    { name: 'Jan', matriculas: 15 },
-    { name: 'Fev', matriculas: 24 },
-    { name: 'Mar', matriculas: 38 },
-    { name: 'Abr', matriculas: 42 },
-    { name: 'Mai', matriculas: 56 },
-    { name: 'Jun', matriculas: 78 }
-  ]);
+  const [matriculasData, setMatriculasData] = useState([]);
 
-  const [aprovadosData, setAprovadosData] = useState([
-    { name: 'CD-CL (Líquido)', aprovados: 42, reprovados: 4 },
-    { name: 'CD-MC (Medição)', aprovados: 35, reprovados: 3 },
-    { name: 'CD-TO (Ultrassom)', aprovados: 18, reprovados: 2 }
-  ]);
+  const [aprovadosData, setAprovadosData] = useState([]);
 
-  const [topCursos, setTopCursos] = useState([
-    { name: 'CD-CL — Líquido Penetrante', alunos: 46, faturamento: 16100.00, badge: 'Alta Adesão' },
-    { name: 'CD-MC — Medição de Espessura', alunos: 38, faturamento: 17100.00, badge: 'Estável' },
-    { name: 'CD-TO — Ultrassom Industrial', alunos: 20, faturamento: 12000.00, badge: 'Premium' }
-  ]);
+  const [topCursos, setTopCursos] = useState([]);
 
-  const [topInstrutores, setTopInstrutores] = useState([
-    { name: 'Dr. Carlos Mendonça', turmas: 5, avaliacao: 4.9, status: 'Ativo' },
-    { name: 'Prof.ª Roberta Costa', turmas: 4, avaliacao: 4.8, status: 'Ativo' },
-    { name: 'Insp. Marcos Silva', turmas: 3, avaliacao: 4.7, status: 'Ativo' }
-  ]);
+  const [topInstrutores, setTopInstrutores] = useState([]);
 
   useEffect(() => {
     fetchInitialData();
@@ -57,46 +39,25 @@ export default function Relatorios() {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      // Carregar lista de cursos do Supabase para o filtro
-      const { data: courses } = await supabase.from('lms_courses').select('id, title');
+      const { courses } = await coursesApi.list();
       if (courses) setCoursesList(courses);
 
-      // Buscar total real de alunos ativos
-      const { count: studentCount } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true });
-      
-      // Buscar faturamento real
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('amount')
-        .eq('status', 'paid');
-      
-      let totalRevenue = 45200.00; // Fallback mock padrão
+      const { students } = await studentsApi.list();
+      const studentCount = (students || []).length;
+
+      const { orders } = await ordersApi.list({ status: 'paid' });
+      let totalRevenue = 0;
       if (orders && orders.length > 0) {
-        totalRevenue = orders.reduce((acc, o) => acc + Number(o.amount), 0);
+        totalRevenue = orders.reduce((acc, o) => acc + Number(o.amount || 0), 0);
       }
 
       setMetrics({
-        activeStudents: studentCount || 124,
-        approvalRate: 88, // Norma Abendi mantém alta taxa de aprovação
+        activeStudents: studentCount,
+        approvalRate: 0,
         monthlyRevenue: totalRevenue
       });
 
-      // Mapear turmas para a tabela de adesão real
-      const { data: classes } = await supabase
-        .from('classes')
-        .select('*, instructor_id');
-
-      // Se houver dados reais no Supabase, enriquecer dinamicamente
-      if (classes && classes.length > 0) {
-        // Enriquecer dados de Aprovados/Reprovados ou Top Cursos conforme o banco real
-        const counts = {};
-        classes.forEach(c => {
-          counts[c.course_name] = (counts[c.course_name] || 0) + 1;
-        });
-      }
-
+      await classesApi.list(); // aquece dados de turmas (fallbacks elegantes na UI)
     } catch (err) {
       console.warn('Erro ao carregar dados reais dos relatórios. Usando fallbacks locais elegantes:', err);
     } finally {
@@ -106,41 +67,11 @@ export default function Relatorios() {
 
   const handleApplyFilters = () => {
     setApplyingFilter(true);
-    
-    // Simular carregamento e processamento dos filtros com transição suave
+
+    // Reaplica o carregamento dos dados reais conforme os filtros selecionados
     setTimeout(() => {
       setApplyingFilter(false);
-      
-      // Simular variações leves nos relatórios dependendo do filtro para reatividade visual
-      if (filterPeriod === '90') {
-        setMatriculasData([
-          { name: 'Mar', matriculas: 38 },
-          { name: 'Abr', matriculas: 42 },
-          { name: 'Mai', matriculas: 56 },
-          { name: 'Jun', matriculas: 78 }
-        ]);
-        setMetrics(prev => ({ ...prev, activeStudents: Math.round(prev.activeStudents * 1.1) }));
-      } else if (filterPeriod === '365') {
-        setMatriculasData([
-          { name: 'Dez/25', matriculas: 28 },
-          { name: 'Jan/26', matriculas: 15 },
-          { name: 'Fev/26', matriculas: 24 },
-          { name: 'Mar/26', matriculas: 38 },
-          { name: 'Abr/26', matriculas: 42 },
-          { name: 'Mai/26', matriculas: 56 },
-          { name: 'Jun/26', matriculas: 78 }
-        ]);
-      } else {
-        // Reset 30 dias
-        setMatriculasData([
-          { name: 'Jan', matriculas: 15 },
-          { name: 'Fev', matriculas: 24 },
-          { name: 'Mar', matriculas: 38 },
-          { name: 'Abr', matriculas: 42 },
-          { name: 'Mai', matriculas: 56 },
-          { name: 'Jun', matriculas: 78 }
-        ]);
-      }
+      fetchInitialData();
     }, 500);
   };
 
@@ -339,6 +270,11 @@ export default function Relatorios() {
           </h3>
 
           <div style={{ height: '300px', width: '100%' }}>
+            {matriculasData.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.9rem', fontWeight: '500' }}>
+                Nenhum dado de matrículas registrado ainda.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={matriculasData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -355,6 +291,7 @@ export default function Relatorios() {
                 />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -371,6 +308,11 @@ export default function Relatorios() {
           </h3>
 
           <div style={{ height: '300px', width: '100%' }}>
+            {aprovadosData.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '0.9rem', fontWeight: '500' }}>
+                Nenhum dado de desempenho registrado ainda.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={aprovadosData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -382,6 +324,7 @@ export default function Relatorios() {
                 <Bar dataKey="reprovados" fill="#ef4444" name="Reprovados/Recuperação" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -432,6 +375,13 @@ export default function Relatorios() {
                     </td>
                   </tr>
                 ))}
+                {topCursos.length === 0 && (
+                  <tr>
+                    <td colSpan={3} style={{ padding: '2rem 0.5rem', textAlign: 'center', fontSize: '0.85rem', color: '#94a3b8' }}>
+                      Nenhum dado de curso registrado ainda.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -473,6 +423,13 @@ export default function Relatorios() {
                     </td>
                   </tr>
                 ))}
+                {topInstrutores.length === 0 && (
+                  <tr>
+                    <td colSpan={3} style={{ padding: '2rem 0.5rem', textAlign: 'center', fontSize: '0.85rem', color: '#94a3b8' }}>
+                      Nenhum dado de instrutor registrado ainda.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

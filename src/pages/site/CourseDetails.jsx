@@ -11,7 +11,7 @@ import EditableImage from '../../components/site/EditableImage';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
-import { supabase } from '../../lib/supabase';
+import { coursesApi } from '../../services/academic';
 
 const CourseDetails = () => {
   const { slug } = useParams();
@@ -34,16 +34,16 @@ const CourseDetails = () => {
   useEffect(() => {
     const fetchPricing = async () => {
       try {
-        const codeUpper = slug.toUpperCase().replace(/-/g, '-');
-        const codeUnderscore = slug.toUpperCase().replace(/-/g, '_');
-        
-        const { data, error } = await supabase
-          .from('lms_courses')
-          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link, retrain_teorico_days, retrain_teorico_price_day, retrain_pratico_days, retrain_pratico_price_day')
-          .or(`code.ilike.${slug},code.ilike.${slug.replace(/-/g, '_')}`)
-          .eq('is_published', true);
+        const codeA = slug.toUpperCase();
+        const codeB = slug.toUpperCase().replace(/-/g, '_');
 
-        if (!error && data && data.length > 0) {
+        const { courses } = await coursesApi.listPublic();
+        const data = (courses || []).filter(c => {
+          const code = (c.code || '').toUpperCase();
+          return code === codeA || code === codeB;
+        });
+
+        if (data && data.length > 0) {
           // Filtrar retreinamentos — priorizar o curso principal
           const mainCourses = data.filter(c => {
             const t = (c.title || '').toLowerCase();

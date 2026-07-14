@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Quote, Star, MessageSquarePlus, CheckCircle2, ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabaseClient';
+import { testimonialsApi } from '../services/site';
 import { useEdit } from '../context/EditContext';
 
 const Testimonials = () => {
@@ -25,14 +25,8 @@ const Testimonials = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const { data, error } = await supabase
-        .from('testimonials')
-        .select('*')
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false });
+      const { testimonials: data } = await testimonialsApi.listPublic();
 
-      if (error) throw error;
-      
       if (data && data.length > 0) {
         setTestimonials(data);
       } else {
@@ -57,15 +51,7 @@ const Testimonials = () => {
     e.preventDefault();
     setSubmitStatus('sending');
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .insert([{
-          ...formData,
-          status: 'pending',
-          type: 'text'
-        }]);
-
-      if (error) throw error;
+      await testimonialsApi.submitPublic({ ...formData, type: 'text' });
       setSubmitStatus('success');
       setTimeout(() => {
         setShowModal(false);
@@ -324,7 +310,6 @@ const Testimonials = () => {
           position: fixed;
           inset: 0;
           background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(4px);
           z-index: 10000;
           display: flex;
           align-items: center;

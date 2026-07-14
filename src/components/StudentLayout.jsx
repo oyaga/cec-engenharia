@@ -18,29 +18,24 @@ import {
     Sparkles,
     Megaphone
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationBell from './NotificationBell'
 
 export default function StudentLayout() {
-    const { session } = useAuth()
+    const { session, userProfile, logout } = useAuth()
     const navigate = useNavigate()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [dropdownOpen, setDropdownOpen] = useState(false)
     const [userName, setUserName] = useState('')
 
     useEffect(() => {
-        if (session?.user?.id) {
-            supabase.from('users').select('full_name').eq('id', session.user.id).single()
-                .then(({ data }) => {
-                    if (data?.full_name) setUserName(data.full_name)
-                    else setUserName(session.user.email.split('@')[0])
-                })
+        if (session?.user) {
+            setUserName(userProfile?.full_name || session.user.email.split('@')[0])
         }
-    }, [session])
+    }, [session, userProfile])
 
     const handleLogout = async () => {
-        await supabase.auth.signOut()
+        logout()
         navigate('/login')
     }
 
@@ -264,7 +259,6 @@ export default function StudentLayout() {
                             position: 'fixed',
                             inset: 0,
                             backgroundColor: 'rgba(15, 23, 42, 0.4)',
-                            backdropFilter: 'blur(4px)',
                             zIndex: 999,
                         }}
                         className="sidebar-overlay-student"

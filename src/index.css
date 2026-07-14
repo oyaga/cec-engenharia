@@ -1,5 +1,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* Tailwind v4 — apenas tema + utilitários (SEM preflight, para não resetar
+   as páginas de estilo inline). Faz as classes utilitárias das páginas
+   escritas em Tailwind (LeadsAdmin, ConfigDocs, checkout) funcionarem. */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* Cores da marca C&C mapeadas para as utilitárias (text-primary, bg-accent, …) */
+@theme {
+    --color-primary: #171E36;
+    --color-secondary: #475569;
+    --color-accent: #2AB0A5;
+    --color-muted: #94a3b8;
+    --color-success: #10b981;
+    --color-danger: #ef4444;
+    --color-warning: #f59e0b;
+}
+
 :root {
     /* Colors */
     --primary: #171E36;
@@ -67,6 +84,14 @@ body {
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.3s ease, color 0.3s ease;
+    /* Impede scroll horizontal acidental sem quebrar position:sticky.
+       Conteúdo largo (tabelas) deve rolar no próprio contêiner overflow-x:auto. */
+    overflow-x: clip;
+}
+
+/* Imagens/vídeos nunca estouram o container (ícones SVG mantêm tamanho fixo) */
+img, video {
+    max-width: 100%;
 }
 
 /* Base Elements */
@@ -215,6 +240,24 @@ textarea {
     color: white;
 }
 
+.btn-success {
+    background-color: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #0e9f70;
+}
+
+/* Classes de texto usadas pelas páginas Tailwind (complementam as utilitárias) */
+.text-primary {
+    color: var(--primary);
+}
+
+.text-secondary {
+    color: var(--text-secondary);
+}
+
 /* Layout */
 .app-layout {
     display: flex;
@@ -333,7 +376,9 @@ textarea {
 
     to {
         opacity: 1;
-        transform: translateY(0);
+        /* 'none' (não translateY(0)) evita criar um containing block que
+           prenderia modais position:fixed dentro da área de conteúdo. */
+        transform: none;
     }
 }
 

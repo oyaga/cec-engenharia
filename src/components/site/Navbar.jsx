@@ -355,16 +355,23 @@ const Navbar = () => {
           color: rgba(255, 255, 255, 0.3);
         }
         .btn-nav-cta {
-          padding: 0.6rem 1.25rem;
-          font-size: 0.85rem;
+          padding: 0.6rem 1.4rem;
+          font-size: 0.9rem;
+          white-space: nowrap;
+          border-radius: 10px;
         }
         .sticky-nav {
           position: sticky;
           top: 0;
           z-index: 1000;
-          height: 90px;
+          height: 72px;
           display: flex;
           align-items: center;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(14px) saturate(160%);
+          -webkit-backdrop-filter: blur(14px) saturate(160%);
+          border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+          box-shadow: 0 1px 12px rgba(15, 23, 42, 0.04);
           transition: all 0.3s ease;
         }
         .nav-content {
@@ -372,43 +379,28 @@ const Navbar = () => {
           justify-content: space-between;
           align-items: center;
           width: 100%;
-          gap: 2rem;
+          gap: 1.5rem;
         }
-        
+
+        /* Logo limpo — sem a caixa de vidro flutuante */
         .logo-container-liquid {
-          position: relative;
-          padding: 8px;
-          background: rgba(255, 255, 255, 0.4);
-          backdrop-filter: blur(15px) saturate(160%);
-          -webkit-backdrop-filter: blur(15px) saturate(160%);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 12px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1),
-                    inset 0 0 10px rgba(255, 255, 255, 0.5);
           display: flex;
           align-items: center;
-          justify-content: center;
-          width: 200px;
-          height: 85px;
+          height: 100%;
           flex-shrink: 0;
-          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        
+
         .logo-container-liquid .editable-image-container,
         .logo-container-liquid .img-wrapper-fluid {
-          width: 100%;
-          height: 100%;
           display: flex;
           align-items: center;
-          justify-content: center;
           overflow: visible !important;
         }
 
         .logo-container-liquid img {
-          max-width: 100%;
-          max-height: 100%;
+          height: 46px !important;
           width: auto !important;
-          height: auto !important;
+          max-height: 46px;
           object-fit: contain !important;
         }
         
@@ -466,7 +458,6 @@ const Navbar = () => {
           width: 100%;
           height: 100%;
           background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(4px);
           opacity: 0;
           visibility: hidden;
           transition: all 0.3s ease;
@@ -619,9 +610,12 @@ const Navbar = () => {
           .mobile-menu-btn {
             display: block;
           }
-          .logo-container-liquid {
-            width: 130px;
-            height: 55px;
+          .sticky-nav {
+            height: 64px;
+          }
+          .logo-container-liquid img {
+            height: 40px !important;
+            max-height: 40px;
           }
         }
       `}</style>

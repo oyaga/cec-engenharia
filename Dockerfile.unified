@@ -1,0 +1,35 @@
+# Imagem ÚNICA: o backend Go serve a API + o WebSocket + o frontend (SPA).
+# Build a partir da raiz do projeto (cec-site).
+#   docker build -t oyaga/cec:latest -f Dockerfile.unified .
+
+# ─── 1) Build do frontend ───
+FROM node:22-alpine AS web
+WORKDIR /web
+# API na mesma origem (o próprio Go serve /api e o SPA).
+ARG VITE_API_BASE_URL=/api/v1
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+COPY package*.json ./
+RUN npm ci || npm install
+COPY . .
+RUN npm run build
+
+# ─── 2) Build do backend ───
+FROM golang:1.25-alpine AS api
+WORKDIR /src
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/cec-api ./cmd/api
+
+# ─── 3) Runtime (imagem mínima) ───
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 app
+WORKDIR /app
+RUN mkdir -p /app/uploads /app/web && chown -R app:app /app
+COPY --from=api --chown=app:app /out/cec-api /app/cec-api
+COPY --from=web --chown=app:app /web/dist /app/web
+# WEB_DIR faz o Go servir o SPA; uploads no volume.
+ENV WEB_DIR=/app/web STORAGE_DIR=/app/uploads
+USER app
+EXPOSE 8080
+ENTRYPOINT ["/app/cec-api"]

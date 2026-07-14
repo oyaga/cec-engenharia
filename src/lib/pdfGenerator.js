@@ -1,14 +1,17 @@
 // src/lib/pdfGenerator.js
 import jsPDF from 'jspdf'
-import { supabase } from './supabase'
+import { settingsApi } from '../services/financial'
 
 export const generateDocument = async (type, student, options = {}) => {
     const doc = new jsPDF()
 
     // Buscar Plano de Fundo (Papel Timbrado) correspondente
     const bgKey = `bg_doc_${type}`
-    const { data: settings } = await supabase.from('system_settings').select('value').eq('key', bgKey).single()
-    const bgImage = settings ? settings.value : null
+    let bgImage = null
+    try {
+        const { settings } = await settingsApi.list()
+        bgImage = (settings || []).find(s => s.key === bgKey)?.value || null
+    } catch { /* sem timbre */ }
 
     // Global settings for ICC Docs
     doc.setFont('helvetica')

@@ -1,30 +1,15 @@
-import { supabase } from '../lib/supabase';
+import { uploadFile } from '../lib/api';
 
 /**
- * Faz o upload de um arquivo para o bucket "site_assets" do Supabase.
+ * Faz upload de um asset do site para o storage do backend.
  * @param {File} file O arquivo a ser enviado.
- * @param {string} path O caminho dentro do bucket (ex: 'logo.png', 'banners/home.jpg').
+ * @param {string} path Sufixo/pasta lógica (ex: 'logo', 'banners').
  * @returns {Promise<string|null>} A URL pública do arquivo ou null em caso de erro.
  */
 export const uploadSiteAsset = async (file, path) => {
   try {
-    const { data, error } = await supabase.storage
-      .from('site_assets')
-      .upload(path, file, {
-        cacheControl: '3600',
-        upsert: true // Sobrescreve se já existir
-      });
-
-    if (error) {
-      console.error('Erro ao fazer upload do asset:', error);
-      throw error;
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('site_assets')
-      .getPublicUrl(data.path);
-
-    return urlData.publicUrl;
+    const { url } = await uploadFile(file, `site-assets/${path || ''}`.replace(/\/$/, ''));
+    return url;
   } catch (err) {
     console.error('Erro na função uploadSiteAsset:', err);
     return null;

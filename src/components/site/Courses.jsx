@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { upcomingClassesApi } from '../../services/misc';
 import { Clock, Monitor, ChevronRight, Plus, Trash2, X, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEdit } from '../../context/EditContext';
@@ -17,14 +17,7 @@ const Courses = () => {
   useEffect(() => {
     const fetchUpcomingClasses = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const { data, error } = await supabase
-          .from('classes')
-          .select('course_name, start_date')
-          .gte('start_date', today)
-          .order('start_date', { ascending: true });
-          
-        if (error) throw error;
+        const { classes: data } = await upcomingClassesApi.listPublic();
         if (data) {
           setUpcomingClasses(data);
         }

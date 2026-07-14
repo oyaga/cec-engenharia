@@ -65,7 +65,9 @@ const AdminToolbar = () => {
     const toolbarStyle = {
       position: 'fixed',
       left: pos.x !== null ? `${pos.x}px` : '50%',
-      top: pos.y !== null ? `${pos.y}px` : '15px',
+      // Padrão: barra no rodapé (não cobre o header). Continua arrastável.
+      top: pos.y !== null ? `${pos.y}px` : 'auto',
+      bottom: pos.y !== null ? 'auto' : '24px',
       transform: pos.x !== null ? 'none' : 'translateX(-50%)',
       transition: dragging.current ? 'none' : 'all 0.3s ease-out'
     };
@@ -90,10 +92,20 @@ const AdminToolbar = () => {
 
     if (!isVisible) {
       return (
-        <button 
-          className="admin-toggle-mini" 
+        <button
+          className="admin-toggle-mini"
           onClick={() => setIsVisible(true)}
           title="Mostrar Ferramentas Admin"
+          style={{
+            position: 'fixed', bottom: '24px', left: '24px', top: 'auto', right: 'auto',
+            width: '46px', height: '46px', borderRadius: '50%', border: 'none',
+            background: 'linear-gradient(135deg, #171E36 0%, #2AB0A5 100%)',
+            color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', zIndex: 10000, boxShadow: '0 6px 18px rgba(23,30,54,0.35)',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px) rotate(25deg)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
         >
           <Settings size={20} />
         </button>
@@ -174,7 +186,7 @@ const AdminToolbar = () => {
 
           <style>{`
             .drag-handle { color: rgba(255,255,255,0.35); cursor: grab; display: flex; align-items: center; padding-right: 0.5rem; border-right: 1px solid rgba(255,255,255,0.1); margin-right: 0.5rem; }
-            .admin-toolbar { cursor: default; position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: #0f172a; color: white; padding: 0.6rem 1.25rem; border-radius: 50px; display: flex; align-items: center; gap: 1.5rem; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
+            .admin-toolbar { cursor: default; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #0f172a; color: white; padding: 0.6rem 1.25rem; border-radius: 50px; display: flex; align-items: center; gap: 1.5rem; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; }
             .admin-toolbar.active { border-color: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
             .admin-info { display: flex; flex-direction: column; gap: 2px; }
             .user-badge { display: flex; align-items: center; gap: 0.5rem; }
@@ -188,10 +200,11 @@ const AdminToolbar = () => {
             .btn-admin-discard { background: #ef4444; color: white; }
             .btn-admin-users { background: #334155; color: #f1f5f9; }
             .btn-admin-logout, .btn-admin-close { color: #94a3b8; transition: color 0.2s; }
-            .admin-toggle-mini { position: fixed; top: 20px; right: 20px; background: #0f172a; color: white; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+            .admin-toggle-mini { position: fixed; bottom: 24px; left: 24px; top: auto; right: auto; background: linear-gradient(135deg, #171E36 0%, #2AB0A5 100%); color: white; width: 46px; height: 46px; border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10000; box-shadow: 0 6px 18px rgba(23,30,54,0.35); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+            .admin-toggle-mini:hover { transform: translateY(-2px) rotate(25deg); box-shadow: 0 10px 26px rgba(23,30,54,0.45); }
             .text-accent { color: #f59e0b; }
             @media (max-width: 768px) {
-              .admin-toolbar { padding: 0.4rem 0.75rem; gap: 0.75rem; border-radius: 16px; top: 8px; left: 8px; right: 8px; transform: none; width: calc(100% - 16px); flex-wrap: wrap; justify-content: space-between; }
+              .admin-toolbar { padding: 0.4rem 0.75rem; gap: 0.75rem; border-radius: 16px; bottom: 8px; left: 8px; right: 8px; transform: none; width: calc(100% - 16px); flex-wrap: wrap; justify-content: space-between; }
               .user-email { max-width: 100px; font-size: 0.65rem; }
               .btn-admin-edit span, .btn-admin-save span, .btn-admin-discard span { display: none; }
               .btn-admin-edit, .btn-admin-save, .btn-admin-discard { padding: 0.4rem; border-radius: 50%; width: 36px; height: 36px; justify-content: center; }

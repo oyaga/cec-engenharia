@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Camera, Facebook, Linkedin, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { leadsApi } from '../../services/site';
 import EditableText from './EditableText';
 import MapWidget from './MapWidget';
 
@@ -37,17 +37,13 @@ const Footer = () => {
       const emailValue = newsletterEmail.trim() ? newsletterEmail.trim() : null;
       const phoneValue = newsletterPhone.trim() ? newsletterPhone.trim() : null;
 
-      const { error } = await supabase
-        .from('leads')
-        .upsert([{
-          name: 'Assinante Newsletter',
-          phone: phoneValue,
-          email: emailValue,
-          course_interest: 'Newsletter',
-          message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
-          status: 'novo'
-        }], { onConflict: 'phone' });
-      if (error) throw error;
+      await leadsApi.createPublic({
+        name: 'Assinante Newsletter',
+        phone: phoneValue,
+        email: emailValue,
+        course_interest: 'Newsletter',
+        message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
+      });
       setNewsletterStatus('success');
       setNewsletterEmail('');
       setNewsletterPhone('');

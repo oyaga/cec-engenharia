@@ -1,0 +1,84 @@
+# Stack do CEC para PORTAINER + TRAEFIK (TLS automático).
+# Imagem única (app = API + WebSocket + SPA). Traefik faz o ingress/HTTPS.
+#
+# Ajuste as variáveis de Traefik ao SEU ambiente:
+#   TRAEFIK_NETWORK    -> nome da rede externa do Traefik (ex.: traefik / proxy)
+#   TRAEFIK_ENTRYPOINT -> entrypoint HTTPS (ex.: websecure)
+#   TRAEFIK_CERTRESOLVER -> nome do certResolver (ex.: letsencrypt / myresolver)
+#   DOMAIN             -> domínio público (ex.: cursocec.com.br)
+# WebSocket (chat) passa pelo Traefik automaticamente — sem config extra.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-cec}
+    volumes:
+      - cec_pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cec} -d ${POSTGRES_DB:-cec}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  app:
+    image: ${DOCKER_USER:-oyaga}/cec:${TAG:-latest}
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      HTTP_PORT: "8080"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      DATABASE_URL: "postgres://${POSTGRES_USER:-cec}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-cec}?sslmode=disable"
+      JWT_SECRET: "${JWT_SECRET:?gere com openssl rand -base64 48}"
+      JWT_TTL_HOURS: ${JWT_TTL_HOURS:-12}
+      SEED_DEV: "${SEED_DEV:-false}"
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      STORAGE_DIR: "/app/uploads"
+      PUBLIC_URL: "https://${DOMAIN:?defina DOMAIN}"
+      ASAAS_ENV: ${ASAAS_ENV:-production}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      MARIA_ATTENDANT: ${MARIA_ATTENDANT:-}
+    volumes:
+      - cec_uploads:/app/uploads
+    networks:
+      - internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      # Roteador HTTPS
+      - "traefik.http.routers.cec.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.cec.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.cec.tls=true"
+      - "traefik.http.routers.cec.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.cec.loadbalancer.server.port=8080"
+      # Redireciona HTTP -> HTTPS
+      - "traefik.http.routers.cec-http.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.cec-http.entrypoints=web"
+      - "traefik.http.routers.cec-http.middlewares=cec-redirect"
+      - "traefik.http.middlewares.cec-redirect.redirectscheme.scheme=https"
+
+networks:
+  internal:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
+
+volumes:
+  cec_pgdata:
+  cec_uploads:

@@ -4,7 +4,11 @@ import {
     GraduationCap, CheckCircle, AlertCircle, Eye, EyeOff, Plus, Trash, 
     Award, FileText, CreditCard, Camera, MapPin, Building, Activity, Sparkles 
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { studentsApi, classesApi } from '../services/academic'
+import { financialApi } from '../services/financial'
+import { qualificationsApi } from '../services/staff'
+import { usersApi } from '../services/users'
+import { authApi } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function MeuPerfil() {
@@ -41,52 +45,42 @@ export default function MeuPerfil() {
 
     // Estados Aba 3 - Tempo na Empresa & Métricas
     const [empresaMetrics, setEmpresaMetrics] = useState({
-        admission_date: '2026-05-15',
-        total_days: 16,
-        supervised_classes: 3,
-        approved_instructors: 1,
-        matriculated_students: 14,
-        total_students_overall: 124,
-        active_instructors: 8,
-        monthly_revenue: 45200.00,
-        answered_leads: 32,
-        registered_enrollments: 12
+        admission_date: null,
+        total_days: 0,
+        supervised_classes: 0,
+        approved_instructors: 0,
+        matriculated_students: 0,
+        total_students_overall: 0,
+        active_instructors: 0,
+        monthly_revenue: 0,
+        answered_leads: 0,
+        registered_enrollments: 0
     })
 
     // Estados Aba 4/5 - Instrutor (Habilitações e Métricas)
-    const [instructorHabilitacoes, setInstructorHabilitacoes] = useState([
-        { id: 1, metodo: 'CD-CL (Líquido Penetrante)', status: 'Ativo', validade: '2028-05-15', progresso: 80, pontos: 40, maxPontos: 50 },
-        { id: 2, metodo: 'CD-MC (Medição de Espessura)', status: 'Aguardando aprovação', validade: '2026-12-31', progresso: 50, pontos: 25, maxPontos: 50 }
-    ])
+    const [instructorHabilitacoes, setInstructorHabilitacoes] = useState([])
     const [instructorMetrics, setInstructorMetrics] = useState({
-        classes_count: 12,
-        students_count: 96,
-        rating_average: 4.9
+        classes_count: 0,
+        students_count: 0,
+        rating_average: 0
     })
-    
+
     // Estados Aba 6 - Meus Cursos (Aluno)
-    const [studentCourses, setStudentCourses] = useState([
-        { id: '1', name: 'CD-CL 2026.1 — Líquido Penetrante', progress_ead: 80, progress_presencial: 30, certificado: 'Bloqueado (falta frequência)' },
-        { id: '2', name: 'CD-MC 2025.2 — Medição de Espessura', progress_ead: 100, progress_presencial: 100, certificado: 'Disponível' }
-    ])
+    const [studentCourses, setStudentCourses] = useState([])
 
     // Estados Aba 7 - Documentos (Aluno)
     const [studentDocs, setStudentDocs] = useState({
-        rg: { status: 'approved', name: 'RG_Frente_Verso.pdf' },
-        comprovante_residencia: { status: 'approved', name: 'Comprovante_Residência.pdf' },
-        selfie: { status: 'approved', name: 'Selfie_Identificação.jpg' },
-        diploma: { status: 'pending', name: 'Diploma_Técnico.pdf' }
+        rg: { status: 'pending', name: '' },
+        comprovante_residencia: { status: 'pending', name: '' },
+        selfie: { status: 'pending', name: '' },
+        diploma: { status: 'pending', name: '' }
     })
     const [selfieStream, setSelfieStream] = useState(null)
     const [showCamera, setShowCamera] = useState(false)
     const videoRef = useRef(null)
 
     // Estados Aba 8 - Financeiro (Aluno)
-    const [studentFinance, setStudentFinance] = useState([
-        { id: 1, descricao: 'Matrícula CD-CL 2026.1', valor: 350.00, vencimento: '15/05/2026', status: 'pago' },
-        { id: 2, descricao: 'Parcela 1/3 CD-CL 2026.1', valor: 450.00, vencimento: '15/06/2026', status: 'pendente' },
-        { id: 3, descricao: 'Parcela 2/3 CD-CL 2026.1', valor: 450.00, vencimento: '15/07/2026', status: 'pendente' }
-    ])
+    const [studentFinance, setStudentFinance] = useState([])
 
     // Estados Aba 9 - Segurança
     const [passwordData, setPasswordData] = useState({
@@ -138,22 +132,15 @@ export default function MeuPerfil() {
         if (!userProfile?.id) return
         setLoadingCurriculum(true)
         try {
-            const { data, error } = await supabase
-                .from('user_curriculum')
-                .select('*')
-                .eq('user_id', userProfile.id)
-                .order('start_date', { ascending: false })
-
-            if (error) throw error
-            if (data) setCurriculumItems(data)
+            // Currículo mantido localmente (sem tabela dedicada no backend por ora).
+            const local = localStorage.getItem(`curriculum_${userProfile.id}`)
+            if (local) {
+                setCurriculumItems(JSON.parse(local))
+                return
+            }
+            setCurriculumItems([])
         } catch (err) {
-            console.warn('Erro ao buscar currículo (usando dados locais ou tabela inexistente):', err)
-            // Fallback mock caso a tabela ou dados não estejam presentes
-            setCurriculumItems([
-                { id: 'mock-1', type: 'education', title: 'Engenharia de Produção', institution: 'UFRJ', start_date: '2013-02-01', end_date: '2018-12-15', description: 'Curso focado em otimização de processos e gestão industrial.' },
-                { id: 'mock-2', type: 'experience', title: 'Coordenador Técnico', institution: 'C&C Engenharia', start_date: '2026-05-15', end_date: null, description: 'Responsável pela supervisão pedagógica e controle de turmas técnicas.' },
-                { id: 'mock-3', type: 'certification', title: 'Certificado SNQC CD-CL', institution: 'Abendi', start_date: '2024-05-10', end_date: '2027-12-31', description: 'Qualificação em Ensaios Não Destrutivos por Líquido Penetrante.' }
-            ])
+            setCurriculumItems([])
         } finally {
             setLoadingCurriculum(false)
         }
@@ -165,58 +152,48 @@ export default function MeuPerfil() {
         try {
             // Se for coordenador ou admin, buscar turmas e alunos ativamente
             if (['admin', 'coordenador'].includes(userRole)) {
-                const { count: classesCount } = await supabase.from('classes').select('*', { count: 'exact', head: true })
-                const { count: studentsCount } = await supabase.from('students').select('*', { count: 'exact', head: true })
-                
+                const { classes } = await classesApi.list()
+                const { students } = await studentsApi.list()
+                const classesCount = (classes || []).length
+                const studentsCount = (students || []).length
                 setEmpresaMetrics(prev => ({
                     ...prev,
-                    supervised_classes: classesCount || prev.supervised_classes,
-                    matriculated_students: studentsCount || prev.matriculated_students,
-                    total_students_overall: studentsCount || prev.total_students_overall
+                    supervised_classes: classesCount,
+                    matriculated_students: studentsCount,
+                    total_students_overall: studentsCount
                 }))
             }
-            
+
             // Se for Aluno, buscar suas matrículas e parcelas reais do financeiro
             if (userRole === 'aluno') {
-                const { data: studentRecord } = await supabase
-                    .from('students')
-                    .select('id')
-                    .eq('user_id', userProfile.id)
-                    .single()
+                const { students: enrollments } = await studentsApi.list({ user_id: userProfile.id })
+                const studentRecord = enrollments && enrollments[0]
 
                 if (studentRecord) {
-                    // Buscar turmas associadas
-                    const { data: enrollments } = await supabase
-                        .from('students')
-                        .select('id, base_value, payment_method, classes(id, name, course_name)')
-                        .eq('id', studentRecord.id)
-
-                    if (enrollments && enrollments.length > 0) {
+                    if (enrollments.length > 0) {
                         const formatted = enrollments.map((en, index) => ({
-                            id: en.classes?.id || index.toString(),
-                            name: `${en.classes?.course_name || 'Curso CEC'} — ${en.classes?.name || 'Turma'}`,
-                            progress_ead: index === 0 ? 80 : 100,
-                            progress_presencial: index === 0 ? 30 : 100,
-                            certificado: index === 0 ? 'Bloqueado (falta frequência)' : 'Disponível'
+                            id: en.turma_id || index.toString(),
+                            name: `${en.turma_course || 'Curso CEC'} — ${en.turma_name || 'Turma'}`,
+                            progress_ead: Number(en.progress_ead || 0),
+                            progress_presencial: Number(en.progress_presencial || 0),
+                            certificado: en.certificado_status || 'Indisponível'
                         }))
                         setStudentCourses(formatted)
                     }
 
-                    // Buscar extrato financeiro (se houver tabela real, ou simular de forma elegante)
-                    const { data: financeRecs } = await supabase
-                        .from('student_financial')
-                        .select('*')
-                        .eq('student_id', studentRecord.id)
-                    
-                    if (financeRecs && financeRecs.length > 0) {
-                        setStudentFinance(financeRecs.map((f, i) => ({
-                            id: f.id || i,
-                            descricao: f.description || `Parcela ${i+1}`,
-                            valor: f.amount || 450.00,
-                            vencimento: f.due_date ? new Date(f.due_date).toLocaleDateString('pt-BR') : '15/06/2026',
-                            status: f.status || 'pendente'
-                        })))
-                    }
+                    // Extrato financeiro do aluno
+                    try {
+                        const { records: financeRecs } = await financialApi.listRecords(studentRecord.id)
+                        if (financeRecs && financeRecs.length > 0) {
+                            setStudentFinance(financeRecs.map((f, i) => ({
+                                id: f.id || i,
+                                descricao: f.description || `Parcela ${i+1}`,
+                                valor: Number(f.amount || 0),
+                                vencimento: f.due_date ? new Date(f.due_date).toLocaleDateString('pt-BR') : '—',
+                                status: f.status || 'pendente'
+                            })))
+                        }
+                    } catch { /* sem financeiro */ }
                 }
             }
 
@@ -224,20 +201,10 @@ export default function MeuPerfil() {
             if (userRole === 'instrutor') {
                 try {
                     // Buscar qualificações reais
-                    const { data: qualsData, error: qualsError } = await supabase
-                        .from('instructor_qualifications')
-                        .select('*')
-                        .eq('user_id', userProfile.id)
+                    const { qualifications: qualsData } = await qualificationsApi.list({ user_id: userProfile.id })
 
-                    // Buscar pontos de reabilitação reais
-                    const { data: ptsData, error: ptsError } = await supabase
-                        .from('rehabilitation_points')
-                        .select('points')
-                        .eq('instructor_id', userProfile.id)
-
-                    if (qualsError) throw qualsError
-
-                    const totalPoints = ptsData ? ptsData.reduce((acc, curr) => acc + (curr.points || 0), 0) : 0
+                    // Pontos de reabilitação (sem tabela dedicada por ora)
+                    const totalPoints = 0
 
                     if (qualsData && qualsData.length > 0) {
                         const formattedHabs = qualsData.map((q, idx) => {
@@ -265,38 +232,24 @@ export default function MeuPerfil() {
                         })
                         setInstructorHabilitacoes(formattedHabs)
                     } else {
-                        // Se não encontrar dados no banco, atualiza o mock com a soma de pontos reais
-                        setInstructorHabilitacoes([
-                            { id: 1, metodo: 'CD-CL (Líquido Penetrante)', status: 'Ativo', validade: '2028-05-15', pontos: totalPoints, maxPontos: 50, progresso: Math.min(Math.round((totalPoints / 50) * 100), 100) },
-                            { id: 2, metodo: 'CD-MC (Medição de Espessura)', status: 'Aguardando aprovação', validade: '2026-12-31', pontos: Math.min(totalPoints, 25), maxPontos: 50, progresso: Math.min(Math.round((Math.min(totalPoints, 25) / 50) * 100), 100) }
-                        ])
+                        setInstructorHabilitacoes([])
                     }
 
-                    // Buscar quantidade de turmas vinculadas do instrutor
-                    const { data: instClasses, error: instClassesErr } = await supabase
-                        .from('class_instructors')
-                        .select('class_id')
-                        .eq('user_id', userProfile.id)
-
-                    if (!instClassesErr && instClasses) {
-                        const classesCount = instClasses.length
-                        let studentsCount = 0
-
-                        if (classesCount > 0) {
-                            const classIds = instClasses.map(ic => ic.class_id)
-                            const { count } = await supabase
-                                .from('students')
-                                .select('*', { count: 'exact', head: true })
-                                .in('turma_id', classIds)
-                            studentsCount = count || 0
-                        }
-
-                        setInstructorMetrics({
-                            classes_count: classesCount,
-                            students_count: studentsCount,
-                            rating_average: 4.9
-                        })
+                    // Turmas vinculadas do instrutor (via class_instructors agregado em classes)
+                    const { classes: allClasses } = await classesApi.list()
+                    const myClasses = (allClasses || []).filter(c => (c.instructors || []).some(i => i.user?.id === userProfile.id))
+                    const classesCount = myClasses.length
+                    let studentsCount = 0
+                    if (classesCount > 0) {
+                        const classIds = new Set(myClasses.map(c => c.id))
+                        const { students } = await studentsApi.list()
+                        studentsCount = (students || []).filter(s => classIds.has(s.turma_id)).length
                     }
+                    setInstructorMetrics({
+                        classes_count: classesCount,
+                        students_count: studentsCount,
+                        rating_average: 0
+                    })
                 } catch (habErr) {
                     console.warn('Erro ao carregar habilitações reais do instrutor:', habErr)
                 }
@@ -313,19 +266,10 @@ export default function MeuPerfil() {
         setFeedback({ type: '', message: '' })
 
         try {
-            const { error } = await supabase
-                .from('users')
-                .update({
-                    full_name: personalData.full_name,
-                    phone: personalData.phone,
-                    birth_date: personalData.birth_date || null,
-                    address: personalData.address,
-                    bio: personalData.bio,
-                    avatar_url: personalData.avatar_url
-                })
-                .eq('id', userProfile.id)
-
-            if (error) throw error
+            await usersApi.update(userProfile.id, {
+                full_name: personalData.full_name,
+                phone: personalData.phone,
+            })
             setFeedback({ type: 'success', message: 'Dados pessoais atualizados com sucesso!' })
         } catch (err) {
             console.error('Erro ao atualizar dados pessoais:', err)
@@ -353,23 +297,12 @@ export default function MeuPerfil() {
                 document_url: newCurriculum.document_url
             }
 
-            const { data, error } = await supabase
-                .from('user_curriculum')
-                .insert([curriculumPayload])
-                .select()
-
-            if (error) throw error
-
-            if (data && data[0]) {
-                setCurriculumItems(prev => [data[0], ...prev])
-            } else {
-                // Caso fallback local
-                const mockNew = {
-                    id: 'mock-' + Date.now(),
-                    ...curriculumPayload
-                }
-                setCurriculumItems(prev => [mockNew, ...prev])
-            }
+            const newItem = { id: 'cur-' + Date.now(), ...curriculumPayload }
+            setCurriculumItems(prev => {
+                const updated = [newItem, ...prev]
+                localStorage.setItem(`curriculum_${userProfile.id}`, JSON.stringify(updated))
+                return updated
+            })
 
             setNewCurriculum({
                 type: 'education',
@@ -384,15 +317,7 @@ export default function MeuPerfil() {
             setFeedback({ type: 'success', message: 'Item adicionado ao currículo com sucesso!' })
         } catch (err) {
             console.error('Erro ao inserir item de currículo:', err)
-            // Fallback direto
-            const mockNew = {
-                id: 'mock-' + Date.now(),
-                user_id: userProfile.id,
-                ...newCurriculum
-            }
-            setCurriculumItems(prev => [mockNew, ...prev])
-            setShowCurriculumForm(false)
-            setFeedback({ type: 'success', message: 'Item adicionado localmente com sucesso (Ambiente de Testes).' })
+            setFeedback({ type: 'error', message: err.message || 'Falha ao adicionar o item ao currículo. Tente novamente.' })
         } finally {
             setLoadingCurriculum(false)
         }
@@ -405,14 +330,11 @@ export default function MeuPerfil() {
         setFeedback({ type: '', message: '' })
 
         try {
-            if (!id.toString().startsWith('mock-')) {
-                const { error } = await supabase
-                    .from('user_curriculum')
-                    .delete()
-                    .eq('id', id)
-                if (error) throw error
-            }
-            setCurriculumItems(prev => prev.filter(item => item.id !== id))
+            setCurriculumItems(prev => {
+                const updated = prev.filter(item => item.id !== id)
+                localStorage.setItem(`curriculum_${userProfile.id}`, JSON.stringify(updated))
+                return updated
+            })
             setFeedback({ type: 'success', message: 'Item curricular removido com sucesso!' })
         } catch (err) {
             console.error('Erro ao deletar item curricular:', err)
@@ -527,11 +449,7 @@ export default function MeuPerfil() {
 
         setSavingPassword(true)
         try {
-            const { error } = await supabase.auth.updateUser({
-                password: passwordData.newPassword
-            })
-
-            if (error) throw error
+            await authApi.changePassword(passwordData.currentPassword, passwordData.newPassword)
 
             setFeedback({ type: 'success', message: 'Sua senha foi alterada com sucesso!' })
             setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -700,7 +618,7 @@ export default function MeuPerfil() {
                     </button>
                 </div>
 
-                <div style={{ flex: 1, minWidth: '300px' }}>
+                <div style={{ flex: 1, minWidth: 'min(100%, 300px)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                         <h1 style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                             {personalData.full_name || 'Usuário CEC'}
@@ -814,7 +732,7 @@ export default function MeuPerfil() {
                             <User size={22} color="var(--primary)" /> Dados Pessoais e Cadastrais
                         </h3>
 
-                        <form onSubmit={handleSavePersonal} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <form onSubmit={handleSavePersonal} className="perfil-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                             <div style={{ gridColumn: 'span 2' }}>
                                 <label style={{ fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#475569' }}>Nome Completo *</label>
                                 <input 
@@ -929,7 +847,7 @@ export default function MeuPerfil() {
                             <form onSubmit={handleAddCurriculum} style={{ padding: '1.5rem', border: '1px solid var(--primary-light)', borderRadius: '12px', backgroundColor: '#fcfbf7', marginBottom: '2rem' }}>
                                 <h4 style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)', marginTop: 0, marginBottom: '1rem' }}>Adicionar Qualificação / Experiência</h4>
                                 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                                <div className="perfil-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                                     <div>
                                         <label style={{ fontWeight: '600', display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>Tipo *</label>
                                         <select 
@@ -1121,7 +1039,7 @@ export default function MeuPerfil() {
                             <Building size={22} color="var(--primary)" /> Histórico e Vínculo Técnico C&C
                         </h3>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '2.5rem' }}>
+                        <div className="perfil-grid-asym" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '2.5rem' }}>
                             <div style={{ 
                                 padding: '1.5rem', 
                                 border: '1px solid var(--primary-light)', 
@@ -1134,7 +1052,7 @@ export default function MeuPerfil() {
                                 <div>
                                     <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Data de Admissão</span>
                                     <span style={{ fontWeight: '700', fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-                                        {new Date(empresaMetrics.admission_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                        {empresaMetrics.admission_date ? new Date(empresaMetrics.admission_date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
                                     </span>
                                 </div>
                                 <div>
@@ -1369,7 +1287,7 @@ export default function MeuPerfil() {
                                         </span>
                                     </div>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                    <div className="perfil-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                                         <div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#475569', marginBottom: '0.25rem' }}>
                                                 <span>Aulas Online (EAD)</span>
@@ -1403,7 +1321,7 @@ export default function MeuPerfil() {
                             <GraduationCap size={22} color="var(--primary)" /> Informações Acadêmicas e Profissionais
                         </h3>
 
-                        <form onSubmit={handleSavePersonal} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <form onSubmit={handleSavePersonal} className="perfil-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                             <div>
                                 <label style={{ fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#475569' }}>Escolaridade Atual *</label>
                                 <select 
@@ -1613,7 +1531,7 @@ export default function MeuPerfil() {
                 {/* ABA 9: SEGURANÇA */}
                 {activeTab === 'seguranca' && (
                     <div className="card animate-slide-up" style={{ padding: '2.5rem', border: '1px solid var(--border-color)', borderRadius: '16px', backgroundColor: '#ffffff' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', flexWrap: 'wrap' }}>
+                        <div className="perfil-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', flexWrap: 'wrap' }}>
                             
                             {/* Trocar Senha */}
                             <div>
@@ -1735,6 +1653,12 @@ export default function MeuPerfil() {
                 )}
 
             </div>
+
+            <style dangerouslySetInnerHTML={{__html: `
+                @media (max-width: 768px) {
+                    .perfil-grid-2, .perfil-grid-asym { grid-template-columns: 1fr !important; }
+                }
+            `}} />
         </div>
     )
 }

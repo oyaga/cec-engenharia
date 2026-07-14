@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase, createTempClient } from '../lib/supabaseClient';
+import { usersApi } from '../services/users';
 import { UserPlus, ArrowLeft, ShieldCheck, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
 
@@ -32,26 +32,13 @@ const ManageUsers = () => {
     setMessage(null);
 
     try {
-      // Usaremos signUp para registrar o novo usuário
-      // Importante: No painel do Supabase, Email Confirmation deve estar OFF
-      const tempClient = createTempClient();
-      const { data, error: signUpError } = await tempClient.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            role: 'admin'
-          }
-        }
-      });
-
-      if (signUpError) throw signUpError;
+      await usersApi.create({ email, password, role: 'admin' });
 
       setMessage(`Administrador ${email} criado com sucesso!`);
       setEmail('');
       setPassword('');
     } catch (err) {
-      setError(err.message || 'Erro ao criar usuário. Verifique as configurações do Supabase.');
+      setError(err.message || 'Erro ao criar usuário.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -119,7 +106,7 @@ const ManageUsers = () => {
         </form>
 
         <div className="manage-footer">
-          <p>⚠️ <strong>Aviso:</strong> Certifique-se de que a opção "Confirm Email" está <strong>desabilitada</strong> no seu painel do Supabase para o usuário ser criado instantaneamente.</p>
+          <p>⚠️ <strong>Aviso:</strong> A senha definida é temporária — o novo administrador será obrigado a trocá-la no primeiro acesso.</p>
         </div>
       </div>
 
@@ -255,6 +242,10 @@ const ManageUsers = () => {
         }
         @media (max-width: 600px) {
           .form-row { grid-template-columns: 1fr; }
+          .manage-users-container { padding: 1.5rem 1rem; }
+          .manage-card { padding: 1.75rem 1.25rem; }
+          .manage-header { margin-bottom: 2rem; }
+          .manage-header h1 { font-size: 1.6rem; }
         }
       `}</style>
     </div>

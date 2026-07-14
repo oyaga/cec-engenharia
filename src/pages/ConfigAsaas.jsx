@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Settings, Save, ShieldCheck, Eye, EyeOff, Loader2, Copy, Check, AlertCircle, RefreshCw } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { settingsApi } from '../services/financial'
+import { testAsaasConnection } from '../services/asaas'
 import { useAuth } from '../contexts/AuthContext'
-import { clearAsaasCache } from '../services/asaas'
 
 export default function ConfigAsaas() {
     const { userProfile, loading: authLoading } = useAuth()
     const [apiKey, setApiKey] = useState('')
+    const [keyConfigured, setKeyConfigured] = useState(false)
     const [environment, setEnvironment] = useState('sandbox')
     const [maxInstallmentsCard, setMaxInstallmentsCard] = useState('10')
     const [maxInstallmentsFinancing, setMaxInstallmentsFinancing] = useState('6')
@@ -27,35 +28,18 @@ export default function ConfigAsaas() {
         const loadAsaasSettings = async () => {
             setLoadingData(true)
             try {
-                const { data, error } = await supabase
-                    .from('system_settings')
-                    .select('key, value')
-                    .in('key', [
-                        'asaas_api_key',
-                        'asaas_environment',
-                        'asaas_max_installments_card',
-                        'asaas_max_installments_financing',
-                        'asaas_pix_discount_percent'
-                    ])
+                const { settings } = await settingsApi.list()
+                const byKey = Object.fromEntries((settings || []).map(s => [s.key, s]))
 
-                if (error) throw error
-
-                if (data) {
-                    const keySetting = data.find(s => s.key === 'asaas_api_key')
-                    const envSetting = data.find(s => s.key === 'asaas_environment')
-                    const maxCardSetting = data.find(s => s.key === 'asaas_max_installments_card')
-                    const maxFinancingSetting = data.find(s => s.key === 'asaas_max_installments_financing')
-                    const pixDiscountSetting = data.find(s => s.key === 'asaas_pix_discount_percent')
-
-                    if (keySetting && keySetting.value) setApiKey(keySetting.value)
-                    if (envSetting && envSetting.value) setEnvironment(envSetting.value)
-                    if (maxCardSetting && maxCardSetting.value) setMaxInstallmentsCard(maxCardSetting.value)
-                    if (maxFinancingSetting && maxFinancingSetting.value) setMaxInstallmentsFinancing(maxFinancingSetting.value)
-                    if (pixDiscountSetting && pixDiscountSetting.value) setPixDiscount(pixDiscountSetting.value)
-                }
+                // A chave nunca é devolvida ao browser (C1/C2): só sabemos se está definida.
+                setKeyConfigured(!!byKey['asaas_api_key']?.is_set)
+                if (byKey['asaas_environment']?.value) setEnvironment(byKey['asaas_environment'].value)
+                if (byKey['asaas_max_installments_card']?.value) setMaxInstallmentsCard(byKey['asaas_max_installments_card'].value)
+                if (byKey['asaas_max_installments_financing']?.value) setMaxInstallmentsFinancing(byKey['asaas_max_installments_financing'].value)
+                if (byKey['asaas_pix_discount_percent']?.value) setPixDiscount(byKey['asaas_pix_discount_percent'].value)
             } catch (err) {
                 console.error('Erro ao buscar chaves do Asaas:', err)
-                setFeedback({ type: 'error', message: 'Falha ao buscar configurações salvas no banco.' })
+                setFeedback({ type: 'error', message: 'Falha ao buscar configurações salvas.' })
             } finally {
                 setLoadingData(false)
             }
@@ -71,34 +55,24 @@ export default function ConfigAsaas() {
     }
 
     const handleTestConnection = async () => {
+        if (!apiKey.trim()) {
+            setConnectionStatus({ connected: false, message: 'Digite a chave de API para testar.' })
+            return
+        }
         setTestingConnection(true)
         setConnectionStatus(null)
         try {
-            let baseUrl = environment === 'sandbox'
-                ? 'https://sandbox.asaas.com/api/v3'
-                : 'https://api.asaas.com/api/v3'
-
-            // Usar proxy no desenvolvimento local para evitar erros de CORS
-            if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-                baseUrl = environment === 'sandbox'
-                    ? '/asaas-sandbox'
-                    : '/asaas-production'
-            }
-
-            const response = await fetch(`${baseUrl}/myAccount`, {
-                headers: { 'access_token': apiKey }
-            })
-
-            if (response.ok) {
-                const data = await response.json()
+            // Teste feito no backend (chave nunca sai pro Asaas pelo browser;
+            // funciona em produção, sem depender do proxy do Vite).
+            const data = await testAsaasConnection(apiKey.trim(), environment)
+            if (data.connected) {
                 setConnectionStatus({ connected: true, name: data.name, cpfCnpj: data.cpfCnpj })
             } else {
-                const errData = await response.json().catch(() => ({}))
-                setConnectionStatus({ connected: false, message: errData.errors?.[0]?.description || 'Erro de autenticação (API Key inválida).' })
+                setConnectionStatus({ connected: false, message: data.message || 'API Key inválida.' })
             }
         } catch (err) {
             console.error("Erro ao testar conexão:", err)
-            setConnectionStatus({ connected: false, message: 'Erro de rede ou CORS ao conectar ao Asaas.' })
+            setConnectionStatus({ connected: false, message: err?.message || 'Erro ao testar conexão.' })
         } finally {
             setTestingConnection(false)
         }
@@ -110,30 +84,22 @@ export default function ConfigAsaas() {
         setFeedback({ type: '', message: '' })
 
         try {
-            const settingsToSave = [
-                { key: 'asaas_api_key', value: apiKey },
-                { key: 'asaas_environment', value: environment },
-                { key: 'asaas_max_installments_card', value: maxInstallmentsCard },
-                { key: 'asaas_max_installments_financing', value: maxInstallmentsFinancing },
-                { key: 'asaas_pix_discount_percent', value: pixDiscount }
-            ]
+            const toSave = {
+                asaas_environment: environment,
+                asaas_max_installments_card: maxInstallmentsCard,
+                asaas_max_installments_financing: maxInstallmentsFinancing,
+                asaas_pix_discount_percent: pixDiscount,
+            }
+            // Só envia a chave se o admin digitou uma nova (vazio mantém a atual no servidor).
+            if (apiKey) toSave.asaas_api_key = apiKey
 
-            const { error } = await supabase
-                .from('system_settings')
-                .upsert(
-                    settingsToSave.map(s => ({ ...s, updated_at: new Date() })),
-                    { onConflict: 'key' }
-                )
+            await settingsApi.save(toSave)
 
-            if (error) throw error
-
-            // Limpar cache de credenciais do Asaas
-            clearAsaasCache()
-
-            setFeedback({ type: 'success', message: 'Configurações do Asaas salvas e aplicadas com sucesso!' })
+            if (apiKey) { setKeyConfigured(true); setApiKey('') }
+            setFeedback({ type: 'success', message: 'Configurações do Asaas salvas com sucesso!' })
         } catch (err) {
             console.error('Erro ao salvar chaves do Asaas:', err)
-            setFeedback({ type: 'error', message: 'Erro ao tentar salvar as chaves no banco de dados.' })
+            setFeedback({ type: 'error', message: 'Erro ao salvar as configurações.' })
         } finally {
             setSaving(false)
         }
@@ -209,10 +175,9 @@ export default function ConfigAsaas() {
                             <input
                                 type={showKey ? 'text' : 'password'}
                                 className="form-control"
-                                placeholder="Cole a chave da sua conta Asaas aqui"
+                                placeholder={keyConfigured ? 'Chave configurada — deixe em branco para manter' : 'Cole a chave da sua conta Asaas aqui'}
                                 value={apiKey}
                                 onChange={(e) => setApiKey(e.target.value)}
-                                required
                                 style={{ width: '100%', padding: '0.75rem 2.5rem 0.75rem 0.75rem', border: '1px solid var(--border-color)', borderRadius: '6px' }}
                             />
                             <button
@@ -275,8 +240,8 @@ export default function ConfigAsaas() {
                         <label className="form-label" style={{ fontWeight: '600', marginBottom: '0.5rem', display: 'block', fontSize: '0.95rem' }}>
                             🔗 Webhook URL (configurar no painel Asaas):
                         </label>
-                        <div style={{ backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                            <code style={{ fontSize: '0.85rem', color: 'var(--primary)', wordBreak: 'break-all' }}>
+                        <div style={{ backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                            <code style={{ fontSize: '0.85rem', color: 'var(--primary)', wordBreak: 'break-all', minWidth: 0, flex: '1 1 200px' }}>
                                 https://webhook.cursocec.com.br/webhook/asaas-payment
                             </code>
                             <button

@@ -1,253 +1,149 @@
-import { supabase } from '../lib/supabase';
-
-let cachedBase = null;
-let cachedKey = null;
+// Cliente Asaas — agora um PROXY para o backend Go.
+// A chave do Asaas NUNCA vai ao browser (corrige C2): fica server-side e é
+// usada apenas pelos endpoints /payments/* e /public/checkout do nosso backend.
+import { request } from '../lib/api';
 
 export function clearAsaasCache() {
-  cachedBase = null;
-  cachedKey = null;
-  console.log('[Asaas Service] Cache de credenciais do Asaas limpo.');
+  // Sem cache de credenciais no cliente (a chave não vive mais aqui).
 }
 
-// Buscar configurações do Asaas do banco
+// Configurações de exibição (parcelas/desconto). Best-effort via /settings.
 export const getAsaasSettings = async () => {
-  if (cachedBase && cachedKey) {
-    return {
-      api_key: cachedKey,
-      base_url: cachedBase,
-      max_installments: 10,
-      pix_discount: 15
-    };
-  }
-
-  const { data, error } = await supabase
-    .from('system_settings')
-    .select('key, value')
-    .in('key', [
-      'asaas_api_key', 
-      'asaas_environment',
-      'asaas_max_installments_card',
-      'asaas_pix_discount_percent'
-    ]);
-  
-  if (error) {
-    console.warn('[Asaas Service] Erro ao carregar credenciais do system_settings:', error);
-  }
-
-  const settings = {};
-  data?.forEach(row => settings[row.key] = row.value);
-  
-  const apiKey = settings.asaas_api_key || '';
-  let baseUrl = settings.asaas_environment === 'production'
-    ? 'https://api.asaas.com/api/v3'
-    : 'https://sandbox.asaas.com/api/v3';
-
-  // Usar proxy no desenvolvimento local para evitar erros de CORS
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    baseUrl = settings.asaas_environment === 'production'
-      ? '/asaas-production'
-      : '/asaas-sandbox';
-  }
-
-  // Cachear para evitar múltiplas queries desnecessárias
-  cachedKey = apiKey;
-  cachedBase = baseUrl;
-
-  return {
-    api_key: apiKey,
-    base_url: baseUrl,
-    max_installments: parseInt(settings.asaas_max_installments_card) || 10,
-    pix_discount: parseInt(settings.asaas_pix_discount_percent) || 15
-  };
-};
-
-// Helper para chamadas à API
-export const asaasRequest = async (endpoint, method = 'GET', body = null) => {
-  const settings = await getAsaasSettings();
-  
-  if (!settings.api_key) {
-    throw new Error('API Key do Asaas não configurada. Vá em Configurações Asaas.');
-  }
-  
-  const options = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'access_token': settings.api_key
-    }
-  };
-  
-  if (body) options.body = JSON.stringify(body);
-  
-  const response = await fetch(`${settings.base_url}${endpoint}`, options);
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.errors?.[0]?.description || 'Erro na API do Asaas');
-  }
-  
-  return response.json();
-};
-
-// ═══════════════════════════════════════
-// CLIENTES
-// ═══════════════════════════════════════
-
-// Criar ou buscar cliente no Asaas
-export const createOrFindCustomer = async (studentData) => {
-  const cleanCpf = studentData.cpf.replace(/\D/g, '');
-  
-  // Primeiro tenta buscar pelo CPF
+  const defaults = { max_installments: 10, pix_discount: 15 };
   try {
-    const existing = await asaasRequest(`/customers?cpfCnpj=${cleanCpf}`);
-    if (existing.data && existing.data.length > 0) {
-      return existing.data[0];
-    }
-  } catch (e) {
-    console.warn('[Asaas Service] Erro ao buscar cliente pelo CPF:', e);
+    const { settings } = await request('/settings');
+    const map = {};
+    (settings || []).forEach(s => { map[s.key] = s.value; });
+    return {
+      max_installments: parseInt(map.asaas_max_installments_card) || defaults.max_installments,
+      pix_discount: parseInt(map.asaas_pix_discount_percent) || defaults.pix_discount,
+    };
+  } catch {
+    return defaults;
   }
-  
-  // Criar novo cliente se não encontrou
-  return await asaasRequest('/customers', 'POST', {
-    name: studentData.name,
-    cpfCnpj: cleanCpf,
-    email: studentData.email,
-    phone: studentData.phone,
-    mobilePhone: studentData.phone,
-    externalReference: studentData.id // ID do aluno no Supabase
-  });
 };
 
-// ═══════════════════════════════════════
-// COBRANÇAS
-// ═══════════════════════════════════════
-
-// Criar cobrança PIX
-export const createPixPayment = async (customerId, value, description) => {
-  return await asaasRequest('/payments', 'POST', {
-    customer: customerId,
-    billingType: 'PIX',
-    value: parseFloat(value),
-    dueDate: new Date().toISOString().split('T')[0],
-    description: description,
-    externalReference: `cec_pix_${Date.now()}`
-  });
-};
-
-// Gerar QR Code PIX
-export const getPixQrCode = async (paymentId) => {
-  return await asaasRequest(`/payments/${paymentId}/pixQrCode`);
-};
-
-// Criar cobrança Boleto
-export const createBoletoPayment = async (customerId, value, description, dueDate) => {
-  return await asaasRequest('/payments', 'POST', {
-    customer: customerId,
-    billingType: 'BOLETO',
-    value: parseFloat(value),
-    dueDate: dueDate,
-    description: description,
-    externalReference: `cec_boleto_${Date.now()}`
-  });
-};
-
-// Criar cobrança Cartão de Crédito
-export const createCardPayment = async (customerId, value, description, installments, cardData) => {
-  const installmentValue = (parseFloat(value) / parseInt(installments)).toFixed(2);
-  
-  return await asaasRequest('/payments', 'POST', {
-    customer: customerId,
-    billingType: 'CREDIT_CARD',
-    value: parseFloat(value),
-    dueDate: new Date().toISOString().split('T')[0],
-    description: description,
-    installmentCount: parseInt(installments),
-    installmentValue: parseFloat(installmentValue),
-    externalReference: `cec_card_${Date.now()}`,
-    creditCard: {
-      holderName: cardData.holderName,
-      number: cardData.number.replace(/\s/g, ''),
-      expiryMonth: cardData.expiryMonth,
-      expiryYear: cardData.expiryYear,
-      ccv: cardData.ccv
+// ─── Clientes ───
+export const createOrFindCustomer = async (studentData) => {
+  return request('/payments/customer', {
+    method: 'POST',
+    body: {
+      name: studentData.name,
+      cpf: (studentData.cpf || '').replace(/\D/g, ''),
+      email: studentData.email,
+      phone: studentData.phone,
+      id: studentData.id,
     },
-    creditCardHolderInfo: {
-      name: cardData.holderName,
-      cpfCnpj: cardData.cpf.replace(/\D/g, ''),
-      email: cardData.email,
-      phone: cardData.phone,
-      postalCode: cardData.postalCode.replace(/\D/g, ''),
-      addressNumber: cardData.addressNumber
-    }
   });
 };
 
-// Criar link de pagamento (para site público e Maria Antônia)
-export const createPaymentLink = async (courseData) => {
-  return await asaasRequest('/paymentLinks', 'POST', {
-    name: courseData.title,
-    description: `Matrícula no curso ${courseData.title} (${courseData.code})`,
-    endDate: null, // sem expiração
-    value: parseFloat(courseData.price_card || 0),
-    billingType: 'UNDEFINED', // cliente escolhe PIX, Boleto ou Cartão
-    chargeType: 'DETACHED',
-    maxInstallmentCount: parseInt(courseData.max_installments) || 10,
-    dueDateLimitDays: 10,
-    subscriptionCycle: null,
-    externalReference: `course_${courseData.id}`
+// ─── Cobranças ───
+const today = () => new Date().toISOString().split('T')[0];
+
+export const createPixPayment = (customerId, value, description) =>
+  request('/payments/create', {
+    method: 'POST',
+    body: { customer: customerId, billingType: 'PIX', value: parseFloat(value), dueDate: today(), description },
+  });
+
+export const getPixQrCode = (paymentId) => request(`/payments/${paymentId}/pix-qrcode`);
+
+export const createBoletoPayment = (customerId, value, description, dueDate) =>
+  request('/payments/create', {
+    method: 'POST',
+    body: { customer: customerId, billingType: 'BOLETO', value: parseFloat(value), dueDate: dueDate || today(), description },
+  });
+
+export const createCardPayment = (customerId, value, description, installments, cardData) => {
+  const installmentValue = (parseFloat(value) / parseInt(installments)).toFixed(2);
+  return request('/payments/create', {
+    method: 'POST',
+    body: {
+      customer: customerId, billingType: 'CREDIT_CARD', value: parseFloat(value), dueDate: today(),
+      description, installmentCount: parseInt(installments), installmentValue: parseFloat(installmentValue),
+      creditCard: {
+        holderName: cardData.holderName,
+        number: (cardData.number || '').replace(/\s/g, ''),
+        expiryMonth: cardData.expiryMonth,
+        expiryYear: cardData.expiryYear,
+        ccv: cardData.ccv,
+      },
+      creditCardHolderInfo: {
+        name: cardData.holderName,
+        cpfCnpj: (cardData.cpf || '').replace(/\D/g, ''),
+        email: cardData.email,
+        phone: cardData.phone,
+        postalCode: (cardData.postalCode || '').replace(/\D/g, ''),
+        addressNumber: cardData.addressNumber,
+      },
+    },
   });
 };
 
-// Consultar status de pagamento
+export const createPaymentLink = (courseData) =>
+  request('/payments/link', {
+    method: 'POST',
+    body: {
+      name: courseData.title,
+      description: `Matrícula no curso ${courseData.title} (${courseData.code || ''})`,
+      value: parseFloat(courseData.price_card || 0),
+      billingType: 'UNDEFINED',
+      chargeType: 'DETACHED',
+      maxInstallmentCount: parseInt(courseData.max_installments) || 10,
+      dueDateLimitDays: 10,
+      externalReference: `course_${courseData.id}`,
+    },
+  });
+
 export const getPaymentStatus = async (paymentId) => {
-  return await asaasRequest(`/payments/${paymentId}`);
+  const res = await request(`/payments/${paymentId}/status`);
+  return res.payment || res;
 };
 
-// Listar cobranças de um cliente
-export const listCustomerPayments = async (customerId) => {
-  return await asaasRequest(`/payments?customer=${customerId}`);
-};
+export const listCustomerPayments = (customerId) => request(`/payments?customer=${encodeURIComponent(customerId)}`);
 
-// ═══════════════════════════════════════
-// FINANCIAMENTO PRÓPRIO C&C
-// ═══════════════════════════════════════
+// Testa uma chave Asaas server-side (não expõe a chave no browser).
+export const testAsaasConnection = (apiKey, environment) =>
+  request('/payments/test-connection', { method: 'POST', body: { api_key: apiKey, environment } });
 
-// Criar parcelamento no financiamento próprio (múltiplas cobranças)
+// Busca cobranças por referência externa (ex.: id da inscrição).
+export const searchPaymentsByRef = (ref) => request(`/payments?ref=${encodeURIComponent(ref)}`);
+
+// Lista as últimas cobranças do Asaas (sincronização admin).
+export const listAllPayments = () => request('/payments?all=true');
+
+// Financiamento próprio C&C — múltiplos boletos mensais.
 export const createFinancingPayment = async (customerId, totalValue, installments, description) => {
   const installmentValue = (parseFloat(totalValue) / parseInt(installments)).toFixed(2);
   const payments = [];
-  
   for (let i = 0; i < installments; i++) {
     const dueDate = new Date();
     dueDate.setMonth(dueDate.getMonth() + i + 1);
-    
-    const payment = await asaasRequest('/payments', 'POST', {
-      customer: customerId,
-      billingType: 'BOLETO',
-      value: parseFloat(installmentValue),
-      dueDate: dueDate.toISOString().split('T')[0],
-      description: `${description} - Parcela ${i + 1}/${installments}`,
-      externalReference: `cec_financing_${Date.now()}_${i + 1}`
+    const payment = await request('/payments/create', {
+      method: 'POST',
+      body: {
+        customer: customerId, billingType: 'BOLETO', value: parseFloat(installmentValue),
+        dueDate: dueDate.toISOString().split('T')[0],
+        description: `${description} - Parcela ${i + 1}/${installments}`,
+      },
     });
-    
     payments.push(payment);
   }
-  
   return payments;
 };
 
-// Objeto agrupado para retrocompatibilidade
+// Checkout público do site (uma chamada) — cria cobrança pelo backend.
+export const publicCheckout = (payload) =>
+  request('/public/checkout', { method: 'POST', auth: false, body: payload });
+
+// Objeto agrupado para retrocompatibilidade.
 export const asaas = {
   createCustomer: createOrFindCustomer,
-  createPayment: async (data) => {
-    // Adapter do placeholder para retrocompatibilidade
-    return await asaasRequest('/payments', 'POST', data);
-  },
+  createPayment: (data) => request('/payments/create', { method: 'POST', body: data }),
   getPixQrCode,
   generateBoleto: async (paymentId) => {
-    const settings = await getAsaasSettings();
-    const domain = settings.base_url.replace(/\/api\/v3\/?$/, '');
-    return { success: true, url: `${domain}/d/b/${paymentId}` };
+    const p = await getPaymentStatus(paymentId);
+    return { success: true, url: p?.bankSlipUrl || p?.invoiceUrl || '' };
   },
   getPaymentStatus,
   createOrFindCustomer,
@@ -257,5 +153,6 @@ export const asaas = {
   createPaymentLink,
   listCustomerPayments,
   createFinancingPayment,
-  clearAsaasCache
+  publicCheckout,
+  clearAsaasCache,
 };

@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
 
 export default function Layout() {
-    const { userProfile } = useAuth()
+    const { userProfile, logout } = useAuth()
     const navigate = useNavigate()
     const [menuOpen, setMenuOpen] = useState(false)
     const menuRef = useRef(null)
@@ -22,7 +21,7 @@ export default function Layout() {
     }, [])
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut()
+        logout()
         navigate('/login')
     }
 

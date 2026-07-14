@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { usersApi } from '../services/users';
+import { messagesApi } from '../services/misc';
+import { getToken, API_BASE } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   MessageSquare, 
@@ -25,7 +27,16 @@ export default function StaffChat() {
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
   const messagesContainerRef = useRef(null);
+  const wsRef = useRef(null);
+  const selectedContactRef = useRef(null);
+  const myIdRef = useRef(null);
+  const reconnectRef = useRef(null);
+
+  // refs para o handler do WS não pegar estado defasado (stale closure)
+  useEffect(() => { selectedContactRef.current = selectedContact; }, [selectedContact]);
+  useEffect(() => { myIdRef.current = userProfile?.id || null; }, [userProfile]);
 
   // Auto-scroll para a última mensagem
   const scrollToBottom = (smooth = true) => {
@@ -49,31 +60,13 @@ export default function StaffChat() {
     if (!userProfile?.id) return;
     if (showLoader) setLoadingContacts(true);
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, full_name, email, role')
-        .in('role', ['admin', 'coordenador', 'atendente', 'administrativo'])
-        .neq('id', userProfile.id)
-        .order('full_name', { ascending: true });
-
-      if (error) throw error;
-
-      // Para cada colaborador, vamos buscar se tem alguma mensagem não lida
-      const collaboratorsWithUnread = await Promise.all((data || []).map(async (collab) => {
-        const { count, error: countError } = await supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('sender_id', collab.id)
-          .eq('receiver_id', userProfile.id)
-          .eq('is_read', false);
-
-        return {
-          ...collab,
-          unreadCount: !countError ? count : 0
-        };
-      }));
-
-      setCollaborators(collaboratorsWithUnread);
+      const { users } = await usersApi.list(['admin', 'coordenador', 'atendente', 'administrativo']);
+      const data = (users || []).filter(u => u.id !== userProfile.id);
+      // Preserva os "não lidos" já contabilizados (não zera a cada refresh).
+      setCollaborators(prev => {
+        const unread = Object.fromEntries(prev.map(c => [c.id, c.unreadCount || 0]));
+        return data.map(c => ({ ...c, unreadCount: unread[c.id] || 0 }));
+      });
     } catch (err) {
       console.error('Erro ao carregar colaboradores:', err);
     } finally {
@@ -90,28 +83,9 @@ export default function StaffChat() {
     if (!userProfile?.id || !contact?.id) return;
     if (showLoader) setLoadingMessages(true);
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${userProfile.id},receiver_id.eq.${contact.id}),and(sender_id.eq.${contact.id},receiver_id.eq.${userProfile.id})`)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setChatMessages(data || []);
-
-      // Marcar mensagens recebidas como lidas no banco
-      const unreadReceived = (data || []).filter(m => m.sender_id === contact.id && m.receiver_id === userProfile.id && !m.is_read);
-      if (unreadReceived.length > 0) {
-        await supabase
-          .from('messages')
-          .update({ is_read: true })
-          .eq('sender_id', contact.id)
-          .eq('receiver_id', userProfile.id)
-          .eq('is_read', false);
-
-        // Atualizar lista de contatos para limpar contadores de não lidas localmente
-        setCollaborators(prev => prev.map(c => c.id === contact.id ? { ...c, unreadCount: 0 } : c));
-      }
+      const { messages } = await messagesApi.list(contact.id);
+      setChatMessages(messages || []);
+      setCollaborators(prev => prev.map(c => c.id === contact.id ? { ...c, unreadCount: 0 } : c));
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
     } finally {
@@ -126,17 +100,72 @@ export default function StaffChat() {
     }
   }, [selectedContact]);
 
-  // Polling a cada 4 segundos para carregar novas mensagens e atualizar status de não lidos
+  // Fallback lento (25s): rede de segurança caso o WebSocket caia.
+  // O tempo real de verdade vem do WebSocket abaixo.
   useEffect(() => {
     const interval = setInterval(() => {
       if (selectedContact) {
         fetchMessages(selectedContact, false);
       }
       fetchCollaborators(false);
-    }, 4000);
+    }, 25000);
 
     return () => clearInterval(interval);
   }, [selectedContact, userProfile]);
+
+  // WebSocket: recebimento de mensagens em tempo real (com reconexão automática).
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    let closedByUs = false;
+    let attempt = 0;
+
+    const connect = () => {
+      const token = getToken();
+      if (!token) return;
+      const base = API_BASE.startsWith('http')
+        ? API_BASE.replace(/^http/, 'ws')
+        : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${API_BASE}`;
+      const ws = new WebSocket(`${base}/ws/chat?token=${encodeURIComponent(token)}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => { attempt = 0; setWsConnected(true); };
+
+      ws.onmessage = (ev) => {
+        let data;
+        try { data = JSON.parse(ev.data); } catch { return; }
+        if (data.type !== 'message' || !data.message) return;
+        const msg = data.message;
+        const myId = myIdRef.current;
+        const partnerId = msg.sender_id === myId ? msg.receiver_id : msg.sender_id;
+        const openId = selectedContactRef.current?.id;
+
+        if (partnerId === openId) {
+          // conversa aberta: anexa (dedup por id — evita duplicar o próprio eco)
+          setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        } else if (msg.sender_id !== myId) {
+          // conversa fechada: incrementa não-lidos do remetente
+          setCollaborators(prev => prev.map(c => c.id === partnerId ? { ...c, unreadCount: (c.unreadCount || 0) + 1 } : c));
+        }
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        if (closedByUs) return;
+        attempt += 1;
+        const delay = Math.min(1000 * attempt, 10000); // backoff até 10s
+        reconnectRef.current = setTimeout(connect, delay);
+      };
+
+      ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+    };
+
+    connect();
+    return () => {
+      closedByUs = true;
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      if (wsRef.current) { try { wsRef.current.close(); } catch { /* noop */ } }
+    };
+  }, [userProfile?.id]);
 
   // 3. Enviar mensagem
   const handleSendMessage = async (e) => {
@@ -148,23 +177,9 @@ export default function StaffChat() {
     setNewMessage('');
 
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([
-          {
-            sender_id: userProfile.id,
-            receiver_id: selectedContact.id,
-            content: textToSend,
-            is_read: false
-          }
-        ])
-        .select();
-
-      if (error) throw error;
-      
-      // Adicionar na lista local imediatamente para melhor experiência
-      if (data && data[0]) {
-        setChatMessages(prev => [...prev, data[0]]);
+      const { message } = await messagesApi.create({ receiver_id: selectedContact.id, content: textToSend });
+      if (message) {
+        setChatMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
       }
     } catch (err) {
       alert('Erro ao enviar mensagem: ' + err.message);
@@ -215,6 +230,10 @@ export default function StaffChat() {
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 900, margin: '0 0 1rem 0', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Sparkles size={18} color="var(--primary)" /> Chat da Equipe
+            <span title={wsConnected ? 'Tempo real conectado' : 'Reconectando...'} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', fontWeight: 700, color: wsConnected ? '#059669' : '#94a3b8' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: wsConnected ? '#10b981' : '#cbd5e1', boxShadow: wsConnected ? '0 0 0 3px rgba(16,185,129,0.15)' : 'none' }} />
+              {wsConnected ? 'Online' : 'Reconectando'}
+            </span>
           </h2>
           
           {/* Campo de Busca */}
@@ -559,7 +578,7 @@ export default function StaffChat() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .chat-contacts-panel {
             width: 100% !important;
             display: ${selectedContact ? 'none' : 'flex'} !important;

@@ -1,0 +1,13 @@
+# Ignore específico do build unificado (BuildKit usa este no lugar do .dockerignore).
+# Aqui NÃO ignoramos backend/ (precisamos dele), só os artefatos.
+node_modules
+dist
+.git
+*.log
+.env
+.env.local
+backend/uploads
+backend/bin
+backend/tmp
+backend/cec-api
+backend/cec-api.exe

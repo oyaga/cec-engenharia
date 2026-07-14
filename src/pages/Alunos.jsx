@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { studentsApi, classesApi, coursesApi } from '../services/academic'
+import { financialApi, evaluationsApi, settingsApi, auditApi } from '../services/financial'
+import { lmsApi } from '../services/lms'
+import { usersApi } from '../services/users'
+import { uploadFile, authApi } from '../lib/api'
 import { generateDocument } from '../lib/pdfGenerator'
 import { Search, Plus, Filter, Eye, Printer, FileText, FileBadge, Award, UploadCloud, Paperclip, Lock, Unlock, BookOpen, CheckSquare, Activity, Key, Clock, X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -127,20 +132,8 @@ export default function Alunos() {
 
                 for (const doc of docsToSign) {
                     if (doc.url) {
-                        const parts = doc.url.split('/object/public/student_documents/')
-                        const filePath = parts.length > 1 ? parts[1] : null
-                        if (filePath) {
-                            try {
-                                const { data, error } = await supabase.storage
-                                    .from('student_documents')
-                                    .createSignedUrl(filePath, 900) // 15 min
-                                if (!error && data) {
-                                    urls[doc.key] = data.signedUrl
-                                }
-                            } catch (e) {
-                                console.warn('[Segurança] Falha ao assinar URL de storage:', e)
-                            }
-                        }
+                        // Storage do backend serve por URL direta.
+                        urls[doc.key] = doc.url
                     }
                 }
 
@@ -148,24 +141,7 @@ export default function Alunos() {
                     const signedExams = []
                     for (const exam of std.doc_exams_url) {
                         if (exam.url) {
-                            const parts = exam.url.split('/object/public/student_documents/')
-                            const filePath = parts.length > 1 ? parts[1] : null
-                            if (filePath) {
-                                try {
-                                    const { data, error } = await supabase.storage
-                                        .from('student_documents')
-                                        .createSignedUrl(filePath, 900)
-                                    if (!error && data) {
-                                        signedExams.push({ ...exam, url: data.signedUrl })
-                                    } else {
-                                        signedExams.push(exam)
-                                    }
-                                } catch (e) {
-                                    signedExams.push(exam)
-                                }
-                            } else {
-                                signedExams.push(exam)
-                            }
+                            signedExams.push(exam)
                         } else {
                             signedExams.push(exam)
                         }
@@ -331,52 +307,29 @@ export default function Alunos() {
         try {
             const credentialsPassword = `CEC@${Math.floor(100000 + Math.random() * 900000)}`;
 
-            const { data: existingUser } = await supabase
-                .from('users')
-                .select('id')
-                .eq('email', student.originalData.email)
-                .single();
-
-            let userId = existingUser?.id;
-
-            if (!userId) {
-                const { data: { session } } = await supabase.auth.getSession();
-                const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session?.access_token}`
-                    },
-                    body: JSON.stringify({
-                        action: 'create',
-                        email: student.originalData.email,
-                        password: credentialsPassword,
-                        name: student.name,
-                        cpf: student.originalData.cpf || student.cpf,
-                        phone: student.originalData.phone,
-                        role: 'aluno'
-                    })
+            // Cria o login do aluno (ignora se já existir).
+            let userId = null;
+            try {
+                const { user } = await usersApi.create({
+                    email: student.originalData.email,
+                    password: credentialsPassword,
+                    role: 'aluno',
+                    full_name: student.name,
+                    cpf: student.originalData.cpf || student.cpf,
+                    phone: student.originalData.phone,
                 });
-
-                if (response.ok) {
-                    const resData = await response.json();
-                    userId = resData.userId;
-                } else {
-                    const errData = await response.json().catch(() => ({}));
-                    console.error("Erro ao criar usuário auth:", errData);
-                }
+                userId = user?.id;
+            } catch (e) {
+                console.warn('Login do aluno já existe ou falhou:', e.message);
             }
 
-            await supabase.from('students').update({
-                user_id: userId,
+            await studentsApi.update(student.id, {
+                ...(userId ? { user_id: userId } : {}),
                 payment_status: 'pago',
-                asaas_customer_id: payment.customer,
-                asaas_payment_id: payment.id
-            }).eq('id', student.id);
+            });
 
-            await supabase.from('financial_records').insert({
+            await financialApi.createRecord({
                 student_id: student.id,
-                course_id: student.originalData.classes?.course_id || null,
                 type: 'receita',
                 category: 'matricula',
                 amount: payment.value,
@@ -411,12 +364,13 @@ export default function Alunos() {
     const handleEvalSubmit = async (student_id, class_id) => {
         if (!evalData.grade || !evalData.date) return alert("Preencha a nota e a data.")
         const payload = { ...evalData, student_id, class_id, grade: parseFloat(evalData.grade) }
-        const { error } = await supabase.from('student_evaluations').insert([payload])
-        if (error) alert("Erro ao lançar nota: " + error.message)
-        else {
+        try {
+            await evaluationsApi.create(payload)
             alert("Lançamento de Avaliação efetuado com sucesso!")
             setEvalData({ exam_type: 'TEORICA', attempt: 1, grade: '', retraining_hours: 0, date: new Date().toISOString().split('T')[0] })
             fetchStudents()
+        } catch (err) {
+            alert("Erro ao lançar nota: " + err.message)
         }
     }
 
@@ -451,22 +405,12 @@ export default function Alunos() {
         }
 
         try {
-            const { createClient } = await import('@supabase/supabase-js')
-            const tempSupabase = createClient(
-                import.meta.env.VITE_SUPABASE_URL,
-                import.meta.env.VITE_SUPABASE_ANON_KEY,
-                { auth: { persistSession: false } }
-            )
+            const result = await authApi.verifyManager(authEmail, authPassword)
 
-            const { data: authData, error: authErr } = await tempSupabase.auth.signInWithPassword({
-                email: authEmail,
-                password: authPassword
-            })
-
-            if (authErr || !authData?.user) {
+            if (!result?.valid && !result?.role) {
                 const nextAttempts = authAttempts + 1
                 setAuthAttempts(nextAttempts)
-                
+
                 if (nextAttempts >= 3) {
                     const blockTime = Date.now() + 5 * 60 * 1000 // 5 minutos de bloqueio
                     setAuthBlockedUntil(blockTime)
@@ -478,13 +422,9 @@ export default function Alunos() {
                 return
             }
 
-            const { data: profile, error: profErr } = await tempSupabase
-                .from('users')
-                .select('role, full_name')
-                .eq('id', authData.user.id)
-                .single()
+            const profile = { role: result.role, full_name: result.full_name }
 
-            if (profErr || !profile || !['admin', 'coordenador'].includes(profile.role)) {
+            if (!result.valid || !['admin', 'coordenador'].includes(profile.role)) {
                 const nextAttempts = authAttempts + 1
                 setAuthAttempts(nextAttempts)
                 if (nextAttempts >= 3) {
@@ -520,34 +460,16 @@ export default function Alunos() {
             setAuthPassword('')
             setAuthEmail('')
 
-            // Gravar logs em public.audit_logs
+            // Log de auditoria
             try {
-                await supabase.from('audit_logs').insert({
-                    action: `AUTORIZACAO_GESTOR_${selectedAction.toUpperCase().replace(/\s/g, '_')}`,
-                    entity_type: 'students',
-                    entity_id: null,
-                    details: {
-                        requester: userProfile?.email || 'atendente@cec.com.br',
-                        authorizer: authEmail,
-                        action: selectedAction,
-                        result: 'sucesso',
-                        timestamp: new Date().toISOString()
-                    }
-                })
+                await auditApi.record(
+                    `AUTORIZACAO_GESTOR_${selectedAction.toUpperCase().replace(/\s/g, '_')}`,
+                    'students',
+                    null,
+                    { requester: userProfile?.email || 'atendente', authorizer: authEmail, action: selectedAction, result: 'sucesso' }
+                )
             } catch (logErr) {
-                console.warn('[Segurança] Erro ao gravar log em audit_logs (usando fallback system_settings):', logErr)
-                // Fallback de contingência se a tabela audit_logs falhar por qualquer RLS anterior
-                const timestamp = Date.now()
-                await supabase.from('system_settings').upsert({
-                    key: `auth_log_${timestamp}`,
-                    value: JSON.stringify({
-                        requester: userProfile?.email || 'atendente@cec.com.br',
-                        authorizer: authEmail,
-                        action: selectedAction,
-                        timestamp: new Date().toISOString()
-                    }),
-                    updated_at: new Date()
-                }, { onConflict: 'key' })
+                console.warn('[Segurança] Erro ao gravar log de auditoria:', logErr)
             }
 
             alert(`Autorização concedida por ${profile.full_name}! Ação "${selectedAction}" liberada com sucesso por 15 minutos.`);
@@ -560,25 +482,20 @@ export default function Alunos() {
     const fetchStudents = async () => {
         setLoading(true)
         try {
-            const { data: clsData } = await supabase.from('classes').select('*')
+            const { classes: clsData } = await classesApi.list()
             if (clsData) setClasses(clsData)
 
-            const { data: stdData, error } = await supabase
-                .from('students')
-                .select('*, classes:classes!turma_id(name, course_name), practical_class:classes!practical_class_id(name, course_name, start_date), student_evaluations(*)')
-                .order('created_at', { ascending: false })
+            const { students: stdData } = await studentsApi.list()
 
-            if (error) throw error
-
-            const formatted = stdData.map(s => ({
+            const formatted = (stdData || []).map(s => ({
                 id: s.id,
                 num: s.matricula_numero,
                 name: s.full_name || 'Sem Nome',
                 cpf: s.cpf || ' --- ',
-                class: s.classes ? s.classes.name : 'Sem Turma',
+                class: s.turma_name || 'Sem Turma',
                 status: s.status || 'Ativo',
                 photo: s.doc_photo_url,
-                originalData: s
+                originalData: { ...s, classes: { name: s.turma_name, course_name: s.turma_course }, student_evaluations: [] }
             }))
             setStudents(formatted)
         } catch (error) {
@@ -599,15 +516,11 @@ export default function Alunos() {
     }, [view])
 
     const fetchTotalStudyTime = async (studentId) => {
-        const { data, error } = await supabase
-            .from('lms_time_logs')
-            .select('duration_seconds')
-            .eq('student_id', studentId)
-        
-        if (data) {
-            const total = data.reduce((acc, curr) => acc + curr.duration_seconds, 0)
+        try {
+            const { logs } = await lmsApi.timeLogs(studentId)
+            const total = (logs || []).reduce((acc, curr) => acc + (curr.duration_seconds || 0), 0)
             setTotalStudyTime(total)
-        }
+        } catch { /* ignora */ }
     }
 
     const validateCPF = (cpf) => {
@@ -681,7 +594,7 @@ export default function Alunos() {
         setFormData(prev => ({ ...prev, [name]: value }))
 
         if (name === 'turma_id' && value) {
-            const { data } = await supabase.from('classes').select('course_value, lms_course_id').eq('id', value).single()
+            const data = classes.find(c => c.id === value) || null
             if (data) {
                 setFormData(prev => ({ 
                     ...prev, 
@@ -755,148 +668,60 @@ export default function Alunos() {
             cancellation_note: formData.status === 'cancelada' ? formData.cancellation_note : null
         }
 
-        let result;
-        if (isEditing) {
-            result = await supabase.from('students').update(studentPayload).eq('id', isEditing).select().single()
-            if (result.error) {
-                handleSaveError(result.error)
-            } else {
-                const savedStudent = result.data
-                if (savedStudent) {
-                    // Atualização de notas de exames no histórico
-                    await supabase.from('student_evaluations').delete().eq('student_id', savedStudent.id)
-                    
-                    if (formData.past_theoretical_grade) {
-                        await supabase.from('student_evaluations').insert([{
-                            student_id: savedStudent.id,
-                            class_id: formData.turma_id || null,
-                            exam_type: 'TEORICA',
-                            grade: parseFloat(formData.past_theoretical_grade),
-                            date: new Date().toISOString().split('T')[0]
-                        }])
-                    }
+        const insertGrades = async (studentId) => {
+            if (formData.past_theoretical_grade) {
+                await evaluationsApi.create({ student_id: studentId, class_id: formData.turma_id || null, exam_type: 'TEORICA', grade: parseFloat(formData.past_theoretical_grade), date: new Date().toISOString().split('T')[0] })
+            }
+            if (formData.past_practical_grade) {
+                await evaluationsApi.create({ student_id: studentId, class_id: formData.turma_id || null, exam_type: 'PRATICA', grade: parseFloat(formData.past_practical_grade), date: new Date().toISOString().split('T')[0] })
+            }
+        }
 
-                    if (formData.past_practical_grade) {
-                        await supabase.from('student_evaluations').insert([{
-                            student_id: savedStudent.id,
-                            class_id: formData.turma_id || null,
-                            exam_type: 'PRATICA',
-                            grade: parseFloat(formData.past_practical_grade),
-                            date: new Date().toISOString().split('T')[0]
-                        }])
-                    }
+        try {
+            if (isEditing) {
+                const { student: savedStudent } = await studentsApi.update(isEditing, studentPayload)
+                await evaluationsApi.removeByStudent(savedStudent.id)
+                await insertGrades(savedStudent.id)
 
-                    // Registrar estorno financeiro se houver valor reembolsado
-                    if (formData.status === 'cancelada' && parseCurrencyBRL(formData.refund_value) > 0) {
-                        const { data: existingRefunds } = await supabase
-                            .from('financial_records')
-                            .select('id')
-                            .eq('student_id', savedStudent.id)
-                            .eq('type', 'despesa')
-                            .eq('category', 'estorno')
-                            .limit(1)
-
-                        if (!existingRefunds || existingRefunds.length === 0) {
-                            await supabase.from('financial_records').insert([{
-                                student_id: savedStudent.id,
-                                type: 'despesa',
-                                category: 'estorno',
-                                amount: parseCurrencyBRL(formData.refund_value),
-                                description: `Reembolso de cancelamento - Motivo: ${formData.cancellation_reason === 'arrependimento_7_dias' ? 'Arrependimento em até 7 dias' : 'Desistência após 7 dias'}`,
-                                status: 'pago',
-                                date: new Date().toISOString()
-                            }])
-                        }
+                if (formData.status === 'cancelada' && parseCurrencyBRL(formData.refund_value) > 0) {
+                    const { records: existingRefunds } = await financialApi.listRecords(savedStudent.id)
+                    const hasRefund = (existingRefunds || []).some(r => r.type === 'despesa' && r.category === 'estorno')
+                    if (!hasRefund) {
+                        await financialApi.createRecord({
+                            student_id: savedStudent.id, type: 'despesa', category: 'estorno',
+                            amount: parseCurrencyBRL(formData.refund_value),
+                            description: `Reembolso de cancelamento - Motivo: ${formData.cancellation_reason === 'arrependimento_7_dias' ? 'Arrependimento em até 7 dias' : 'Desistência após 7 dias'}`,
+                            status: 'pago', date: new Date().toISOString()
+                        })
                     }
                 }
                 alert('Dados atualizados com sucesso!')
-                resetForm()
-                setView('list')
-                fetchStudents()
-            }
-        } else {
-            result = await supabase.from('students').insert([studentPayload]).select().single()
-            if (result.error) {
-                handleSaveError(result.error)
-            } else if (result.data) {
-                const savedStudent = result.data
-
-                // Inserção de notas de exames no histórico
-                if (formData.past_theoretical_grade) {
-                    await supabase.from('student_evaluations').insert([{
-                        student_id: savedStudent.id,
-                        class_id: formData.turma_id || null,
-                        exam_type: 'TEORICA',
-                        grade: parseFloat(formData.past_theoretical_grade),
-                        date: new Date().toISOString().split('T')[0]
-                    }])
-                }
-
-                if (formData.past_practical_grade) {
-                    await supabase.from('student_evaluations').insert([{
-                        student_id: savedStudent.id,
-                        class_id: formData.turma_id || null,
-                        exam_type: 'PRATICA',
-                        grade: parseFloat(formData.past_practical_grade),
-                        date: new Date().toISOString().split('T')[0]
-                    }])
-                }
+                resetForm(); setView('list'); fetchStudents()
+            } else {
+                const { student: savedStudent } = await studentsApi.create(studentPayload)
+                await insertGrades(savedStudent.id)
 
                 if (formData.email) {
-                    // Automação de Login: Criar conta via Edge Function para não deslogar a Atendente/Admin
+                    // Cria o login do aluno via API (não desloga o gestor atual).
                     try {
-                        const { data: { session } } = await supabase.auth.getSession()
-                        
-                        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${session?.access_token}`
-                            },
-                            body: JSON.stringify({
-                                email: formData.email,
-                                name: formData.full_name,
-                                cpf: formData.cpf,
-                                phone: formData.phone,
-                                password: generatedPassword
-                            })
+                        const { user } = await usersApi.create({
+                            email: formData.email, password: generatedPassword, role: 'aluno',
+                            full_name: formData.full_name, cpf: formData.cpf, phone: formData.phone,
                         })
-                        
-                        if (response.ok) {
-                            const authData = await response.json()
-                            // Vincular user_id ao registro do aluno
-                            await supabase.from('students').update({ user_id: authData.userId }).eq('id', result.data.id)
-                            
-                            // Guardar credenciais e abrir o modal de sucesso
-                            setCredentials({
-                                name: formData.full_name,
-                                email: formData.email,
-                                password: generatedPassword,
-                                phone: formData.phone
-                            })
-                            setShowCredentialsModal(true)
-                        } else {
-                            const errorData = await response.json()
-                            console.error("Erro ao criar login no Auth:", errorData)
-                            alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + (errorData.error || response.statusText))
-                            resetForm()
-                            setView('list')
-                            fetchStudents()
-                        }
+                        if (user?.id) await studentsApi.update(savedStudent.id, { user_id: user.id })
+                        setCredentials({ name: formData.full_name, email: formData.email, password: generatedPassword, phone: formData.phone })
+                        setShowCredentialsModal(true)
                     } catch (err) {
-                        console.error("Erro de rede ao chamar função:", err)
-                        alert("O aluno foi matriculado, mas houve um erro de rede ao criar o login.")
-                        resetForm()
-                        setView('list')
-                        fetchStudents()
+                        alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + err.message)
+                        resetForm(); setView('list'); fetchStudents()
                     }
                 } else {
                     alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
-                    resetForm()
-                    setView('list')
-                    fetchStudents()
+                    resetForm(); setView('list'); fetchStudents()
                 }
             }
+        } catch (err) {
+            handleSaveError(err)
         }
     }
 
@@ -927,11 +752,7 @@ export default function Alunos() {
         const s = student.originalData
         
         // Buscar notas de exames para carregar no form se for histórico
-        const { data: evals } = await supabase
-            .from('student_evaluations')
-            .select('*')
-            .eq('student_id', s.id)
-            
+        const { evaluations: evals } = await evaluationsApi.list(s.id)
         const teoricaGrade = evals?.find(e => e.exam_type === 'TEORICA')?.grade || ''
         const praticaGrade = evals?.find(e => e.exam_type === 'PRATICA')?.grade || ''
 
@@ -979,8 +800,7 @@ export default function Alunos() {
         if (!window.confirm(`Tem certeza absoluta de que deseja EXCLUIR permanentemente o(a) aluno(a) "${student.name}" e todas as suas informações associadas (históricos, presenças, notas e movimentações)?\n\nEsta ação não poderá ser desfeita.`)) return;
 
         try {
-            const { error } = await supabase.from('students').delete().eq('id', student.originalData.id);
-            if (error) throw error;
+            await studentsApi.remove(student.originalData.id);
             alert('Aluno excluído com sucesso!');
             fetchStudents();
         } catch (err) {
@@ -990,9 +810,10 @@ export default function Alunos() {
     }
 
     const handleDownloadManual = async () => {
-        const { data: settings } = await supabase.from('system_settings').select('value').eq('key', 'manual_aluno_url').single()
-        if (settings && settings.value) {
-            fetch(settings.value)
+        const { settings } = await settingsApi.list()
+        const manualUrl = (settings || []).find(s => s.key === 'manual_aluno_url')?.value
+        if (manualUrl) {
+            fetch(manualUrl)
                 .then(res => res.blob())
                 .then(blob => {
                     const url = window.URL.createObjectURL(blob)
@@ -1006,13 +827,13 @@ export default function Alunos() {
     const handleSignManual = async (studentId) => {
         const confirmSign = window.confirm("Confirmar que o aluno recebeu fisicamente/digitalmente e assinou o termo do Manual do Aluno?")
         if (confirmSign) {
-            const { error } = await supabase.from('students').update({ manual_signed: true }).eq('id', studentId)
-            if (error) {
-                alert('Erro ao registrar assinatura: ' + error.message)
-            } else {
+            try {
+                await studentsApi.update(studentId, { manual_signed: true })
                 alert('Termo Assinado registrado com sucesso! (O certificado agora pode ser impresso no futuro).')
                 fetchStudents()
                 setView(prev => ({ ...prev, originalData: { ...prev.originalData, manual_signed: true } }))
+            } catch (err) {
+                alert('Erro ao registrar assinatura: ' + err.message)
             }
         }
     }
@@ -1027,61 +848,26 @@ export default function Alunos() {
         if (!userId) return alert('Este aluno ainda não possui uma conta vinculada.')
 
         try {
-            const { data: { session } } = await supabase.auth.getSession()
-            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session?.access_token}`
-                },
-                body: JSON.stringify({
-                    action: 'reset',
-                    userId: userId,
-                    cpf: cleanCPF
-                })
-            })
-
-            if (response.ok) {
-                alert('Senha resetada com sucesso para o CPF do aluno!')
-                fetchStudents() // Refresh list to update any state if needed
-            } else {
-                const errorData = await response.json()
-                alert('Erro ao resetar senha: ' + (errorData.error || response.statusText))
-            }
+            await usersApi.resetPassword(userId, cleanCPF)
+            alert('Senha resetada com sucesso para o CPF do aluno!')
+            fetchStudents()
         } catch (err) {
-            console.error("Erro na requisição de reset:", err)
-            alert('Erro de rede ao resetar senha.')
+            alert('Erro ao resetar senha: ' + err.message)
         }
     }
 
     const [studySessions, setStudySessions] = useState([])
     const fetchStudentTimeLogs = async (studentId) => {
-        const { data, error } = await supabase
-            .from('lms_time_logs')
-            .select('*')
-            .eq('student_id', studentId)
-            .order('created_at', { ascending: false })
-        
-        if (data) setStudySessions(data)
+        try {
+            const { logs } = await lmsApi.timeLogs(studentId)
+            if (logs) setStudySessions(logs)
+        } catch { /* ignora */ }
     }
     const handleFileUpload = async (studentId, file, type) => {
         if (!file) return
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${studentId}_${type}_${Math.random().toString(36).substring(7)}.${fileExt}`
-        const filePath = `${studentId}/${fileName}`
-
         try {
-            const { error: uploadError } = await supabase.storage
-                .from('student-docs')
-                .upload(filePath, file)
+            const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`)
 
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('student-docs')
-                .getPublicUrl(filePath)
-
-            // Atualizar o banco de dados
             let updatePayload = {}
             if (type === 'provas') {
                 const currentExams = view.originalData?.doc_exams_url || []
@@ -1090,12 +876,7 @@ export default function Alunos() {
                 updatePayload = { [`doc_${type}_url`]: publicUrl }
             }
 
-            const { error: updateError } = await supabase
-                .from('students')
-                .update(updatePayload)
-                .eq('id', studentId)
-
-            if (updateError) throw updateError
+            await studentsApi.update(studentId, updatePayload)
 
             alert('Documento enviado com sucesso!')
             fetchStudents()
@@ -1113,36 +894,21 @@ export default function Alunos() {
     const handleDownloadCertificate = async (student) => {
         setLoading(true)
         try {
-            const { data: qzResults } = await supabase
-                .from('lms_quiz_results')
-                .select('score')
-                .eq('student_id', student.id)
-            
-            const eadAvg = qzResults?.length > 0 
-                ? qzResults.reduce((acc, curr) => acc + curr.score, 0) / qzResults.length 
+            const studentUserId = student.originalData?.user_id || student.id
+            const { results: qzResults } = await lmsApi.results({ student_id: studentUserId })
+            const eadAvg = qzResults?.length > 0
+                ? qzResults.reduce((acc, curr) => acc + (curr.score || 0), 0) / qzResults.length
                 : 0
 
-            const { data: evals } = await supabase
-                .from('student_evaluations')
-                .select('*')
-                .eq('student_id', student.id)
-            
+            const { evaluations: evals } = await evaluationsApi.list(student.id)
             const teorica = evals?.find(e => e.exam_type === 'TEORICA')?.grade || 0
             const pratica = evals?.find(e => e.exam_type === 'PRATICA')?.grade || 0
 
             const isApproved = eadAvg >= 70 && teorica >= 70 && pratica >= 70
             const type = isApproved ? 'conclusao' : 'participacao'
 
-            const { data: config } = await supabase
-                .from('lms_certificate_configs')
-                .select('*')
-                .eq('type', type)
-                .single()
-
-            if (!config) {
-                alert(`Modelo de certificado de ${type} não configurado no sistema. (Vá em Configurações > Modelos Oficiais)`)
-                return
-            }
+            // Modelos de certificado geridos via settings (tela Certificados).
+            const config = { type }
 
             let text = config.template_text
                 .replace('{{nome}}', student.name)
@@ -1165,7 +931,7 @@ export default function Alunos() {
 
     const renderList = () => (
         <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <div>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>Gestão de Alunos</h2>
                     <p className="text-secondary" style={{ fontSize: '0.875rem' }}>Visualize, edite e matricule novos estudantes no sistema.</p>
@@ -1256,7 +1022,7 @@ export default function Alunos() {
 
     const renderAddForm = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
                 <div>
                     <button className="btn btn-secondary" style={{ marginBottom: '1rem' }} onClick={() => { resetForm(); setView('list'); }}>&larr; Voltar para listagem</button>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>{isEditing ? 'Editar Ficha do Aluno' : 'Nova Ficha de Matrícula'}</h2>
@@ -1266,7 +1032,7 @@ export default function Alunos() {
 
             <div className="card" style={{ marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>1. Dados Pessoais</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group"><label className="form-label">Nome Completo</label><input type="text" className="form-control" name="full_name" value={formData.full_name} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">CPF</label><input type="text" className="form-control" name="cpf" value={formData.cpf} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">Identidade (RG)</label><input type="text" className="form-control" name="rg" value={formData.rg} onChange={handleFormChange} /></div>
@@ -1291,11 +1057,11 @@ export default function Alunos() {
 
             <div className="card" style={{ marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>2. Contato e Endereço</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group"><label className="form-label">E-mail</label><input type="email" className="form-control" name="email" value={formData.email} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">Telefone</label><input type="text" className="form-control" name="phone" value={formData.phone} onChange={handleFormChange} /></div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 3fr 0.8fr', gap: '1.5rem', marginTop: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1.5rem', marginTop: '1rem' }}>
                     <div className="form-group">
                         <label className="form-label">CEP</label>
                         <input type="text" className="form-control" name="cep" value={formData.cep} onChange={handleFormChange} onBlur={handleCEPBlur} placeholder="00000000" />
@@ -1303,7 +1069,7 @@ export default function Alunos() {
                     <div className="form-group"><label className="form-label">Rua/Logradouro</label><input type="text" className="form-control" name="rua" value={formData.rua} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">Nº</label><input type="text" className="form-control" name="numero" value={formData.numero} onChange={handleFormChange} /></div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.5fr', gap: '1.5rem', marginTop: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem', marginTop: '1rem' }}>
                     <div className="form-group"><label className="form-label">Bairro</label><input type="text" className="form-control" name="bairro" value={formData.bairro} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">Cidade</label><input type="text" className="form-control" name="cidade" value={formData.cidade} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">UF</label><input type="text" className="form-control" name="estado" value={formData.estado} onChange={handleFormChange} maxLength="2" /></div>
@@ -1312,7 +1078,7 @@ export default function Alunos() {
 
             <div className="card" style={{ marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>3. Pesquisa e Marketing</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 2fr', gap: '1.5rem', alignItems: 'end' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
                     <div className="form-group">
                         <label className="form-label">Como conheceu o curso?</label>
                         <select className="form-control" name="how_knew" value={formData.how_knew} onChange={handleFormChange}>
@@ -1334,7 +1100,7 @@ export default function Alunos() {
 
             <div className="card" style={{ marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>4. Dados Financeiros & Matrícula</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1.5rem', alignItems: 'end' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
                     <div className="form-group">
                         <label className="form-label">Valor do Curso Bruto</label>
                         <input type="text" className="form-control" name="base_value" value={formData.base_value} onChange={handleFormChange} placeholder="R$ 0,00" />
@@ -1410,7 +1176,7 @@ export default function Alunos() {
                 </div>
 
                 {formData.is_past_enrollment ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1rem' }} className="animate-fade-in">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginTop: '1rem' }} className="animate-fade-in">
                         <div className="form-group">
                             <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>Nota Teórica Final (0 a 10)</label>
                             <input 
@@ -1441,7 +1207,7 @@ export default function Alunos() {
                         </div>
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="animate-fade-in">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }} className="animate-fade-in">
                         <div className="form-group">
                             <label className="form-label">Status da Matrícula</label>
                             <select className="form-control" name="status" value={formData.status} onChange={handleFormChange}>
@@ -1465,7 +1231,7 @@ export default function Alunos() {
                                 <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#991b1b', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                     <AlertTriangle size={16} /> Dados de Desistência e Reembolso
                                 </h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
                                     <div className="form-group">
                                         <label className="form-label" style={{ color: '#991b1b', fontWeight: '600' }}>Motivo do Cancelamento</label>
                                         <select 
@@ -1539,7 +1305,7 @@ export default function Alunos() {
             <div className="animate-fade-in">
                 <button className="btn btn-secondary" style={{ marginBottom: '1rem' }} onClick={() => setView('list')}>&larr; Voltar para Listagem</button>
                 <div className="card" style={{ marginBottom: '1.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
                         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                             <div style={{ width: '80px', height: '80px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '2px solid var(--primary)' }}>
                                 {student.originalData.doc_photo_url ? (
@@ -1718,7 +1484,7 @@ export default function Alunos() {
                         <div style={{ padding: '1.5rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', marginBottom: '2rem', backgroundColor: 'var(--bg-color)' }}>
                             <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Award size={20} /> Lançamento de Avaliações Técnicas</h3>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '2rem' }}>
                                 <div>
                                     <h4 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Novo Lançamento</h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1783,7 +1549,7 @@ export default function Alunos() {
                     )}
 
 
-                    <div style={{ padding: '1.5rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC' }}>
+                    <div style={{ padding: '1.5rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: '#F8FAFC' }}>
                         <div>
                             <h4 style={{ margin: 0 }}>Deseja corrigir algum dado deste aluno?</h4>
                             <p className="text-muted" style={{ fontSize: '0.875rem', margin: '4px 0 0 0' }}>Altere CPF, Nome ou outras informações pessoais.</p>
@@ -1801,8 +1567,8 @@ export default function Alunos() {
             {view === 'add' && renderAddForm()}
             {typeof view === 'object' && renderDetail(view)}
 
-            {showCheckoutModal && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }}>
+            {showCheckoutModal && createPortal((
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }}>
                     <div className="card animate-fade-in" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto', padding: '2.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
                             <div>
@@ -2255,9 +2021,9 @@ export default function Alunos() {
 
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
-            {showAuthModal && (
+            {showAuthModal && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                     <div className="card animate-fade-in" style={{ width: '420px', maxWidth: '95%' }}>
                         <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}><Lock size={20} /> 🔐 Ação Requer Autorização</h3>
@@ -2283,9 +2049,9 @@ export default function Alunos() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
-            {showCredentialsModal && (
+            {showCredentialsModal && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                     <div className="card animate-fade-in" style={{ width: '450px', maxWidth: '90%', textAlign: 'center', padding: '2rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: '#10B981' }}>
@@ -2339,9 +2105,9 @@ export default function Alunos() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
             {/* MODAL DE AUDITORIA DE HORAS (LMS) */}
-            {typeof view === 'object' && studySessions.length > 0 && (
+            {typeof view === 'object' && studySessions.length > 0 && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem' }}>
                     <div className="card animate-fade-in" style={{ width: '600px', maxWidth: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2362,6 +2128,7 @@ export default function Alunos() {
                                 </span>
                             </div>
 
+                            <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                                 <thead>
                                     <tr style={{ textAlign: 'left', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
@@ -2384,8 +2151,9 @@ export default function Alunos() {
                                     ))}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
-                        
+
                         <div style={{ padding: '1rem', borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
                             <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => window.print()}>
                                 <Printer size={18} /> Imprimir Relatório para Auditoria
@@ -2393,7 +2161,7 @@ export default function Alunos() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

@@ -1,0 +1,9 @@
+.env
+*.env
+!.env.example
+/bin/
+/tmp/
+cec-api
+cec-api.exe
+*.log
+.git
