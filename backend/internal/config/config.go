@@ -15,6 +15,7 @@ type Config struct {
 	HTTPPort    string
 	CORSOrigins []string
 	DatabaseURL string
+	RedisURL    string // vazio = cache desabilitado
 
 	JWTSecret   string
 	JWTTTLHours int
@@ -52,6 +53,7 @@ func Load() *Config {
 		HTTPPort:          getEnv("HTTP_PORT", "8080"),
 		CORSOrigins:       splitCSV(getEnv("CORS_ORIGINS", "http://localhost:5173")),
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
+		RedisURL:          getEnv("REDIS_URL", ""),
 		JWTSecret:         getEnv("JWT_SECRET", ""),
 		JWTTTLHours:       getEnvInt("JWT_TTL_HOURS", 12),
 		SeedDev:           getEnvBool("SEED_DEV", false),

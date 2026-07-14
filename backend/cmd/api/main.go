@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/PITICALYN/cec-backend/internal/auth"
+	"github.com/PITICALYN/cec-backend/internal/cache"
 	"github.com/PITICALYN/cec-backend/internal/config"
 	"github.com/PITICALYN/cec-backend/internal/db"
 	"github.com/PITICALYN/cec-backend/internal/router"
@@ -27,7 +28,8 @@ func main() {
 	}
 
 	tm := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTTTLHours)
-	r := router.New(cfg, gdb, tm)
+	cch := cache.New(cfg.RedisURL)
+	r := router.New(cfg, gdb, tm, cch)
 
 	addr := ":" + cfg.HTTPPort
 	log.Printf("[main] API ouvindo em %s (env=%s)", addr, cfg.AppEnv)

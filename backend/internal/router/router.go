@@ -11,6 +11,7 @@ import (
 	"github.com/PITICALYN/cec-backend/internal/asaas"
 	"github.com/PITICALYN/cec-backend/internal/audit"
 	"github.com/PITICALYN/cec-backend/internal/auth"
+	"github.com/PITICALYN/cec-backend/internal/cache"
 	"github.com/PITICALYN/cec-backend/internal/chat"
 	"github.com/PITICALYN/cec-backend/internal/config"
 	"github.com/PITICALYN/cec-backend/internal/financial"
@@ -29,8 +30,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// Chaves de cache dos endpoints públicos (invalidação nas rotas de escrita).
+const (
+	ckSiteContent  = "cache:public:site-content"
+	ckCourses      = "cache:public:courses"
+	ckTestimonials = "cache:public:testimonials"
+	ckUpcoming     = "cache:public:upcoming-classes"
+)
+
 // New monta o roteador Gin com todas as rotas registradas.
-func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
+func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cache) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -62,7 +71,15 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 	}))
 
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		redisStatus := "disabled"
+		if cch.Enabled() {
+			if err := cch.Ping(c.Request.Context()); err == nil {
+				redisStatus = "up"
+			} else {
+				redisStatus = "down"
+			}
+		}
+		c.JSON(200, gin.H{"status": "ok", "redis": redisStatus})
 	})
 
 	authH := auth.NewHandler(gdb, tm)
@@ -96,12 +113,12 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 		pub.POST("/leads", siteH.CreateLeadPublic)
 		pub.POST("/complaints", siteH.CreateComplaintPublic)
 		pub.POST("/enrollments", siteH.CreateEnrollmentPublic)
-		pub.POST("/testimonials", siteH.CreateTestimonialPublic)
-		pub.GET("/testimonials", siteH.ListTestimonialsPublic)
+		pub.POST("/testimonials", cch.InvalidateOn(ckTestimonials), siteH.CreateTestimonialPublic)
+		pub.GET("/testimonials", cch.Page(ckTestimonials, 5*time.Minute), siteH.ListTestimonialsPublic)
 
 		// Catálogo de cursos (LMS) — público + admin
 		lmsH := lms.NewHandler(gdb)
-		pub.GET("/courses", lmsH.ListPublic)
+		pub.GET("/courses", cch.Page(ckCourses, 5*time.Minute), lmsH.ListPublic)
 		pub.GET("/validate-certificate/:code", lmsH.ValidateCertificate)
 
 		// ─── Asaas (Fase 3 — server-side; chave nunca no browser) ───
@@ -146,9 +163,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 		tg := v1.Group("/testimonials")
 		tg.Use(middleware.RequireAuth(tm), middleware.RequireRole(mgmtRoles...))
 		tg.GET("", siteH.ListTestimonialsAdmin)
-		tg.POST("", siteH.CreateTestimonialAdmin)
-		tg.PUT("/:id", siteH.UpdateTestimonial)
-		tg.DELETE("/:id", siteH.DeleteTestimonial)
+		tg.POST("", cch.InvalidateOn(ckTestimonials), siteH.CreateTestimonialAdmin)
+		tg.PUT("/:id", cch.InvalidateOn(ckTestimonials), siteH.UpdateTestimonial)
+		tg.DELETE("/:id", cch.InvalidateOn(ckTestimonials), siteH.DeleteTestimonial)
 
 		eg := v1.Group("/enrollments")
 		eg.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
@@ -161,9 +178,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 		cl := v1.Group("/classes")
 		cl.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
 		cl.GET("", acadH.ListClasses)
-		cl.POST("", acadH.CreateClass)
-		cl.PUT("/:id", acadH.UpdateClass)
-		cl.DELETE("/:id", acadH.DeleteClass)
+		cl.POST("", cch.InvalidateOn(ckUpcoming), acadH.CreateClass)
+		cl.PUT("/:id", cch.InvalidateOn(ckUpcoming), acadH.UpdateClass)
+		cl.DELETE("/:id", cch.InvalidateOn(ckUpcoming), acadH.DeleteClass)
 		cl.GET("/:id/instructors", acadH.ListClassInstructors)
 		cl.POST("/:id/instructors", acadH.AddClassInstructor)
 		cl.DELETE("/:id/instructors/:linkId", acadH.RemoveClassInstructor)
@@ -200,8 +217,8 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 
 		// ─── Transversais (orders, messages, comunicados, CMS, upcoming) ───
 		miscH := misc.NewHandler(gdb, chatHub)
-		pub.GET("/site-content", miscH.GetSiteContent) // público (site lê conteúdo)
-		pub.GET("/upcoming-classes", miscH.PublicUpcomingClasses)
+		pub.GET("/site-content", cch.Page(ckSiteContent, 5*time.Minute), miscH.GetSiteContent) // público (site lê conteúdo)
+		pub.GET("/upcoming-classes", cch.Page(ckUpcoming, time.Minute), miscH.PublicUpcomingClasses)
 
 		authAny := v1.Group("")
 		authAny.Use(middleware.RequireAuth(tm))
@@ -219,7 +236,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 		mg.POST("/general-announcements", miscH.CreateAnnouncement)
 		mg.PUT("/general-announcements/:id", miscH.UpdateAnnouncement)
 		mg.DELETE("/general-announcements/:id", miscH.DeleteAnnouncement)
-		mg.PUT("/site-content", miscH.SaveSiteContent)
+		mg.PUT("/site-content", cch.InvalidateOn(ckSiteContent), miscH.SaveSiteContent)
 
 		// ─── Students (alunos) ───
 		studentsH := students.NewHandler(gdb)
@@ -286,9 +303,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager) *gin.Engine {
 		cg2.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
 		cg2.GET("", lmsH.List)
 		cg2.GET("/:id", lmsH.Get)
-		cg2.POST("", lmsH.Create)
-		cg2.PUT("/:id", lmsH.Update)
-		cg2.DELETE("/:id", lmsH.Delete)
+		cg2.POST("", cch.InvalidateOn(ckCourses), lmsH.Create)
+		cg2.PUT("/:id", cch.InvalidateOn(ckCourses), lmsH.Update)
+		cg2.DELETE("/:id", cch.InvalidateOn(ckCourses), lmsH.Delete)
 		cg2.GET("/:id/structure", lmsH.Structure)
 		cg2.GET("/:id/quizzes", lmsH.ListQuizzes)
 

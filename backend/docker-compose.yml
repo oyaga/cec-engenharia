@@ -18,6 +18,21 @@ services:
       retries: 10
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    container_name: cec-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - cec_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: .
     container_name: cec-api
@@ -25,12 +40,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       APP_ENV: development
       HTTP_PORT: "8080"
       CORS_ORIGINS: "http://localhost:5173,http://localhost:3000"
       # host "db" = nome do serviço na rede interna do Compose
       DATABASE_URL: "postgres://cec:cec_dev_password@db:5432/cec?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
       JWT_SECRET: "dev-secret-trocar-em-producao"
       JWT_TTL_HOURS: "12"
       SEED_DEV: "true"
@@ -71,4 +89,5 @@ services:
 
 volumes:
   cec_pgdata:
+  cec_redisdata:
   cec_uploads:
