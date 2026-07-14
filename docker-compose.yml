@@ -1,0 +1,20 @@
+services:
+  cec:
+    image: ghcr.io/oyaga/cec-engenharia:latest
+    container_name: cec
+    restart: unless-stopped
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.cec.rule=Host(`cursocec.com.br`) || Host(`www.cursocec.com.br`)
+      - traefik.http.routers.cec.entrypoints=websecure
+      - traefik.http.routers.cec.tls=true
+      - traefik.http.routers.cec.tls.certresolver=letsencrypt
+      - traefik.http.routers.cec.service=cec
+      - traefik.http.services.cec.loadbalancer.server.port=80
+
+networks:
+  proxy:
+    external: true
+    name: proxy
