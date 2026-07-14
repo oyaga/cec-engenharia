@@ -1,0 +1,107 @@
+# CI/CD — builda a imagem única (API Go + WebSocket + SPA), publica no GHCR
+# e aciona o redeploy do stack no Portainer.
+#
+# Segredos a configurar no GitHub (Settings → Secrets and variables → Actions):
+#   PORTAINER_WEBHOOK_URL  → (opção A, mais simples) webhook do stack no Portainer
+#   ── ou ──
+#   PORTAINER_URL          → (opção B, API) ex.: https://portainer.seudominio.com
+#   PORTAINER_API_KEY      → Portainer → My account → Access tokens
+#   PORTAINER_STACK_NAME   → nome do stack (padrão: cec)
+#
+# A imagem vai para ghcr.io/<owner>/cec (GITHUB_TOKEN, sem segredo extra).
+# No Portainer, cadastre o registry ghcr.io (Registries → Custom) com um PAT
+# read:packages — ou torne o package público no GitHub.
+
+name: deploy
+
+on:
+  push:
+    branches: [main, backend-go]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/cec
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push (Dockerfile.unified)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.unified
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Redeploy no Portainer
+        env:
+          WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+          P_URL: ${{ secrets.PORTAINER_URL }}
+          P_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          P_STACK: ${{ secrets.PORTAINER_STACK_NAME }}
+        run: |
+          set -euo pipefail
+
+          # Opção A: webhook de stack (Portainer BE) — um POST resolve.
+          if [ -n "${WEBHOOK:-}" ]; then
+            echo "Acionando webhook do Portainer..."
+            curl -fsS -X POST "$WEBHOOK"
+            echo "OK."
+            exit 0
+          fi
+
+          # Opção B: API do Portainer (funciona no CE) — re-pull da imagem.
+          if [ -z "${P_URL:-}" ] || [ -z "${P_KEY:-}" ]; then
+            echo "::notice::Nenhum segredo de deploy configurado (PORTAINER_WEBHOOK_URL ou PORTAINER_URL+PORTAINER_API_KEY). Imagem publicada; redeploy manual no Portainer."
+            exit 0
+          fi
+
+          STACK_NAME="${P_STACK:-cec}"
+          echo "Buscando stack '$STACK_NAME'..."
+          STACK=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks" \
+            | jq -c --arg n "$STACK_NAME" '.[] | select(.Name == $n)')
+          if [ -z "$STACK" ]; then
+            echo "::error::Stack '$STACK_NAME' não encontrado no Portainer."
+            exit 1
+          fi
+          ID=$(echo "$STACK" | jq -r '.Id')
+          ENDPOINT=$(echo "$STACK" | jq -r '.EndpointId')
+          ENVJSON=$(echo "$STACK" | jq -c '.Env // []')
+
+          FILE=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks/$ID/file" \
+            | jq -r '.StackFileContent')
+
+          echo "Redeploy do stack $ID (endpoint $ENDPOINT) com re-pull..."
+          jq -n --arg content "$FILE" --argjson env "$ENVJSON" \
+            '{stackFileContent: $content, env: $env, prune: false, pullImage: true}' \
+            | curl -fsS -X PUT -H "X-API-Key: $P_KEY" -H "Content-Type: application/json" \
+                -d @- "$P_URL/api/stacks/$ID?endpointId=$ENDPOINT" > /dev/null
+          echo "Deploy disparado com sucesso."

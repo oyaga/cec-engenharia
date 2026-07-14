@@ -4,7 +4,8 @@
 #
 # Portainer: Stacks → Add stack → cole este YAML → preencha as variáveis de
 # ambiente (senha do banco, JWT, domínio) → Deploy.
-# Imagem esperada no Docker Hub: ${DOCKER_USER}/cec:${TAG}  (padrão oyaga/cec:latest)
+# Imagem publicada pelo GitHub Actions no GHCR: ghcr.io/oyaga/cec:latest
+# (sobrescreva com a variável APP_IMAGE se necessário)
 
 services:
   db:
@@ -23,11 +24,25 @@ services:
       retries: 10
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - cec_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
-    image: ${DOCKER_USER:-oyaga}/cec:${TAG:-latest}
+    image: ${APP_IMAGE:-ghcr.io/oyaga/cec:latest}
     restart: always
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       APP_ENV: production
@@ -35,6 +50,7 @@ services:
       # Mesma origem (o app serve o site), então CORS é opcional.
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       DATABASE_URL: "postgres://${POSTGRES_USER:-cec}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-cec}?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
       JWT_SECRET: "${JWT_SECRET:?gere com openssl rand -base64 48}"
       JWT_TTL_HOURS: ${JWT_TTL_HOURS:-12}
       SEED_DEV: "${SEED_DEV:-false}"
@@ -58,4 +74,5 @@ services:
 
 volumes:
   cec_pgdata:
+  cec_redisdata:
   cec_uploads:

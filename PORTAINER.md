@@ -1,12 +1,17 @@
 # Deploy no Portainer — imagem ÚNICA
 
-O backend Go serve **tudo numa imagem só**: a API, o WebSocket (chat) e o site (SPA).
-Não há nginx nem serviço web separado. O stack tem só **2 serviços**: `db` + `app`.
+O backend Go serve **tudo numa imagem só**: a API, o WebSocket (chat), o cache
+Redis (serviço próprio no stack) e o site (SPA). Não há nginx nem serviço web
+separado. O stack tem **3 serviços**: `db` + `redis` + `app`.
 
-Imagem publicada:
-- `oyaga/cec:latest` — app único (API + WebSocket + frontend)
+Imagem publicada (pelo GitHub Actions — ver §CI/CD):
+- `ghcr.io/oyaga/cec:latest` — app único (API + WebSocket + frontend)
 
-> Se a imagem for **privada** no Docker Hub, adicione o registry no Portainer (Registries → Docker Hub com login). Se for **pública**, não precisa.
+> Se o package no GHCR for **privado** (padrão), adicione o registry no Portainer:
+> Registries → Add registry → Custom → URL `ghcr.io`, usuário `oyaga` e um
+> **Personal Access Token (classic) com escopo `read:packages`**. Se tornar o
+> package público (GitHub → Packages → cec → Settings → Change visibility),
+> não precisa de registry.
 
 ## Passo a passo
 
@@ -21,8 +26,7 @@ Imagem publicada:
 | `JWT_SECRET` | ✅ | `openssl rand -base64 48` |
 | `PUBLIC_URL` | ✅ | `https://cursocec.com.br` |
 | `WEB_PORT` | — | porta pública do app (padrão `80`) |
-| `DOCKER_USER` | — | padrão `oyaga` |
-| `TAG` | — | padrão `latest` |
+| `APP_IMAGE` | — | padrão `ghcr.io/oyaga/cec:latest` |
 | `CORS_ORIGINS` | — | opcional (mesma origem não precisa) |
 | `SEED_DEV` + `SEED_ADMIN_EMAIL` + `SEED_ADMIN_PASSWORD` | — | só no 1º boot p/ criar o admin |
 | `ASAAS_ENV` / `ASAAS_API_KEY` / `ASAAS_WEBHOOK_TOKEN` | — | ou configure em `/config-asaas` |
@@ -77,14 +81,32 @@ variáveis → Deploy. Depois acesse `https://DOMAIN`.
 
 Webhooks: Asaas → `https://DOMAIN/api/v1/webhooks/asaas`; Evolution → `https://DOMAIN/api/v1/webhooks/whatsapp`.
 
-## Publicar / atualizar a imagem (na máquina de dev)
+## CI/CD — deploy automático via GitHub Actions
+
+O workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml) roda a cada
+push em `main`/`backend-go`:
+
+1. **Build** da imagem única (`Dockerfile.unified`) e **push** para
+   `ghcr.io/oyaga/cec` (`latest` + SHA do commit). Usa o `GITHUB_TOKEN` — nenhum
+   segredo extra para publicar.
+2. **Redeploy no Portainer**, por um destes caminhos (segredos do repositório,
+   Settings → Secrets and variables → Actions):
+   - `PORTAINER_WEBHOOK_URL` — webhook do stack (Portainer Business). Um POST e pronto.
+   - `PORTAINER_URL` + `PORTAINER_API_KEY` (+ `PORTAINER_STACK_NAME`, padrão `cec`) —
+     via API, funciona no Portainer **CE**: o workflow busca o stack, reenvia o
+     compose e força **re-pull da imagem**. Gere o token em Portainer → My account
+     → Access tokens.
+   - Sem segredos configurados: o workflow só publica a imagem e avisa; o redeploy
+     fica manual (Stack `cec` → **Update the stack** → **Re-pull image**).
+
+> O Portainer precisa alcançar o GHCR para puxar a imagem (registry `ghcr.io`
+> cadastrado, ou package público) e o GitHub Actions precisa alcançar a URL do
+> Portainer (exponha-o via HTTPS — de preferência atrás do Traefik).
+
+### Publicação manual (fallback, na máquina de dev)
 ```
-docker build -t oyaga/cec:latest -f Dockerfile.unified .
-docker push oyaga/cec:latest
+docker build -t ghcr.io/oyaga/cec:latest -f Dockerfile.unified .
+docker login ghcr.io -u oyaga   # senha = PAT com write:packages
+docker push ghcr.io/oyaga/cec:latest
 ```
 No Portainer: Stack `cec` → **Update the stack** → **Re-pull image** → deploy.
-
-> **Push dando "insufficient_scope / authorization failed"?** O login atual não tem
-> permissão de escrita. Rode no terminal:
-> `docker login -u oyaga` e use um **Access Token** com escopo *Read/Write*
-> (Docker Hub → Account settings → Security → New Access Token). Depois repita o push.
