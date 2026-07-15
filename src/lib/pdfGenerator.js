@@ -5,12 +5,14 @@ import { settingsApi } from '../services/financial'
 export const generateDocument = async (type, student, options = {}) => {
     const doc = new jsPDF()
 
-    // Buscar Plano de Fundo (Papel Timbrado) correspondente
+    // Buscar Plano de Fundo (Papel Timbrado) correspondente + settings gerais
     const bgKey = `bg_doc_${type}`
     let bgImage = null
+    const settingsMap = {}
     try {
         const { settings } = await settingsApi.list()
-        bgImage = (settings || []).find(s => s.key === bgKey)?.value || null
+        ;(settings || []).forEach(s => { settingsMap[s.key] = s.value })
+        bgImage = settingsMap[bgKey] || null
     } catch { /* sem timbre */ }
 
     // Global settings for ICC Docs
@@ -29,7 +31,7 @@ export const generateDocument = async (type, student, options = {}) => {
     } else if (type === 'certificado') {
         generateCertificatePDF(doc, student, bgImage)
     } else if (type === 'custom_certificate') {
-        generateCustomCertificatePDF(doc, student, options.content, bgImage)
+        await generateCustomCertificatePDF(doc, student, options, settingsMap, bgImage)
     } else if (type === 'melhorias') {
         generateImprovementPDF(doc, student, bgImage)
     } else if (type === 'relatorio_turma') {
@@ -44,33 +46,166 @@ export const generateDocument = async (type, student, options = {}) => {
     }
 }
 
-function generateCustomCertificatePDF(doc, student, content, bgImage) {
-    doc.addPage("a4", "landscape")
-    doc.setPage(2)
+// Busca uma imagem (mesma origem ou API externa) e converte em Data URI.
+async function fetchImageAsDataURI(url) {
+    try {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const blob = await response.blob()
+        return await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result)
+            reader.readAsDataURL(blob)
+        })
+    } catch (e) {
+        console.warn(`Imagem indisponível (${url}):`, e.message)
+        return null
+    }
+}
 
+async function generateCustomCertificatePDF(doc, student, options, settingsMap = {}, bgImage) {
+    const { content = '', uuid } = options
+    // O jsPDF nasce com uma página A4 retrato: cria a paisagem e apaga a 1ª
+    // (antes o PDF saía com uma página em branco na frente).
+    doc.addPage('a4', 'landscape')
+    doc.deletePage(1)
+
+    const W = doc.internal.pageSize.getWidth()   // 297
+    const H = doc.internal.pageSize.getHeight()  // 210
+    const CX = W / 2
+
+    const NAVY = [15, 42, 74]
+    const GOLD = [176, 141, 87]
+    const SLATE = [71, 85, 105]
+
+    // ── Fundo e molduras ──
     if (bgImage) {
-        doc.addImage(bgImage, 'JPEG', 0, 0, 297, 210)
+        doc.addImage(bgImage, 'JPEG', 0, 0, W, H)
     } else {
-        doc.setFillColor(250, 252, 255)
-        doc.rect(0, 0, 297, 210, 'F')
-        doc.setDrawColor(30, 64, 175)
-        doc.setLineWidth(3)
-        doc.rect(10, 10, 277, 190)
+        doc.setFillColor(252, 251, 248)
+        doc.rect(0, 0, W, H, 'F')
+    }
+    doc.setDrawColor(...NAVY)
+    doc.setLineWidth(1.6)
+    doc.rect(9, 9, W - 18, H - 18, 'S')
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.4)
+    doc.rect(12.5, 12.5, W - 25, H - 25, 'S')
+    // Cantos decorativos dourados
+    doc.setLineWidth(1)
+    const t = 10
+    ;[[15, 15, 1, 1], [W - 15, 15, -1, 1], [15, H - 15, 1, -1], [W - 15, H - 15, -1, -1]].forEach(([x, y, sx, sy]) => {
+        doc.line(x, y, x + t * sx, y)
+        doc.line(x, y, x, y + t * sy)
+    })
+
+    // ── Logo (mesma origem do site) ──
+    const logo = await fetchImageAsDataURI('/assets/logo.png')
+    if (logo) {
+        try {
+            const props = doc.getImageProperties(logo)
+            const lh = 17
+            const lw = (props.width / props.height) * lh
+            doc.addImage(logo, props.fileType || 'PNG', CX - lw / 2, 19, lw, lh)
+        } catch { /* segue sem logo */ }
     }
 
-    doc.setFontSize(30)
+    // ── Títulos ──
     doc.setFont('helvetica', 'bold')
-    doc.text('CERTIFICADO', 148, 50, { align: 'center' })
-
-    doc.setFontSize(16)
+    doc.setFontSize(34)
+    doc.setTextColor(...NAVY)
+    doc.text('CERTIFICADO', CX, 56, { align: 'center', charSpace: 2.5 })
     doc.setFont('helvetica', 'normal')
-    
-    const lines = doc.splitTextToSize(content, 220)
-    doc.text(lines, 148, 80, { align: 'center' })
-
     doc.setFontSize(12)
-    doc.text('_________________________________', 148, 170, { align: 'center' })
-    doc.text('Diretoria e Coordenação C&C', 148, 178, { align: 'center' })
+    doc.setTextColor(...GOLD)
+    doc.text('C&C ENGENHARIA E CAPACITAÇÃO PROFISSIONAL', CX, 64, { align: 'center', charSpace: 1.2 })
+
+    // ── Nome do aluno em destaque ──
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(12)
+    doc.setTextColor(...SLATE)
+    doc.text('Conferido a', CX, 82, { align: 'center' })
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(26)
+    doc.setTextColor(...NAVY)
+    doc.text(String(student.name || '').toUpperCase(), CX, 94, { align: 'center' })
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.5)
+    doc.line(CX - 60, 98, CX + 60, 98)
+
+    // ── Corpo (template, com fallback de variáveis não substituídas) ──
+    const body = String(content)
+        .replace(/\{\{(nome_aluno|nome)\}\}/g, student.name || '')
+        .replace(/\{\{(cpf_aluno|cpf)\}\}/g, student.cpf || '')
+        .replace(/\{\{(nome_curso|curso)\}\}/g, student.class || '')
+        .replace(/\{\{carga_horaria\}\}/g, options.hours || '')
+        .replace(/\{\{nota\}\}/g, options.grade || '')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(13)
+    doc.setTextColor(...SLATE)
+    const lines = doc.splitTextToSize(body, 212)
+    doc.text(lines, CX, 110, { align: 'center', lineHeightFactor: 1.55 })
+
+    // ── Selo central ──
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.9)
+    doc.circle(CX, 168, 11, 'S')
+    doc.setLineWidth(0.3)
+    doc.circle(CX, 168, 9.2, 'S')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.setTextColor(...GOLD)
+    doc.text('C&C', CX, 167.5, { align: 'center' })
+    doc.setFontSize(5.5)
+    doc.text('CERTIFICADO', CX, 171, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...SLATE)
+    doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, CX, 190, { align: 'center' })
+
+    // ── Assinatura autorizada (imagem opcional via settings) ──
+    const sigImage = settingsMap['certificate_signature_image'] || null
+    const sigName = settingsMap['certificate_signature_name'] || 'Diretoria e Coordenação C&C'
+    const sigRole = settingsMap['certificate_signature_role'] || 'Assinatura autorizada'
+    const sigX = W - 62
+    if (sigImage) {
+        try {
+            const props = doc.getImageProperties(sigImage)
+            const sh = 16
+            const sw = Math.min((props.width / props.height) * sh, 55)
+            doc.addImage(sigImage, props.fileType || 'PNG', sigX - sw / 2, 156, sw, sh)
+        } catch { /* segue só com a linha */ }
+    }
+    doc.setDrawColor(...SLATE)
+    doc.setLineWidth(0.4)
+    doc.line(sigX - 32, 174, sigX + 32, 174)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(...NAVY)
+    doc.text(sigName, sigX, 180, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(120, 130, 145)
+    doc.text(sigRole, sigX, 185, { align: 'center' })
+
+    // ── QR Code + código de autenticidade (validação pública) ──
+    if (uuid) {
+        const origin = (typeof window !== 'undefined' && window.location?.origin) || 'https://cursocec.com.br'
+        const validationUrl = `${origin}/validar-certificado/${uuid}`
+        const qr = await fetchImageAsDataURI(
+            `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(validationUrl)}`
+        )
+        if (qr) doc.addImage(qr, 'PNG', 20, 156, 24, 24)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8.5)
+        doc.setTextColor(...NAVY)
+        doc.text(`CÓDIGO DE AUTENTICIDADE: ${uuid.substring(0, 8).toUpperCase()}`, qr ? 47 : 20, 165)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(120, 130, 145)
+        doc.text('Valide este documento apontando a câmera para o QR Code', qr ? 47 : 20, 170)
+        doc.text(`ou acessando ${origin.replace(/^https?:\/\//, '')}/validar-certificado`, qr ? 47 : 20, 174)
+    }
 }
 
 function generateContractPDF(doc, student) {

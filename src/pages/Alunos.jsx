@@ -907,16 +907,26 @@ export default function Alunos() {
             const isApproved = eadAvg >= 70 && teorica >= 70 && pratica >= 70
             const type = isApproved ? 'conclusao' : 'participacao'
 
-            // Modelos de certificado geridos via settings (tela Certificados).
-            const config = { type }
+            // Modelo de certificado gerido via settings (tela Certificados),
+            // com fallback padrão por tipo.
+            let templateText = ''
+            try {
+                const { settings } = await settingsApi.list()
+                templateText = (settings || []).find(s => s.key === `certificate_template_${type}`)?.value || ''
+            } catch { /* usa fallback */ }
+            if (!templateText) {
+                templateText = type === 'conclusao'
+                    ? 'Certificamos que {{nome}}, portador(a) do CPF {{cpf}}, concluiu com aproveitamento o curso de {{curso}}, obtendo nota média {{nota}}.'
+                    : 'Certificamos que {{nome}}, portador(a) do CPF {{cpf}}, participou do curso de {{curso}}.'
+            }
 
-            let text = config.template_text
+            const text = templateText
                 .replace('{{nome}}', student.name)
                 .replace('{{cpf}}', student.cpf)
                 .replace('{{curso}}', student.class)
                 .replace('{{nota}}', isApproved ? ((eadAvg + teorica + pratica) / 3).toFixed(1) : '')
-            
-            generateDocument('custom_certificate', student, {
+
+            await generateDocument('custom_certificate', student, {
                 content: text
             })
 

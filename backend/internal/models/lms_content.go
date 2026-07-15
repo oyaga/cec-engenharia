@@ -170,7 +170,7 @@ type LMSIssuedCertificate struct {
 	StudentID *uuid.UUID     `gorm:"type:uuid;column:student_id" json:"student_id,omitempty"`
 	CourseID  *uuid.UUID     `gorm:"type:uuid;column:course_id" json:"course_id,omitempty"`
 	Code      string         `gorm:"unique;not null" json:"code"`
-	IssuedAt  time.Time      `gorm:"column:issued_at" json:"issued_at"`
+	IssuedAt  time.Time      `gorm:"column:issued_at;autoCreateTime" json:"issued_at"`
 	Metadata  datatypes.JSON `json:"metadata,omitempty"`
 }
 
