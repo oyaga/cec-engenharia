@@ -97,6 +97,21 @@ const RoleGuard = ({ children, allowedRoles, requiredPermission }) => {
   return children
 }
 
+// Roteamento por subdomínio: aluno.* / secretaria.* / portal.* servem o mesmo
+// app, mas a raiz de cada um abre direto o login do público certo (após o
+// login, o redirect por role já leva cada um ao seu mundo). No domínio raiz
+// (e em localhost/www), a raiz continua sendo o site público.
+const PORTAL_SUBDOMAIN = (() => {
+  const sub = window.location.hostname.split('.')[0]
+  return ['aluno', 'secretaria', 'portal'].includes(sub) ? sub : null
+})()
+
+function RootByHost() {
+  if (PORTAL_SUBDOMAIN === 'aluno') return <Login title="Portal do Aluno" />
+  if (PORTAL_SUBDOMAIN === 'secretaria') return <Login title="Acesso Restrito - Secretaria" isSecretaria={true} redirectTo="/dashboard" />
+  return <Login title="Portal do Professor" redirectTo="/professor" />
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -133,6 +148,7 @@ function App() {
           }>
             <Routes>
             {/* ROTAS DE ACESSO - PRIORIDADE MÁXIMA */}
+            {PORTAL_SUBDOMAIN && <Route path="/" element={<RootByHost />} />}
             <Route path="/webdesigner" element={<Login title="Acesso Webdesigner - Editor do Site" isWebdesigner={true} redirectTo="/" />} />
             <Route path="/login" element={<Login title="Portal Educacional" />} />
             <Route path="/secretaria" element={<Login title="Acesso Restrito - Secretaria" isSecretaria={true} redirectTo="/dashboard" />} />
@@ -141,7 +157,7 @@ function App() {
             
             {/* Public Site Routes */}
             <Route element={<SiteLayout />}>
-              <Route path="/" element={<Home />} />
+              {!PORTAL_SUBDOMAIN && <Route path="/" element={<Home />} />}
               <Route path="/sobre-nos" element={<AboutUs />} />
               <Route path="/matricular-se" element={<Enrollment />} />
               <Route path="/curso/:slug" element={<CourseDetails />} />
