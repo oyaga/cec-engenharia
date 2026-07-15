@@ -6,6 +6,14 @@ import EditableText from './EditableText';
 import EditableSlot from './EditableSlot';
 import EditableImage from './EditableImage';
 
+// URL do portal por subdomínio (aluno./portal.), preservando o host atual —
+// funciona em produção (cursocec.com.br), em teste (*.localhost) e no dev.
+const portalUrl = (sub) => {
+  const { protocol, hostname, port } = window.location;
+  const base = hostname.replace(/^(aluno|secretaria|portal|www)\./, '');
+  return `${protocol}//${sub}.${base}${port ? `:${port}` : ''}`;
+};
+
 const Navbar = () => {
   const { content, isEditing, updateContent } = useEdit();
   const navbar = content.navbar || {};
@@ -193,15 +201,15 @@ const Navbar = () => {
               )}
             </div>
 
-            <Link to="/login" className="btn-login" title="Área do Aluno">
+            <a href={portalUrl('aluno')} className="btn-login" title="Área do Aluno">
               <User size={18} />
               <span>Acesso Aluno</span>
-            </Link>
+            </a>
 
-            <Link to="/login" className="btn-login instructor-variant" title="Área do Instrutor">
+            <a href={portalUrl('portal')} className="btn-login instructor-variant" title="Área do Instrutor">
               <GraduationCap size={18} />
               <span>Acesso Instrutor</span>
-            </Link>
+            </a>
             <Link 
               to="/#cursos" 
               className="btn-site-primary btn-nav-cta"
@@ -273,19 +281,19 @@ const Navbar = () => {
           </ul>
 
           <div className="drawer-portals-mobile">
-            <Link to="/login" onClick={toggleMenu}>Portal do Aluno</Link>
-            <Link to="/login" onClick={toggleMenu}>Portal do Instrutor</Link>
+            <a href={portalUrl('aluno')} onClick={toggleMenu}>Portal do Aluno</a>
+            <a href={portalUrl('portal')} onClick={toggleMenu}>Portal do Instrutor</a>
           </div>
 
           <div className="drawer-footer">
-            <Link to="/login" className="drawer-btn-login" onClick={toggleMenu}>
+            <a href={portalUrl('aluno')} className="drawer-btn-login" onClick={toggleMenu}>
               <User size={20} />
               Acesso Aluno
-            </Link>
-            <Link to="/login" className="drawer-btn-login instructor-variant" onClick={toggleMenu}>
+            </a>
+            <a href={portalUrl('portal')} className="drawer-btn-login instructor-variant" onClick={toggleMenu}>
               <GraduationCap size={20} />
               Acesso Instrutor
-            </Link>
+            </a>
             <Link to="/#cursos" className="btn-site-primary drawer-cta" onClick={toggleMenu}>
               {navbar.actions?.cta || 'Matricular-se'}
             </Link>
