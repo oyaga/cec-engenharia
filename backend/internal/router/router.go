@@ -16,6 +16,7 @@ import (
 	"github.com/PITICALYN/cec-backend/internal/config"
 	"github.com/PITICALYN/cec-backend/internal/financial"
 	"github.com/PITICALYN/cec-backend/internal/lms"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/maria"
 	"github.com/PITICALYN/cec-backend/internal/middleware"
 	"github.com/PITICALYN/cec-backend/internal/misc"
@@ -82,12 +83,15 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		c.JSON(200, gin.H{"status": "ok", "redis": redisStatus})
 	})
 
-	authH := auth.NewHandler(gdb, tm)
+	ml := mailer.New(cfg.ResendAPIKey, cfg.MailFrom)
+	authH := auth.NewHandler(gdb, tm, ml, cfg.PublicURL)
 
 	v1 := r.Group("/api/v1")
 	{
 		a := v1.Group("/auth")
 		a.POST("/login", authH.Login)
+		a.POST("/forgot-password", authH.ForgotPassword)
+		a.POST("/reset-password", authH.ResetPassword)
 
 		protected := a.Group("")
 		protected.Use(middleware.RequireAuth(tm))

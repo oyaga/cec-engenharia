@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,12 +14,14 @@ import (
 
 // Handler agrupa as rotas de autenticação.
 type Handler struct {
-	db *gorm.DB
-	tm *TokenManager
+	db        *gorm.DB
+	tm        *TokenManager
+	ml        *mailer.Mailer
+	publicURL string // base do site, ex.: https://cursocec.com.br
 }
 
-func NewHandler(db *gorm.DB, tm *TokenManager) *Handler {
-	return &Handler{db: db, tm: tm}
+func NewHandler(db *gorm.DB, tm *TokenManager, ml *mailer.Mailer, publicURL string) *Handler {
+	return &Handler{db: db, tm: tm, ml: ml, publicURL: strings.TrimRight(publicURL, "/")}
 }
 
 type loginRequest struct {
@@ -146,6 +149,7 @@ func (h *Handler) SetInitialPassword(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar senha")
 		return
 	}
+	h.notifyPasswordChanged(&user)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

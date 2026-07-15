@@ -39,6 +39,11 @@ type Config struct {
 	AIProvider      string
 	AIAPIKey        string
 	MariaAttendant  string
+
+	// E-mail (Resend). ResendAPIKey vazio = e-mail desabilitado (no-op).
+	ResendAPIKey    string
+	MailFrom        string // remetente, ex.: "CEC Engenharia <nao-responda@cursocec.com.br>"
+	SecretariaEmail string // destino das notificações de lead/contato
 }
 
 // Load lê o .env (se existir) e monta a Config a partir das variáveis de ambiente.
@@ -70,6 +75,9 @@ func Load() *Config {
 		AIProvider:        getEnv("AI_PROVIDER", ""),
 		AIAPIKey:          getEnv("AI_API_KEY", ""),
 		MariaAttendant:    getEnv("MARIA_ATTENDANT", ""),
+		ResendAPIKey:      getEnv("RESEND_API_KEY", ""),
+		MailFrom:          getEnv("MAIL_FROM", "CEC Engenharia <onboarding@resend.dev>"),
+		SecretariaEmail:   getEnv("SECRETARIA_EMAIL", ""),
 	}
 
 	if c.DatabaseURL == "" {

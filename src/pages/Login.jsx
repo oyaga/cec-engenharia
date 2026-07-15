@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
 
@@ -200,6 +200,12 @@ export default function Login({ title = "Acesso ao Sistema", isSecretaria = fals
                     >
                         {loading ? 'Entrando...' : 'Entrar no Sistema'}
                     </button>
+
+                    <div className="text-center" style={{ marginTop: '1.25rem' }}>
+                        <Link to="/esqueci-senha" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            Esqueci minha senha
+                        </Link>
+                    </div>
                 </form>
             </div>
         </div>

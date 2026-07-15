@@ -91,6 +91,10 @@ export const authApi = {
     request('/auth/set-initial-password', { method: 'POST', body: { new_password } }),
   verifyManager: (email, password) =>
     request('/auth/verify-manager', { method: 'POST', body: { email, password } }),
+  forgotPassword: (email) =>
+    request('/auth/forgot-password', { method: 'POST', auth: false, body: { email } }),
+  resetPassword: (token, new_password) =>
+    request('/auth/reset-password', { method: 'POST', auth: false, body: { token, new_password } }),
 };
 
 export { API_BASE };

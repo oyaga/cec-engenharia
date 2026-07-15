@@ -25,6 +25,8 @@ const AreaAluno = lazy(() => import('./pages/AreaAluno'))
 const LessonPlayer = lazy(() => import('./pages/LessonPlayer'))
 const ExamView = lazy(() => import('./pages/ExamView'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const EsqueciSenha = lazy(() => import('./pages/EsqueciSenha'))
+const RedefinirSenha = lazy(() => import('./pages/RedefinirSenha'))
 const MeuPerfil = lazy(() => import('./pages/MeuPerfil'))
 const OuvidoriaAdmin = lazy(() => import('./pages/OuvidoriaAdmin'))
 const TestimonialsAdmin = lazy(() => import('./pages/TestimonialsAdmin'))
@@ -134,6 +136,8 @@ function App() {
             <Route path="/webdesigner" element={<Login title="Acesso Webdesigner - Editor do Site" isWebdesigner={true} redirectTo="/" />} />
             <Route path="/login" element={<Login title="Portal Educacional" />} />
             <Route path="/secretaria" element={<Login title="Acesso Restrito - Secretaria" isSecretaria={true} redirectTo="/dashboard" />} />
+            <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+            <Route path="/redefinir-senha" element={<RedefinirSenha />} />
             
             {/* Public Site Routes */}
             <Route element={<SiteLayout />}>
