@@ -71,5 +71,6 @@ export const lmsApi = {
     return request(`/lms/certificates${opts.student_id ? `?student_id=${opts.student_id}` : ''}`);
   },
   issueCertificate: (payload) => request('/lms/certificates', { method: 'POST', body: payload }),
+  claimCertificate: (course_id) => request('/lms/certificates/claim', { method: 'POST', body: { course_id } }),
   validateCertificate: (code) => request(`/public/validate-certificate/${code}`, { auth: false }),
 };

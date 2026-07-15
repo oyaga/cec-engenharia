@@ -1,6 +1,8 @@
 package lms
 
 import (
+	"encoding/json"
+	"math"
 	"net/http"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 // ───────────── Estrutura do curso (módulos + aulas) ─────────────
@@ -344,6 +347,102 @@ func (h *Handler) IssueCertificate(c *gin.Context) {
 	}
 	if err := h.db.Create(&cert).Error; err != nil {
 		httpx.Error(c, http.StatusConflict, "falha ao emitir certificado")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"certificate": cert})
+}
+
+// ClaimCertificate: POST /lms/certificates/claim — o próprio aluno emite o
+// certificado após concluir o curso. A elegibilidade é validada AQUI no
+// servidor (100% das aulas + aprovação na prova final, se houver), portanto
+// o endpoint pode ficar aberto a qualquer usuário autenticado. Idempotente:
+// se já existe certificado para (aluno, curso), devolve o existente.
+func (h *Handler) ClaimCertificate(c *gin.Context) {
+	var body struct {
+		CourseID uuid.UUID `json:"course_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "course_id é obrigatório")
+		return
+	}
+	sid := middleware.UserID(c)
+
+	var existing models.LMSIssuedCertificate
+	if h.db.First(&existing, "student_id = ? AND course_id = ?", sid, body.CourseID).Error == nil {
+		c.JSON(http.StatusOK, gin.H{"certificate": existing, "already_issued": true})
+		return
+	}
+
+	var course models.LMSCourse
+	if err := h.db.First(&course, "id = ?", body.CourseID).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "curso não encontrado")
+		return
+	}
+
+	// 100% das aulas do curso concluídas
+	var lessonIDs []uuid.UUID
+	h.db.Model(&models.LMSLesson{}).
+		Joins("JOIN lms_modules m ON m.id = lms_lessons.module_id").
+		Where("m.course_id = ?", body.CourseID).
+		Pluck("lms_lessons.id", &lessonIDs)
+	if len(lessonIDs) == 0 {
+		httpx.Error(c, http.StatusUnprocessableEntity, "curso sem aulas cadastradas")
+		return
+	}
+	var done int64
+	h.db.Model(&models.LMSStudentProgress{}).
+		Where("student_id = ? AND is_completed = true AND lesson_id IN ?", sid, lessonIDs).
+		Count(&done)
+	if int(done) < len(lessonIDs) {
+		httpx.Error(c, http.StatusUnprocessableEntity, "conclua todas as aulas do curso para emitir o certificado")
+		return
+	}
+
+	// Prova final aprovada (quando o curso tiver quiz_type=final_exam)
+	grade := 0.0
+	hasGrade := false
+	var finals []models.LMSQuiz
+	h.db.Where("course_id = ? AND quiz_type = ?", body.CourseID, "final_exam").Find(&finals)
+	for _, q := range finals {
+		var best models.LMSQuizResult
+		if h.db.Where("student_id = ? AND quiz_id = ? AND is_approved = true", sid, q.ID).
+			Order("score DESC").First(&best).Error != nil {
+			httpx.Error(c, http.StatusUnprocessableEntity, "aprovação na prova final é necessária para emitir o certificado")
+			return
+		}
+		grade += float64(best.Score)
+		hasGrade = true
+	}
+
+	var user models.User
+	h.db.First(&user, "id = ?", sid)
+	hours := 0
+	if course.MinTheoreticalHours != nil {
+		hours = *course.MinTheoreticalHours
+	}
+	meta := map[string]any{
+		"student_name": user.FullName,
+		"course_title": course.Title,
+		"hours":        hours,
+		"issue_type":   "conclusao",
+	}
+	if user.CPF != nil {
+		meta["cpf"] = *user.CPF
+	}
+	if hasGrade {
+		// score é 0-100; nota exibida é 0-10 com 1 casa
+		meta["grade"] = math.Round(grade/float64(len(finals)))/10
+	}
+	metaJSON, _ := json.Marshal(meta)
+
+	cert := models.LMSIssuedCertificate{
+		StudentID: &sid,
+		CourseID:  &course.ID,
+		Code:      uuid.NewString(),
+		Metadata:  datatypes.JSON(metaJSON),
+	}
+	if err := h.db.Create(&cert).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao emitir certificado")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"certificate": cert})

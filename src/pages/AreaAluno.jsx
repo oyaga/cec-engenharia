@@ -704,17 +704,37 @@ export default function AreaAluno() {
   };
 
   // Baixar Certificado Conquistado (Gera PDF Client-side)
-  const handleDownloadPDF = (cert) => {
+  const handleDownloadPDF = async (cert) => {
+    // O backend guarda os dados da emissão em cert.metadata e o código em cert.code
+    const meta = cert.metadata || {};
     const studentObj = {
-      name: cert.student_name || userName,
-      cpf: studentData?.cpf || ' --- ',
-      class: cert.class_name || 'Turma CEC'
+      name: meta.student_name || cert.student_name || userName,
+      cpf: meta.cpf || studentData?.cpf || ' --- ',
+      class: meta.course_title || cert.course_title || 'Curso CEC'
     };
-    generateDocument('custom_certificate', studentObj, {
-      content: `Certificamos que o aluno ${studentObj.name}, portador do CPF ${studentObj.cpf}, concluiu com êxito o treinamento técnico de ${cert.course_title}, com aproveitamento de nota média ${cert.grade || '8.0'}, cumprindo todos os requisitos teóricos e práticos de qualificação.`,
-      uuid: cert.certificate_code
+    const grade = meta.grade || cert.grade;
+    const hours = meta.hours || cert.hours;
+    await generateDocument('custom_certificate', studentObj, {
+      content: `Certificamos que ${studentObj.name}, portador(a) do CPF ${studentObj.cpf}, concluiu com aproveitamento o curso de ${studentObj.class}${hours ? `, com carga horária de ${hours} horas` : ''}${grade ? `, obtendo nota média ${String(grade).replace('.', ',')}` : ''}.`,
+      uuid: cert.code || cert.certificate_code,
+      grade, hours
     });
-    alert(`Certificado digital baixado com sucesso!`);
+  };
+
+  // Emitir o próprio certificado (validação de elegibilidade é do servidor)
+  const [claimingCourseId, setClaimingCourseId] = useState(null);
+  const handleClaimCertificate = async (course) => {
+    setClaimingCourseId(course.id);
+    try {
+      const { certificate } = await lmsApi.claimCertificate(course.id);
+      setIssuedCertificates(prev => [certificate, ...prev.filter(c => c.id !== certificate.id)]);
+      setCertificatesCount(prev => prev + 1);
+      alert(`Certificado emitido com sucesso! Código de autenticidade: ${certificate.code.substring(0, 8).toUpperCase()}`);
+    } catch (err) {
+      alert(err.message || 'Não foi possível emitir o certificado.');
+    } finally {
+      setClaimingCourseId(null);
+    }
   };
 
   // Redireciona o aluno para a primeira aula do curso EAD
@@ -2013,8 +2033,8 @@ export default function AreaAluno() {
             </div>
             
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.course_title}</h4>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')}</span>
+              <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.metadata?.course_title || cert.course_title || 'Curso CEC'}</h4>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')} · Código {(cert.code || '').substring(0, 8).toUpperCase()}</span>
               
               <button 
                 className="btn btn-primary"
@@ -2038,13 +2058,15 @@ export default function AreaAluno() {
               
               <div style={{ flex: 1 }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{course.title}</h4>
-                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Aguardando homologação da Secretaria</span>
-                
-                <button 
-                  disabled
-                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', background: '#f1f5f9', color: '#94a3b8', border: '1px solid #cbd5e1', cursor: 'not-allowed' }}
+                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Requisitos concluídos 🎉</span>
+
+                <button
+                  className="btn btn-primary"
+                  disabled={claimingCourseId === course.id}
+                  onClick={() => handleClaimCertificate(course)}
+                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: claimingCourseId === course.id ? 0.6 : 1 }}
                 >
-                  Pendente de Emissão
+                  <Award size={14} /> {claimingCourseId === course.id ? 'Emitindo...' : 'Emitir meu certificado'}
                 </button>
               </div>
             </div>
