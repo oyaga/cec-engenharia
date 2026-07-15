@@ -3,18 +3,49 @@
 package site
 
 import (
+	"html"
 	"net/http"
 	"strings"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-type Handler struct{ db *gorm.DB }
+type Handler struct {
+	db              *gorm.DB
+	ml              *mailer.Mailer
+	secretariaEmail string
+}
 
-func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
+func NewHandler(db *gorm.DB, ml *mailer.Mailer, secretariaEmail string) *Handler {
+	return &Handler{db: db, ml: ml, secretariaEmail: strings.TrimSpace(secretariaEmail)}
+}
+
+// notifyLead avisa (async) a secretaria sobre um novo lead do site.
+func (h *Handler) notifyLead(l *models.Lead) {
+	if h.secretariaEmail == "" || !h.ml.Enabled() {
+		return
+	}
+	val := func(p *string) string {
+		if p == nil || strings.TrimSpace(*p) == "" {
+			return "—"
+		}
+		return html.EscapeString(*p)
+	}
+	body := `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1f2937">` +
+		`<h2 style="color:#0f172a;margin:0 0 16px">Novo contato pelo site</h2>` +
+		`<p><b>Nome:</b> ` + html.EscapeString(l.Name) + `</p>` +
+		`<p><b>Telefone:</b> ` + html.EscapeString(l.Phone) + `</p>` +
+		`<p><b>E-mail:</b> ` + val(l.Email) + `</p>` +
+		`<p><b>Interesse:</b> ` + val(l.CourseInterest) + `</p>` +
+		`<p><b>Mensagem:</b> ` + val(l.Message) + `</p>` +
+		`<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">` +
+		`<p style="font-size:12px;color:#9ca3af">Enviado automaticamente pelo site cursocec.com.br.</p></div>`
+	h.ml.SendAsync([]string{h.secretariaEmail}, "Novo lead: "+l.Name, body)
+}
 
 // ─────────────────────────── LEADS ───────────────────────────
 
@@ -72,6 +103,7 @@ func (h *Handler) CreateLeadPublic(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar contato")
 		return
 	}
+	h.notifyLead(&lead)
 	c.JSON(http.StatusCreated, gin.H{"ok": true, "id": lead.ID})
 }
 

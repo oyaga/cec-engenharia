@@ -14,6 +14,7 @@ import (
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // PasswordResetToken mapeia a tabela password_reset_tokens (migration 022).
@@ -34,6 +35,28 @@ const resetTokenTTL = time.Hour
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+// IssueResetToken gera um token de redefinição para o usuário, invalidando os
+// anteriores não usados, e persiste apenas o hash. Retorna o token em claro
+// (para compor o link). ttl controla a validade (ex.: 1h para reset, dias para
+// o primeiro acesso). Reutilizado pelo fluxo de boas-vindas.
+func IssueResetToken(db *gorm.DB, userID uuid.UUID, ttl time.Duration) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	db.Where("user_id = ? AND used_at IS NULL", userID).Delete(&PasswordResetToken{})
+	rec := PasswordResetToken{
+		UserID:    userID,
+		TokenHash: hashToken(token),
+		ExpiresAt: time.Now().Add(ttl),
+	}
+	if err := db.Create(&rec).Error; err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 type forgotPasswordRequest struct {
@@ -62,23 +85,8 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Gera token aleatório (32 bytes) e guarda apenas o hash.
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		httpx.Error(c, http.StatusInternalServerError, "falha ao gerar token")
-		return
-	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-
-	// Invalida tokens anteriores não usados do usuário.
-	h.db.Where("user_id = ? AND used_at IS NULL", user.ID).Delete(&PasswordResetToken{})
-
-	rec := PasswordResetToken{
-		UserID:    user.ID,
-		TokenHash: hashToken(token),
-		ExpiresAt: time.Now().Add(resetTokenTTL),
-	}
-	if err := h.db.Create(&rec).Error; err != nil {
+	token, err := IssueResetToken(h.db, user.ID, resetTokenTTL)
+	if err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar solicitação")
 		return
 	}

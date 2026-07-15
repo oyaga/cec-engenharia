@@ -3,11 +3,14 @@ package users
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PITICALYN/cec-backend/internal/auth"
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/middleware"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
@@ -16,9 +19,18 @@ import (
 	"gorm.io/gorm"
 )
 
-type Handler struct{ db *gorm.DB }
+// Validade do link de primeiro acesso enviado no e-mail de boas-vindas.
+const welcomeTokenTTL = 72 * time.Hour
 
-func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
+type Handler struct {
+	db        *gorm.DB
+	ml        *mailer.Mailer
+	publicURL string
+}
+
+func NewHandler(db *gorm.DB, ml *mailer.Mailer, publicURL string) *Handler {
+	return &Handler{db: db, ml: ml, publicURL: strings.TrimRight(publicURL, "/")}
+}
 
 // toJSON serializa um map de permissões para datatypes.JSON.
 func toJSON(m map[string]any) datatypes.JSON {
@@ -123,7 +135,34 @@ func (h *Handler) Create(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao criar usuário")
 		return
 	}
+	h.sendWelcome(&user)
 	c.JSON(http.StatusCreated, gin.H{"user": user})
+}
+
+// sendWelcome envia (async) o e-mail de boas-vindas com um link de primeiro
+// acesso para o usuário definir a própria senha (reaproveita o token de reset).
+func (h *Handler) sendWelcome(user *models.User) {
+	if user == nil || user.Email == "" || !h.ml.Enabled() {
+		return
+	}
+	token, err := auth.IssueResetToken(h.db, user.ID, welcomeTokenTTL)
+	if err != nil {
+		return
+	}
+	link := h.publicURL + "/redefinir-senha?token=" + token
+	name := html.EscapeString(strings.TrimSpace(user.FullName))
+	if name == "" {
+		name = "bem-vindo(a)"
+	}
+	body := `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1f2937">` +
+		`<h2 style="color:#0f172a;margin:0 0 16px">CEC Engenharia</h2>` +
+		`<p>Olá, ` + name + `.</p>` +
+		`<p>Sua conta de acesso ao portal da CEC Engenharia foi criada. Para começar, defina a sua senha clicando no botão abaixo (o link vale por 3 dias):</p>` +
+		`<p style="text-align:center;margin:28px 0"><a href="` + link + `" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;display:inline-block">Definir minha senha</a></p>` +
+		`<p style="font-size:13px;color:#6b7280">Seu login é o e-mail <b>` + html.EscapeString(user.Email) + `</b>.</p>` +
+		`<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">` +
+		`<p style="font-size:12px;color:#9ca3af">Este é um e-mail automático — não responda.</p></div>`
+	h.ml.SendAsync([]string{user.Email}, "Bem-vindo à CEC Engenharia — defina sua senha", body)
 }
 
 type updateRequest struct {

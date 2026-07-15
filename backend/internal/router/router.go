@@ -101,7 +101,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		protected.POST("/verify-manager", authH.VerifyManager)
 
 		// ─── Users (identidade) — RBAC admin/coordenador ───
-		usersH := users.NewHandler(gdb)
+		usersH := users.NewHandler(gdb, ml, cfg.PublicURL)
 		u := v1.Group("/users")
 		u.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador"))
 		u.GET("", usersH.List)
@@ -112,7 +112,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		u.DELETE("/:id", usersH.Delete)
 
 		// ─── Site público (sem auth) ───
-		siteH := site.NewHandler(gdb)
+		siteH := site.NewHandler(gdb, ml, cfg.SecretariaEmail)
 		pub := v1.Group("/public")
 		pub.POST("/leads", siteH.CreateLeadPublic)
 		pub.POST("/complaints", siteH.CreateComplaintPublic)
