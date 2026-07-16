@@ -4,10 +4,21 @@ import { settingsApi } from '../services/financial'
 import { testAsaasConnection } from '../services/asaas'
 import { useAuth } from '../contexts/AuthContext'
 
+// URL do webhook no backend (mesma origem da API). Deriva o domínio apex a
+// partir do host atual, para funcionar tanto no domínio raiz quanto nos
+// subdomínios de portal (portal./secretaria./aluno.).
+const webhookUrl = () => {
+    const { protocol, hostname, port } = window.location
+    const base = hostname.replace(/^(aluno|secretaria|portal|www)\./, '')
+    return `${protocol}//${base}${port ? `:${port}` : ''}/api/v1/webhooks/asaas`
+}
+
 export default function ConfigAsaas() {
     const { userProfile, loading: authLoading } = useAuth()
     const [apiKey, setApiKey] = useState('')
     const [keyConfigured, setKeyConfigured] = useState(false)
+    const [webhookToken, setWebhookToken] = useState('')
+    const [tokenConfigured, setTokenConfigured] = useState(false)
     const [environment, setEnvironment] = useState('sandbox')
     const [maxInstallmentsCard, setMaxInstallmentsCard] = useState('10')
     const [maxInstallmentsFinancing, setMaxInstallmentsFinancing] = useState('6')
@@ -31,8 +42,9 @@ export default function ConfigAsaas() {
                 const { settings } = await settingsApi.list()
                 const byKey = Object.fromEntries((settings || []).map(s => [s.key, s]))
 
-                // A chave nunca é devolvida ao browser (C1/C2): só sabemos se está definida.
+                // A chave e o token nunca são devolvidos ao browser (C1/C2): só sabemos se estão definidos.
                 setKeyConfigured(!!byKey['asaas_api_key']?.is_set)
+                setTokenConfigured(!!byKey['asaas_webhook_token']?.is_set)
                 if (byKey['asaas_environment']?.value) setEnvironment(byKey['asaas_environment'].value)
                 if (byKey['asaas_max_installments_card']?.value) setMaxInstallmentsCard(byKey['asaas_max_installments_card'].value)
                 if (byKey['asaas_max_installments_financing']?.value) setMaxInstallmentsFinancing(byKey['asaas_max_installments_financing'].value)
@@ -49,7 +61,7 @@ export default function ConfigAsaas() {
     }, [isGerencial])
 
     const copyToClipboard = () => {
-        navigator.clipboard.writeText('https://webhook.cursocec.com.br/webhook/asaas-payment')
+        navigator.clipboard.writeText(webhookUrl())
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
@@ -90,12 +102,14 @@ export default function ConfigAsaas() {
                 asaas_max_installments_financing: maxInstallmentsFinancing,
                 asaas_pix_discount_percent: pixDiscount,
             }
-            // Só envia a chave se o admin digitou uma nova (vazio mantém a atual no servidor).
+            // Só envia chave/token se o admin digitou um novo (vazio mantém o atual no servidor).
             if (apiKey) toSave.asaas_api_key = apiKey
+            if (webhookToken) toSave.asaas_webhook_token = webhookToken
 
             await settingsApi.save(toSave)
 
             if (apiKey) { setKeyConfigured(true); setApiKey('') }
+            if (webhookToken) { setTokenConfigured(true); setWebhookToken('') }
             setFeedback({ type: 'success', message: 'Configurações do Asaas salvas com sucesso!' })
         } catch (err) {
             console.error('Erro ao salvar chaves do Asaas:', err)
@@ -238,11 +252,11 @@ export default function ConfigAsaas() {
                     {/* Webhook URL (Copiar) */}
                     <div>
                         <label className="form-label" style={{ fontWeight: '600', marginBottom: '0.5rem', display: 'block', fontSize: '0.95rem' }}>
-                            🔗 Webhook URL (configurar no painel Asaas):
+                            🔗 Webhook URL (configure no painel Asaas → Integrações → Webhooks):
                         </label>
                         <div style={{ backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                             <code style={{ fontSize: '0.85rem', color: 'var(--primary)', wordBreak: 'break-all', minWidth: 0, flex: '1 1 200px' }}>
-                                https://webhook.cursocec.com.br/webhook/asaas-payment
+                                {webhookUrl()}
                             </code>
                             <button
                                 type="button"
@@ -254,6 +268,27 @@ export default function ConfigAsaas() {
                                 {copied ? 'Copiado!' : 'Copiar URL'}
                             </button>
                         </div>
+                        <small className="text-muted" style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.8rem' }}>
+                            No Asaas, marque os eventos de <strong>pagamento recebido/confirmado</strong>. Ao confirmar o pagamento, o aluno é criado e o acesso ao curso é liberado automaticamente.
+                        </small>
+                    </div>
+
+                    {/* Token do Webhook (segurança) */}
+                    <div>
+                        <label className="form-label" style={{ fontWeight: '600', marginBottom: '0.5rem', display: 'block', fontSize: '0.95rem' }}>
+                            🛡️ Token do Webhook (Access Token do Asaas)
+                        </label>
+                        <input
+                            type="text"
+                            className="form-control"
+                            placeholder={tokenConfigured ? 'Token configurado — deixe em branco para manter' : 'Defina um token secreto (ex.: openssl rand -base64 24)'}
+                            value={webhookToken}
+                            onChange={(e) => setWebhookToken(e.target.value)}
+                            style={{ width: '100%', padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                        />
+                        <small className="text-muted" style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.8rem' }}>
+                            Cole este mesmo token no campo <strong>"Token de autenticação"</strong> do webhook no painel do Asaas. O sistema rejeita chamadas sem ele — protege contra confirmações de pagamento falsas.
+                        </small>
                     </div>
 
                     {/* Status da conexão (Testar Conexão) */}

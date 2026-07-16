@@ -270,10 +270,20 @@ func (h *Handler) Status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"payment": p})
 }
 
+// webhookToken resolve o token esperado: system_settings tem prioridade
+// (configurável pela tela ConfigAsaas), com fallback para a variável de ambiente.
+func (h *Handler) webhookToken() string {
+	var s models.SystemSetting
+	if h.db.Where("key = ?", "asaas_webhook_token").First(&s).Error == nil && s.Value != nil && *s.Value != "" {
+		return *s.Value
+	}
+	return h.cfg.AsaasWebhookToken
+}
+
 // Webhook: POST /webhooks/asaas — valida token e processa pagamento.
 func (h *Handler) Webhook(c *gin.Context) {
 	// Verificação de autenticidade: header asaas-access-token == token configurado.
-	expected := h.cfg.AsaasWebhookToken
+	expected := h.webhookToken()
 	if expected != "" {
 		if c.GetHeader("asaas-access-token") != expected {
 			httpx.Error(c, http.StatusUnauthorized, "webhook não autorizado")

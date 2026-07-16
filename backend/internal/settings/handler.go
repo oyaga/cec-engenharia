@@ -17,9 +17,10 @@ func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
 
 // Chaves sensíveis: o valor nunca sai do servidor; devolvemos apenas um flag.
 var sensitive = map[string]bool{
-	"asaas_api_key":     true,
-	"maria_ai_api_key":  true,
-	"evolution_api_key": true,
+	"asaas_api_key":       true,
+	"asaas_webhook_token": true,
+	"maria_ai_api_key":    true,
+	"evolution_api_key":   true,
 }
 
 // List: GET /settings (admin) — segredos mascarados.
