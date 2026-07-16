@@ -183,7 +183,7 @@ export default function StudentLayout() {
                     }}
                     className={`student-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}
                 >
-                    <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1, overflowY: 'auto' }}>
+                    <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
                         <NavLink to="/area-aluno" end style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <Home size={18} /> Início
                         </NavLink>

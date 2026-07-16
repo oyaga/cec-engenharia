@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { User, Menu, X, Camera, Facebook, Linkedin, Plus, Trash2, GraduationCap } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
@@ -231,7 +232,10 @@ const Navbar = () => {
           </div>
         </div>
 
-        {/* Mobile Drawer */}
+        {/* Mobile Drawer — renderizado via portal no body para escapar do
+            backdrop-filter do .sticky-nav, que no Safari contém o position:fixed
+            e fazia o drawer aparecer transparente/cortado. */}
+        {createPortal((<>
         <div className={`drawer-overlay ${isMenuOpen ? 'active' : ''}`} onClick={toggleMenu}></div>
         <div className={`drawer ${isMenuOpen ? 'open' : ''}`}>
           <div className="drawer-header">
@@ -299,6 +303,7 @@ const Navbar = () => {
             </Link>
           </div>
         </div>
+        </>), document.body)}
 
       <style>{`
         .social-links-nav {
@@ -481,13 +486,16 @@ const Navbar = () => {
           top: 0;
           right: -300px;
           width: 300px;
-          height: 100%;
-          background: white;
+          height: 100vh;
+          height: 100dvh; /* Safari iOS: desconta barras do navegador */
+          background: #ffffff;
           z-index: 2000;
           padding: 2rem;
           display: flex;
           flex-direction: column;
           gap: 2rem;
+          overflow-y: auto; /* itens de baixo acessíveis em telas curtas */
+          -webkit-overflow-scrolling: touch;
           transition: all 0.4s cubic-bezier(0.82, 0.085, 0.395, 0.895);
           box-shadow: -10px 0 30px rgba(0,0,0,0.1);
         }

@@ -109,7 +109,7 @@ export default function Sidebar() {
                     </button>
                 </div>
 
-            <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+            <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
                 
                 {/* Menus Visíveis para Todos */}
                 <NavLink
