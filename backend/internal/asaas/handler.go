@@ -8,6 +8,7 @@ import (
 
 	"github.com/PITICALYN/cec-backend/internal/config"
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -57,13 +58,15 @@ func (h *Handler) TestConnection(c *gin.Context) {
 }
 
 type Handler struct {
-	db     *gorm.DB
-	cfg    *config.Config
-	client *Client
+	db        *gorm.DB
+	cfg       *config.Config
+	client    *Client
+	ml        *mailer.Mailer
+	publicURL string
 }
 
-func NewHandler(db *gorm.DB, cfg *config.Config) *Handler {
-	return &Handler{db: db, cfg: cfg, client: NewClient(db, cfg)}
+func NewHandler(db *gorm.DB, cfg *config.Config, ml *mailer.Mailer) *Handler {
+	return &Handler{db: db, cfg: cfg, client: NewClient(db, cfg), ml: ml, publicURL: cfg.PublicURL}
 }
 
 var billingByMethod = map[string]string{
@@ -305,6 +308,12 @@ func (h *Handler) Webhook(c *gin.Context) {
 		if count == 0 {
 			h.db.Exec(`INSERT INTO onboarding_logs (asaas_payment_id, payment_value, payment_method) VALUES (?, ?, ?)`,
 				body.Payment.ID, body.Payment.Value, body.Payment.BillingType)
+		}
+
+		// Ativação automática: cria o aluno, vincula à turma e libera o EAD.
+		var enr models.Enrollment
+		if h.db.First(&enr, "id = ?", body.Payment.ExternalReference).Error == nil {
+			h.activateStudent(&enr)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"received": true})

@@ -128,7 +128,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		pub.GET("/validate-certificate/:code", lmsH.ValidateCertificate)
 
 		// ─── Asaas (Fase 3 — server-side; chave nunca no browser) ───
-		asaasH := asaas.NewHandler(gdb, cfg)
+		asaasH := asaas.NewHandler(gdb, cfg, ml)
 		pub.POST("/checkout", asaasH.Checkout)         // matrícula pelo site
 		v1.POST("/webhooks/asaas", asaasH.Webhook)     // token-verified
 		payGroup := v1.Group("/payments")

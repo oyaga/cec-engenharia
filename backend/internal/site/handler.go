@@ -345,7 +345,9 @@ func (h *Handler) CreateEnrollmentPublic(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar pré-matrícula")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"ok": true, "id": in.ID})
+	// Retorna o registro completo: o front usa enrollment.id como
+	// externalReference no checkout, e o webhook o localiza para ativar o aluno.
+	c.JSON(http.StatusCreated, gin.H{"ok": true, "id": in.ID, "enrollment": in})
 }
 
 // ListEnrollments: GET /enrollments (auth)
