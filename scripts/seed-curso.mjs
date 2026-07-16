@@ -31,19 +31,25 @@ if (!CONTENT_DIR || !QUIZ_DIR) {
   process.exit(1);
 }
 
-// Ordem pedagógica: pasta de origem → título do módulo.
+// Ordem pedagógica: pasta de origem → [título do módulo, slug do arquivo].
+// O slug é usado no modo --prehosted (arquivos já enviados ao servidor via
+// SFTP, contornando o limite de 100 MB/request do Cloudflare no plano Free).
 const MODULES = [
-  ['DESENHO TECNICO', 'Desenho Técnico'],
-  ['INSTRUMENTOS DE MECANICA', 'Instrumentos de Mecânica'],
-  ['TOLERANCIA', 'Tolerância Dimensional e Ajuste'],
-  ['TOLERANCIA GEOMETRICA', 'Tolerância Geométrica'],
-  ['TEXTURA', 'Textura Superficial'],
-  ['DUREZA', 'Dureza'],
-  ['ENGRENAGENS', 'Engrenagens'],
-  ['MAQUINAS ROTATIVAAS', 'Máquinas Rotativas'],
-  ['VALVULAS', 'Válvulas Industriais'],
-  ['RECEBIMENTO', 'Recebimento e Armazenamento de Materiais'],
+  ['DESENHO TECNICO', 'Desenho Técnico', 'desenho-tecnico'],
+  ['INSTRUMENTOS DE MECANICA', 'Instrumentos de Mecânica', 'instrumentos-mecanica'],
+  ['TOLERANCIA', 'Tolerância Dimensional e Ajuste', 'tolerancia-dimensional'],
+  ['TOLERANCIA GEOMETRICA', 'Tolerância Geométrica', 'tolerancia-geometrica'],
+  ['TEXTURA', 'Textura Superficial', 'textura-superficial'],
+  ['DUREZA', 'Dureza', 'dureza'],
+  ['ENGRENAGENS', 'Engrenagens', 'engrenagens'],
+  ['MAQUINAS ROTATIVAAS', 'Máquinas Rotativas', 'maquinas-rotativas'],
+  ['VALVULAS', 'Válvulas Industriais', 'valvulas'],
+  ['RECEBIMENTO', 'Recebimento e Armazenamento de Materiais', 'recebimento'],
 ];
+
+// Modo --prehosted: não faz upload; monta a URL de um arquivo já presente no
+// servidor em lms-videos/<slug>.mp4 e lms-docs/<slug>.pdf.
+const PREHOSTED = process.argv.includes('--prehosted');
 
 let TOKEN = '';
 
@@ -135,7 +141,7 @@ const findFile = (dir, pattern) =>
 
   // 3. Módulos
   for (let i = 0; i < MODULES.length; i++) {
-    const [folder, title] = MODULES[i];
+    const [folder, title, slug] = MODULES[i];
     const dir = path.join(CONTENT_DIR, folder);
     if (!fs.existsSync(dir)) { console.warn(`! pasta ausente: ${folder} — pulando`); continue; }
     console.log(`\n[${i + 1}/${MODULES.length}] ${title}`);
@@ -144,19 +150,25 @@ const findFile = (dir, pattern) =>
       course_id: course.id, title, order_index: i,
     });
 
-    // Uploads (vídeo pode levar um tempo — são dezenas de MB)
     const videoPath = findFile(dir, /\.mp4$/i);
     const pdfPath = findFile(dir, /\.pdf$/i);
     let videoURL = null, pdfURL = null;
-    if (videoPath) {
-      process.stdout.write(`  ↑ vídeo (${(fs.statSync(videoPath).size / 1048576).toFixed(0)} MB)... `);
-      videoURL = await upload(videoPath, 'lms-videos');
-      console.log('ok');
-    }
-    if (pdfPath) {
-      process.stdout.write('  ↑ apostila... ');
-      pdfURL = await upload(pdfPath, 'lms-docs');
-      console.log('ok');
+    if (PREHOSTED) {
+      // Arquivos já enviados ao servidor via SFTP (lms-videos/<slug>.mp4).
+      if (videoPath) videoURL = `${BASE}/api/v1/files/lms-videos/${slug}.mp4`;
+      if (pdfPath) pdfURL = `${BASE}/api/v1/files/lms-docs/${slug}.pdf`;
+      console.log('  ↳ apontando para arquivos já hospedados');
+    } else {
+      if (videoPath) {
+        process.stdout.write(`  ↑ vídeo (${(fs.statSync(videoPath).size / 1048576).toFixed(0)} MB)... `);
+        videoURL = await upload(videoPath, 'lms-videos');
+        console.log('ok');
+      }
+      if (pdfPath) {
+        process.stdout.write('  ↑ apostila... ');
+        pdfURL = await upload(pdfPath, 'lms-docs');
+        console.log('ok');
+      }
     }
 
     await api('POST', '/lms/lessons', {
