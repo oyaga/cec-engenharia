@@ -567,13 +567,17 @@ export default function LessonPlayer() {
     const isImageUrl = (url) => {
         if (!url) return false
         const cleanPath = url.split('?')[0].toLowerCase()
-        return cleanPath.endsWith('.png') || 
-               cleanPath.endsWith('.jpg') || 
-               cleanPath.endsWith('.jpeg') || 
-               cleanPath.endsWith('.webp') || 
+        return cleanPath.endsWith('.png') ||
+               cleanPath.endsWith('.jpg') ||
+               cleanPath.endsWith('.jpeg') ||
+               cleanPath.endsWith('.webp') ||
                cleanPath.endsWith('.gif') ||
                cleanPath.endsWith('.svg')
     }
+
+    // Arquivo de vídeo direto (upload local): usa <video> nativo em vez de
+    // iframe — controles, seek e fullscreen funcionam sem depender de embed.
+    const isDirectVideo = (url) => /\.(mp4|webm|ogg)(\?|$)/i.test((url || '').split('#')[0])
 
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando aula...</div>
     if (!lesson) return <div style={{ padding: '2rem', textAlign: 'center' }}>Aula não encontrada.</div>
@@ -638,12 +642,22 @@ export default function LessonPlayer() {
                         <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', border: '1px solid #1e293b' }}>
                             {lesson.video_url ? (
                                 <>
-                                    <iframe 
+                                    {isDirectVideo(lesson.video_url) ? (
+                                        <video
+                                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'black' }}
+                                            src={lesson.video_url}
+                                            controls
+                                            controlsList="nodownload"
+                                            playsInline
+                                        />
+                                    ) : (
+                                    <iframe
                                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
                                         src={formatVideoUrl(lesson.video_url)}
                                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                         allowFullScreen
                                     ></iframe>
+                                    )}
                                     
                                     {/* Marca d'água flutuante dinâmica sobre o vídeo */}
                                     <div style={{

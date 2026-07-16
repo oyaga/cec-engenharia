@@ -57,10 +57,10 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 		// CSP só quando a API também serve o SPA (imagem única).
-		// frame-src libera o embed do Google Maps do rodapé (sem ele o
-		// default-src 'self' bloqueia o iframe e o mapa aparece quebrado).
+		// frame-src: 'self' (PDFs/vídeos locais em iframe no player) +
+		// Google Maps (rodapé) + YouTube/Vimeo (videoaulas embedadas).
 		if cfg.WebDir != "" {
-			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https://maps.google.com https://www.google.com; frame-ancestors 'none'")
+			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors 'none'")
 		}
 		c.Next()
 	})

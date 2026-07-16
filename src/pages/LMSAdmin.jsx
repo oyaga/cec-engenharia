@@ -1438,26 +1438,53 @@ export default function LMSAdmin() {
                         <div className="form-group">
                             <label className="form-label">Tipo de Conteúdo</label>
                             <select className="form-control" value={lessonForm.type} onChange={e => setLessonForm({...lessonForm, type: e.target.value})}>
-                                <option value="video">Vídeo (YouTube/Vimeo)</option>
+                                <option value="video">Vídeo (YouTube/Vimeo ou arquivo enviado)</option>
                                 <option value="pdf">Arquivo (PDF, Word, Excel, PPT)</option>
                             </select>
                         </div>
 
                         {lessonForm.type === 'video' ? (
                             <div className="form-group">
-                                <label className="form-label">URL do Vídeo</label>
+                                <label className="form-label">URL do Vídeo (YouTube/Vimeo) — ou envie o arquivo</label>
                                 <input type="text" className="form-control" value={lessonForm.video_url} onChange={e => setLessonForm({...lessonForm, video_url: e.target.value})} placeholder="https://youtube.com/..." />
-                                {lessonForm.video_url && (
+                                <button className="btn btn-secondary" style={{ width: '100%', marginTop: '0.6rem' }} onClick={async () => {
+                                    const input = document.createElement('input'); input.type = 'file'; input.accept = '.mp4,.webm';
+                                    input.onchange = async (e) => {
+                                        const file = e.target.files[0]
+                                        if (!file) return
+                                        if (file.size > 500 * 1024 * 1024) { alert('O vídeo excede o limite de 500 MB.'); return }
+                                        setLessonForm(prev => ({ ...prev, video_url: '⏳ Enviando vídeo... aguarde' }))
+                                        try {
+                                            const { url } = await uploadFile(file, 'lms-videos')
+                                            setLessonForm(prev => ({ ...prev, video_url: url }))
+                                        } catch (err) {
+                                            setLessonForm(prev => ({ ...prev, video_url: '' }))
+                                            alert('Falha no envio do vídeo: ' + err.message)
+                                        }
+                                    }
+                                    input.click()
+                                }}>
+                                    🎬 Enviar arquivo de vídeo (MP4/WebM, até 500 MB — fica hospedado na plataforma)
+                                </button>
+                                {lessonForm.video_url && !lessonForm.video_url.startsWith('⏳') && (
                                     <div style={{ marginTop: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.75rem', backgroundColor: '#f8fafc' }}>
                                         <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600, display: 'block', marginBottom: '0.5rem' }}>📺 Prévia do Vídeo:</span>
                                         <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '6px', overflow: 'hidden' }}>
-                                            <iframe 
-                                                src={formatVideoUrl(lessonForm.video_url)} 
+                                            {/\.(mp4|webm|ogg)(\?|$)/i.test(lessonForm.video_url.split('#')[0]) ? (
+                                                <video
+                                                    src={lessonForm.video_url}
+                                                    controls
+                                                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'black' }}
+                                                />
+                                            ) : (
+                                            <iframe
+                                                src={formatVideoUrl(lessonForm.video_url)}
                                                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
                                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                                 allowFullScreen
                                                 title="Prévia do Vídeo"
                                             ></iframe>
+                                            )}
                                         </div>
                                     </div>
                                 )}
