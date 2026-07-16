@@ -97,7 +97,7 @@ export default function ValidarCertificado() {
               border: '3px solid rgba(14, 165, 233, 0.2)', borderTopColor: '#0ea5e9',
               animation: 'spin 1s linear infinite' 
             }} />
-            <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 500 }}>Consultando registro de autenticidade no Supabase...</span>
+            <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 500 }}>Consultando registro de autenticidade...</span>
           </div>
         ) : errorMsg ? (
           /* TELA DE ERRO / INVÁLIDO */
@@ -171,7 +171,9 @@ export default function ValidarCertificado() {
                 <div>
                   <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Aluno Diplomado</span>
                   <p style={{ margin: '1px 0 0 0', fontSize: '0.92rem', fontWeight: '750', color: '#f8fafc' }}>{certData.student_name}</p>
-                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>CPF: {certData.student_cpf}</span>
+                  {certData.student_cpf && (
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>CPF: {certData.student_cpf}</span>
+                  )}
                 </div>
               </div>
 
