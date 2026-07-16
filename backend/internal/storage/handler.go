@@ -29,6 +29,16 @@ var allowedExt = map[string]bool{
 	".pdf": true, ".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true,
 }
 
+// Vídeos das aulas (LMS) têm limite próprio, maior que o de documentos.
+var videoExt = map[string]bool{
+	".mp4": true, ".webm": true,
+}
+
+const (
+	maxDocSize   = 20 << 20  // 20 MB
+	maxVideoSize = 500 << 20 // 500 MB
+)
+
 // Upload: POST /files (multipart; campo "file", opcional "folder").
 func (h *Handler) Upload(c *gin.Context) {
 	file, err := c.FormFile("file")
@@ -37,11 +47,15 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !allowedExt[ext] {
+	if !allowedExt[ext] && !videoExt[ext] {
 		httpx.Error(c, http.StatusBadRequest, "tipo de arquivo não permitido")
 		return
 	}
-	if file.Size > 20<<20 { // 20 MB
+	if videoExt[ext] && file.Size > maxVideoSize {
+		httpx.Error(c, http.StatusBadRequest, "vídeo excede 500 MB")
+		return
+	}
+	if allowedExt[ext] && file.Size > maxDocSize {
 		httpx.Error(c, http.StatusBadRequest, "arquivo excede 20 MB")
 		return
 	}
