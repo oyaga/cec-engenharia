@@ -1530,7 +1530,8 @@ export default function Alunos() {
                                 <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '2rem' }}>
                                     <h4 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Histórico de Lançamentos</h4>
                                     {evals.length === 0 ? <p className="text-muted" style={{ fontSize: '0.9rem' }}>Nenhuma avaliação lançada ainda.</p> : (
-                                        <table style={{ width: '100%', fontSize: '0.85rem', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                        <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', fontSize: '0.85rem', textAlign: 'left', borderCollapse: 'collapse', minWidth: '360px' }}>
                                             <thead>
                                                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
                                                     <th style={{ paddingBottom: '0.5rem' }}>Data</th>
@@ -1552,6 +1553,7 @@ export default function Alunos() {
                                                 ))}
                                             </tbody>
                                         </table>
+                                        </div>
                                     )}
                                 </div>
                             </div>

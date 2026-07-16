@@ -618,6 +618,12 @@ const CourseDetails = () => {
           .images-stack { position: static; order: -1; }
           .outcomes-list ul { grid-template-columns: 1fr; }
         }
+        @media (max-width: 640px) {
+          .course-info-cards { grid-template-columns: 1fr; gap: 1rem; }
+          .faq-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+          .course-main-title { font-size: 2.1rem; }
+          .investment-section { padding: 1.75rem; border-radius: 1.25rem; }
+        }
       `}</style>
     </div>
   );

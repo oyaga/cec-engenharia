@@ -268,7 +268,7 @@ export default function StudentLayout() {
                 {/* CONTENT CONTAINER */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     {/* MAIN CONTENT AREA */}
-                    <main style={{ flex: 1, padding: '2rem 1.5rem' }}>
+                    <main className="student-main" style={{ flex: 1, padding: '2rem 1.5rem' }}>
                         <Outlet />
                     </main>
 
@@ -288,6 +288,10 @@ export default function StudentLayout() {
                     background-color: #fef2f2 !important;
                 }
                 @media (max-width: 768px) {
+                    /* Padding menor no mobile: a maioria das páginas do aluno
+                       já adiciona o próprio padding, então aqui reduzimos para
+                       não duplicar e comer largura útil em telas estreitas. */
+                    .student-main { padding: 1rem 0.75rem !important; }
                     .student-sidebar {
                         position: fixed !important;
                         top: 71px !important;

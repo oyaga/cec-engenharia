@@ -77,6 +77,14 @@
     padding: 0;
 }
 
+/* Corta o scroll horizontal fantasma criado por elementos position:fixed que
+   ficam fora da viewport (ex.: o drawer do menu mobile fechado). O clip no
+   body sozinho não contém fixed — precisa estar no html também. Conteúdo
+   largo legítimo (tabelas) rola no próprio contêiner overflow-x:auto. */
+html {
+    overflow-x: clip;
+}
+
 body {
     font-family: var(--font-sans);
     background-color: var(--bg-color);
@@ -84,8 +92,6 @@ body {
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.3s ease, color 0.3s ease;
-    /* Impede scroll horizontal acidental sem quebrar position:sticky.
-       Conteúdo largo (tabelas) deve rolar no próprio contêiner overflow-x:auto. */
     overflow-x: clip;
 }
 

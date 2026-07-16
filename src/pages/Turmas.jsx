@@ -870,7 +870,8 @@ export default function Turmas() {
                         {modalLoading ? (
                             <div style={{ textAlign: 'center', padding: '2rem' }}>Carregando vínculos...</div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                            <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem', minWidth: '480px' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                                         <th style={{ padding: '0.75rem' }}>Nome do Aluno(a)</th>
@@ -931,6 +932,7 @@ export default function Turmas() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         )}
                     </div>
                 </div>
