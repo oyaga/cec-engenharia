@@ -51,7 +51,7 @@ export default function AreaAluno() {
   const [studentId, setStudentId] = useState(null);
   const [turmaId, setTurmaId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [greeting, setGreeting] = useState('OlÃ¡');
+  const [greeting, setGreeting] = useState('Olá');
   const [missingDocs, setMissingDocs] = useState(false);
   const [studentData, setStudentData] = useState(null);
 
@@ -91,7 +91,7 @@ export default function AreaAluno() {
   const [vitrineSearch, setVitrineSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
 
-  // Estados do FÃ³rum
+  // Estados do Fórum
   const [forumTopics, setForumTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [topicReplies, setTopicReplies] = useState([]);
@@ -107,17 +107,17 @@ export default function AreaAluno() {
   const [newChatMessage, setNewChatMessage] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Estados para Agendamento PrÃ¡tico (Fase 20.1)
+  // Estados para Agendamento Prático (Fase 20.1)
   const [availablePracticalClasses, setAvailablePracticalClasses] = useState([]);
   const [schedulingActionLoading, setSchedulingActionLoading] = useState(null);
 
-  // Estados para Modal de Selfie / Captura de CÃ¢mera
+  // Estados para Modal de Selfie / Captura de Câmera
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Efeito para a saudaÃ§Ã£o baseada no horÃ¡rio
+  // Efeito para a saudação baseada no horário
   useEffect(() => {
     const hr = new Date().getHours();
     if (hr < 12) setGreeting('Bom dia');
@@ -174,7 +174,7 @@ export default function AreaAluno() {
         } catch { /* sem curso liberado */ }
       }
 
-      // 4. PrÃ³xima aula prÃ¡tica presencial
+      // 4. Próxima aula prática presencial
       if (activeTurmaId) {
         const { classes: uc } = await upcomingClassesApi.list(activeTurmaId);
         const upcoming = uc && uc[0];
@@ -187,13 +187,13 @@ export default function AreaAluno() {
         }
       }
 
-      // 5. HistÃ³rico de presenÃ§a
+      // 5. Histórico de presença
       if (activeStudentId) {
         const { attendance: attData } = await attendanceApi.list({ student_id: activeStudentId });
         setAttendanceHistory(attData || []);
       }
 
-      // 6. Notas de provas + avaliaÃ§Ãµes tÃ©cnicas
+      // 6. Notas de provas + avaliações técnicas
       const { results: qResults } = await lmsApi.results({});
       if (qResults) setQuizResults(qResults);
       if (activeStudentId) {
@@ -224,15 +224,15 @@ export default function AreaAluno() {
         setFinancialRecord(records && records[0] ? records[0] : null);
       }
 
-      // 10. FÃ³rum, instrutores, vitrine
+      // 10. Fórum, instrutores, vitrine
       loadForum(activeTurmaId);
       loadInstructors(activeTurmaId);
       loadAvailableCourses();
 
-      // 11. Aulas prÃ¡ticas de fim de semana disponÃ­veis
+      // 11. Aulas práticas de fim de semana disponíveis
       const courseName = turma?.course_name;
       if (courseName) {
-        const practicals = (allClasses || []).filter(p => p.schedule === 'Aula prÃ¡tica - Final de semana' && p.course_name === courseName);
+        const practicals = (allClasses || []).filter(p => p.schedule === 'Aula prática - Final de semana' && p.course_name === courseName);
         const mappedPracticals = practicals.map(p => ({
           ...p,
           confirmedCount: p.practical_confirmed || 0,
@@ -253,13 +253,13 @@ export default function AreaAluno() {
     fetchData();
   }, [session, location.pathname]);
 
-  // FunÃ§Ã£o para carregar fÃ³rum (com resiliÃªncia no localStorage)
+  // Função para carregar fórum (com resiliência no localStorage)
   const loadForum = async (activeTurmaId) => {
     try {
       const { topics } = await lmsApi.allForumTopics();
       setForumTopics((topics || []).map(t => ({ ...t, student: { full_name: t.student_name } })));
     } catch (err) {
-      console.warn("FÃ³rum: Usando fallback resiliente do localStorage");
+      console.warn("Fórum: Usando fallback resiliente do localStorage");
       const localForum = localStorage.getItem('local_forum_topics');
       if (localForum) {
         setForumTopics(JSON.parse(localForum));
@@ -269,10 +269,10 @@ export default function AreaAluno() {
     }
   };
 
-  // Carregar cursos disponÃ­veis para matrÃ­cula (Vitrine integrada ao CMS)
+  // Carregar cursos disponíveis para matrícula (Vitrine integrada ao CMS)
   const loadAvailableCourses = async () => {
     try {
-      // 1. Cursos do LMS (catÃ¡logo pÃºblico)
+      // 1. Cursos do LMS (catálogo público)
       const { courses: lmsCourses } = await coursesApi.listPublic();
 
       // 2. CMS do site (site_content)
@@ -285,7 +285,7 @@ export default function AreaAluno() {
       const cmsCourses = siteContent.courses_section?.courses || [];
       const courseDetails = siteContent.course_details || {};
 
-      // Se nÃ£o hÃ¡ cursos no CMS, usa o lms_courses diretamente
+      // Se não há cursos no CMS, usa o lms_courses diretamente
       if (cmsCourses.length === 0) {
         const mapped = (lmsCourses || []).map(c => ({
           ...c,
@@ -296,13 +296,13 @@ export default function AreaAluno() {
         return;
       }
 
-      // 3. Fazer o merge inteligente das informaÃ§Ãµes
+      // 3. Fazer o merge inteligente das informações
       const mapped = cmsCourses.map((c, index) => {
         const slug = c.slug || '';
         const details = courseDetails[slug] || {};
         const investment = details.investment || {};
 
-        // Achar o correspondente no LMS para obter o ID real de matrÃ­cula
+        // Achar o correspondente no LMS para obter o ID real de matrícula
         const lmsMatch = (lmsCourses || []).find(l => 
           l.code?.toLowerCase() === slug.toLowerCase() ||
           slug.toLowerCase().replace(/-/g, '') === l.code?.toLowerCase().replace(/-/g, '') ||
@@ -310,7 +310,7 @@ export default function AreaAluno() {
           c.title?.toLowerCase().includes(l.title?.toLowerCase())
         );
 
-        // Parsear preÃ§o do PIX no CMS
+        // Parsear preço do PIX no CMS
         let pricePix = 0;
         if (investment.pix) {
           const match = investment.pix.match(/R\$\s*([0-9.,]+)/);
@@ -320,7 +320,7 @@ export default function AreaAluno() {
           pricePix = lmsMatch.price_pix;
         }
 
-        // Parsear preÃ§o do CartÃ£o no CMS
+        // Parsear preço do Cartão no CMS
         let priceCard = 0;
         if (investment.credit) {
           const match = investment.credit.match(/R\$\s*([0-9.,]+)/);
@@ -349,7 +349,7 @@ export default function AreaAluno() {
           price_card: priceCard || 3000,
           price_pix: pricePix || 2500,
           max_installments: maxInstallments,
-          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('hÃ­brido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
+          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: slug.startsWith('nr') ? 'NR' : 'END',
           whatsapp_link: c.whatsapp_link || null
         };
@@ -387,7 +387,7 @@ export default function AreaAluno() {
           price_card: priceCard,
           price_pix: pricePix,
           max_installments: maxInstallments,
-          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('hÃ­brido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
+          modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: c.slug?.toUpperCase().startsWith('NR') ? 'NR' : 'END',
           whatsapp_link: c.whatsapp_link || null
         };
@@ -410,11 +410,11 @@ export default function AreaAluno() {
   // Disparo de WhatsApp para Secretaria
   const handleContactSecretaria = (course) => {
     const message = encodeURIComponent(
-      `OlÃ¡! Me chamo *${userName}* e tenho interesse em me matricular no curso:\n\n` +
-      `ðŸ“š *${course.title}*\n` +
-      `ðŸ”– CÃ³digo: ${course.code || 'Consultar'}\n` +
-      `ðŸ« Modalidade: ${course.modality?.toUpperCase() || 'HÃBRIDO'}\n\n` +
-      `Poderia me passar mais informaÃ§Ãµes sobre valores, turmas disponÃ­veis e datas de inÃ­cio? Obrigado(a)!`
+      `Olá! Me chamo *${userName}* e tenho interesse em me matricular no curso:\n\n` +
+      `📚 *${course.title}*\n` +
+      `🔖 Código: ${course.code || 'Consultar'}\n` +
+      `🏫 Modalidade: ${course.modality?.toUpperCase() || 'HÍBRIDO'}\n\n` +
+      `Poderia me passar mais informações sobre valores, turmas disponíveis e datas de início? Obrigado(a)!`
     );
     window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
   };
@@ -440,7 +440,7 @@ export default function AreaAluno() {
     }
   };
 
-  // Enviar dÃºvida no FÃ³rum
+  // Enviar dúvida no Fórum
   const handleAddTopic = async (e) => {
     e.preventDefault();
     if (!newTopicTitle.trim() || !newTopicContent.trim() || !session?.user?.id) return;
@@ -471,10 +471,10 @@ export default function AreaAluno() {
 
     setNewTopicTitle('');
     setNewTopicContent('');
-    alert('DÃºvida publicada no fÃ³rum com sucesso!');
+    alert('Dúvida publicada no fórum com sucesso!');
   };
 
-  // Carregar respostas de um tÃ³pico selecionado
+  // Carregar respostas de um tópico selecionado
   const handleSelectTopic = async (topic) => {
     setSelectedTopic(topic);
     setTopicReplies([]);
@@ -488,7 +488,7 @@ export default function AreaAluno() {
         setTopicReplies(JSON.parse(localReplies));
       } else {
         const initialReplies = [
-          { id: 'r-1', content: 'O ideal Ã© uma demÃ£o fina e uniforme a uma distÃ¢ncia de 20-30cm.', author: { full_name: 'Prof. Carlos Santos', role: 'instrutor' }, created_at: new Date().toISOString() }
+          { id: 'r-1', content: 'O ideal é uma demão fina e uniforme a uma distância de 20-30cm.', author: { full_name: 'Prof. Carlos Santos', role: 'instrutor' }, created_at: new Date().toISOString() }
         ];
         setTopicReplies(initialReplies);
         localStorage.setItem(`replies_${topic.id}`, JSON.stringify(initialReplies));
@@ -496,7 +496,7 @@ export default function AreaAluno() {
     }
   };
 
-  // Responder no FÃ³rum
+  // Responder no Fórum
   const handleAddReply = async (e) => {
     e.preventDefault();
     if (!newReplyContent.trim() || !selectedTopic || !session?.user?.id) return;
@@ -542,7 +542,7 @@ export default function AreaAluno() {
         setChatMessages(JSON.parse(localChat));
       } else {
         const initialMsg = [
-          { id: 'm-1', sender_id: inst.id, receiver_id: session.user.id, content: `OlÃ¡, tudo bem? Sou o ${inst.full_name}, estou aqui para te ajudar com suas dÃºvidas!`, created_at: new Date().toISOString() }
+          { id: 'm-1', sender_id: inst.id, receiver_id: session.user.id, content: `Olá, tudo bem? Sou o ${inst.full_name}, estou aqui para te ajudar com suas dúvidas!`, created_at: new Date().toISOString() }
         ];
         setChatMessages(initialMsg);
         localStorage.setItem(`chat_${inst.id}`, JSON.stringify(initialMsg));
@@ -579,7 +579,7 @@ export default function AreaAluno() {
     setNewChatMessage('');
   };
 
-  // Confirmar PresenÃ§a
+  // Confirmar Presença
   const handleConfirmAttendance = async () => {
     if (!studentId || !upcomingPractical) return;
     
@@ -597,11 +597,11 @@ export default function AreaAluno() {
         enrolled_count: (prev.enrolled_count || 0) + 1
       }));
 
-      alert('PresenÃ§a confirmada com sucesso! Esperamos vocÃª no treinamento prÃ¡tico presencial.');
+      alert('Presença confirmada com sucesso! Esperamos você no treinamento prático presencial.');
       fetchData();
     } catch (err) {
-      console.error('Erro ao confirmar presenÃ§a na aula presencial:', err);
-      alert('Erro ao confirmar presenÃ§a: ' + err.message);
+      console.error('Erro ao confirmar presença na aula presencial:', err);
+      alert('Erro ao confirmar presença: ' + err.message);
     }
   };
 
@@ -615,8 +615,8 @@ export default function AreaAluno() {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      console.error("Erro ao acessar a cÃ¢mera:", err);
-      alert("NÃ£o foi possÃ­vel acessar a cÃ¢mera. Por favor, dÃª permissÃ£o de acesso Ã  cÃ¢mera no seu navegador ou envie um arquivo de imagem.");
+      console.error("Erro ao acessar a câmera:", err);
+      alert("Não foi possível acessar a câmera. Por favor, dê permissão de acesso à câmera no seu navegador ou envie um arquivo de imagem.");
     }
   };
 
@@ -640,7 +640,7 @@ export default function AreaAluno() {
     const sx = (video.videoWidth - size) / 2;
     const sy = (video.videoHeight - size) / 2;
     
-    // Aplicar mÃ¡scara de corte redondo fÃ­sico na imagem para mÃ¡xima privacidade
+    // Aplicar máscara de corte redondo físico na imagem para máxima privacidade
     ctx.beginPath();
     ctx.arc(200, 200, 200, 0, Math.PI * 2);
     ctx.clip();
@@ -699,13 +699,13 @@ export default function AreaAluno() {
       alert('Obrigado! Termo de compromisso aceito com sucesso.');
     } catch (err) {
       console.error('Erro ao aceitar termo de compromisso:', err);
-      alert('NÃ£o foi possÃ­vel registrar o seu aceite. Por favor, tente novamente.');
+      alert('Não foi possível registrar o seu aceite. Por favor, tente novamente.');
     }
   };
 
   // Baixar Certificado Conquistado (Gera PDF Client-side)
   const handleDownloadPDF = async (cert) => {
-    // O backend guarda os dados da emissÃ£o em cert.metadata e o cÃ³digo em cert.code
+    // O backend guarda os dados da emissão em cert.metadata e o código em cert.code
     const meta = cert.metadata || {};
     const studentObj = {
       name: meta.student_name || cert.student_name || userName,
@@ -715,13 +715,13 @@ export default function AreaAluno() {
     const grade = meta.grade || cert.grade;
     const hours = meta.hours || cert.hours;
     await generateDocument('custom_certificate', studentObj, {
-      content: `Certificamos que ${studentObj.name}, portador(a) do CPF ${studentObj.cpf}, concluiu com aproveitamento o curso de ${studentObj.class}${hours ? `, com carga horÃ¡ria de ${hours} horas` : ''}${grade ? `, obtendo nota mÃ©dia ${String(grade).replace('.', ',')}` : ''}.`,
+      content: `Certificamos que ${studentObj.name}, portador(a) do CPF ${studentObj.cpf}, concluiu com aproveitamento o curso de ${studentObj.class}${hours ? `, com carga horária de ${hours} horas` : ''}${grade ? `, obtendo nota média ${String(grade).replace('.', ',')}` : ''}.`,
       uuid: cert.code || cert.certificate_code,
       grade, hours
     });
   };
 
-  // Emitir o prÃ³prio certificado (validaÃ§Ã£o de elegibilidade Ã© do servidor)
+  // Emitir o próprio certificado (validação de elegibilidade é do servidor)
   const [claimingCourseId, setClaimingCourseId] = useState(null);
   const handleClaimCertificate = async (course) => {
     setClaimingCourseId(course.id);
@@ -729,9 +729,9 @@ export default function AreaAluno() {
       const { certificate } = await lmsApi.claimCertificate(course.id);
       setIssuedCertificates(prev => [certificate, ...prev.filter(c => c.id !== certificate.id)]);
       setCertificatesCount(prev => prev + 1);
-      alert(`Certificado emitido com sucesso! CÃ³digo de autenticidade: ${certificate.code.substring(0, 8).toUpperCase()}`);
+      alert(`Certificado emitido com sucesso! Código de autenticidade: ${certificate.code.substring(0, 8).toUpperCase()}`);
     } catch (err) {
-      alert(err.message || 'NÃ£o foi possÃ­vel emitir o certificado.');
+      alert(err.message || 'Não foi possível emitir o certificado.');
     } finally {
       setClaimingCourseId(null);
     }
@@ -742,43 +742,43 @@ export default function AreaAluno() {
     try {
       const { lessons } = await lmsApi.courseLessons(courseId);
       if (!lessons || lessons.length === 0) {
-        alert('Este curso ainda nÃ£o possui aulas teÃ³ricas EAD cadastradas.');
+        alert('Este curso ainda não possui aulas teóricas EAD cadastradas.');
         return;
       }
       navigate(`/curso/${courseId}/aula/${lessons[0].id}`);
     } catch (err) {
       console.error('Erro ao acessar o player do curso:', err);
-      alert('NÃ£o foi possÃ­vel iniciar o curso. Tente novamente mais tarde.');
+      alert('Não foi possível iniciar o curso. Tente novamente mais tarde.');
     }
   };
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // CÃLCULO DE FREQUÃŠNCIA PRESENCIAL (FÃ³rmulas do Resumo)
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════
+  // CÁLCULO DE FREQUÊNCIA PRESENCIAL (Fórmulas do Resumo)
+  // ═══════════════════════════════════════════
   const getFrequenciaPresencial = () => {
     if (!turmaId) return { freq: 100, presencas: 0, totalDadas: 0, progresso: 0 };
     
     // Total de aulas ocorridas = datas distintas na tabela attendance_records para a turma
-    // Buscamos datas distintas de presenÃ§a lanÃ§adas
+    // Buscamos datas distintas de presença lançadas
     const datasUnicas = Array.from(new Set(attendanceHistory.map(a => a.created_at?.split('T')[0])));
     const totalDadas = datasUnicas.length;
     
-    // Contagem de presenÃ§as e faltas justificadas (status 'presente' ou 'falta_justificada')
+    // Contagem de presenças e faltas justificadas (status 'presente' ou 'falta_justificada')
     const presencas = attendanceHistory.filter(a => 
       a.class_id === turmaId && (a.status === 'presente' || a.status === 'falta_justificada')
     ).length;
 
     const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100;
-    const progresso = Math.round((presencas / 10) * 100); // Divisor padrÃ£o 10
+    const progresso = Math.round((presencas / 10) * 100); // Divisor padrão 10
 
     return { freq, presencas, totalDadas, progresso };
   };
 
   const { freq: freqReal, presencas: presencasReal, totalDadas: totalDadasReal, progresso: progressoPresencial } = getFrequenciaPresencial();
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // RENDERIZAÃ‡ÃƒO DAS VISTAS/ROTAS/ABAS INTERNAS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════
+  // RENDERIZAÇÃO DAS VISTAS/ROTAS/ABAS INTERNAS
+  // ═══════════════════════════════════════════
 
   // ABA 1: DASHBOARD
   const renderDashboard = () => (
@@ -792,10 +792,10 @@ export default function AreaAluno() {
         boxShadow: '0 10px 25px -5px rgba(0, 75, 73, 0.3)'
       }}>
         <h2 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
-          {greeting}, {userName}! ðŸ‘‹
+          {greeting}, {userName}! 👋
         </h2>
         <p style={{ margin: '0.75rem 0 0 0', opacity: 0.85, fontSize: '0.95rem' }}>
-          Bem-vindo de volta ao seu portal de estudos C&C Engenharia e CapacitaÃ§Ã£o. Veja abaixo seu andamento teÃ³rico e presencial.
+          Bem-vindo de volta ao seu portal de estudos C&C Engenharia e Capacitação. Veja abaixo seu andamento teórico e presencial.
         </p>
       </div>
 
@@ -826,10 +826,10 @@ export default function AreaAluno() {
             <Calendar size={24} />
           </div>
           <div style={{ flex: 1 }}>
-            <h4 style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', margin: 0, fontWeight: 700 }}>PrÃ³xima Aula Presencial</h4>
+            <h4 style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', margin: 0, fontWeight: 700 }}>Próxima Aula Presencial</h4>
             {upcomingPractical ? (
               <p style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0 0' }}>
-                {new Date(upcomingPractical.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} Â· {upcomingPractical.start_time?.substring(0, 5)}h ({upcomingPractical.classes?.name || 'CEC'})
+                {new Date(upcomingPractical.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · {upcomingPractical.start_time?.substring(0, 5)}h ({upcomingPractical.classes?.name || 'CEC'})
               </p>
             ) : (
               <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0', fontWeight: 600 }}>Sem cronograma</p>
@@ -851,7 +851,7 @@ export default function AreaAluno() {
               const hasCert = issuedCertificates.some(c => c.course_id === course.id);
               const isEadCompleted = course.progress_percent === 100;
               
-              // Estilo de borda especial de celebraÃ§Ã£o para cursos completos/teoria completa
+              // Estilo de borda especial de celebração para cursos completos/teoria completa
               const cardBorder = hasCert 
                 ? '1px solid rgba(16, 185, 129, 0.45)' 
                 : isEligible 
@@ -872,39 +872,39 @@ export default function AreaAluno() {
                     <div>
                       <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {course.title}
-                        {hasCert && <span style={{ fontSize: '1.1rem' }}>ðŸ†</span>}
+                        {hasCert && <span style={{ fontSize: '1.1rem' }}>🏆</span>}
                       </h4>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Modalidade: {course.modality?.toUpperCase() || 'HÃBRIDO'}</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Modalidade: {course.modality?.toUpperCase() || 'HÍBRIDO'}</span>
                     </div>
  
                     <div>
                       {hasCert ? (
                         <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          âœ“ Certificado Emitido
+                          ✓ Certificado Emitido
                         </span>
                       ) : isEligible ? (
                         <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px' }}>
-                          â³ Aguardando HomologaÃ§Ã£o
+                          ⏳ Aguardando Homologação
                         </span>
                       ) : isEadCompleted ? (
                         <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fff7ed', color: '#c2410c', padding: '4px 10px', borderRadius: '12px' }}>
-                          ðŸ“š Teoria 100% Â· PrÃ¡tica Pendente
+                          📚 Teoria 100% · Prática Pendente
                         </span>
                       ) : (
                         <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px' }}>
-                          ðŸ”’ Certificado Bloqueado
+                          🔒 Certificado Bloqueado
                         </span>
                       )}
                     </div>
                   </div>
  
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-                    {/* Progresso TeÃ³rico EAD */}
+                    {/* Progresso Teórico EAD */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
-                        <span>Aulas TeÃ³ricas EAD</span>
+                        <span>Aulas Teóricas EAD</span>
                         <span style={{ color: isEadCompleted ? '#10b981' : '#475569', fontWeight: '800' }}>
-                          {isEadCompleted ? 'ConcluÃ­do 100% ðŸŽ‰' : `${course.progress_percent || 0}%`}
+                          {isEadCompleted ? 'Concluído 100% 🎉' : `${course.progress_percent || 0}%`}
                         </span>
                       </div>
                       <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
@@ -915,7 +915,7 @@ export default function AreaAluno() {
                     {/* Progresso Presencial */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
-                        <span>PresenÃ§as PrÃ¡ticas</span>
+                        <span>Presenças Práticas</span>
                         <span>{presencasReal} de 10 aulas ({progressoPresencial}%)</span>
                       </div>
                       <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
@@ -926,13 +926,13 @@ export default function AreaAluno() {
 
                   {isEadCompleted && !isEligible && !hasCert && (
                     <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.04)', borderLeft: '3px solid #f59e0b', padding: '0.75rem', borderRadius: '6px', fontSize: '0.78rem', color: '#b45309', lineHeight: '1.4' }}>
-                      ðŸ’¡ <strong>Teoria EAD ConcluÃ­da:</strong> Fique atento Ã s datas presenciais de final de semana na aba de Aulas Presenciais. O seu certificado serÃ¡ gerado assim que cumprir a frequÃªncia prÃ¡tica.
+                      💡 <strong>Teoria EAD Concluída:</strong> Fique atento às datas presenciais de final de semana na aba de Aulas Presenciais. O seu certificado será gerado assim que cumprir a frequência prática.
                     </div>
                   )}
  
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '700' }}>FrequÃªncia Presencial:</span>
+                      <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '700' }}>Frequência Presencial:</span>
                       <span style={{ 
                         fontSize: '0.85rem', 
                         fontWeight: '800', 
@@ -941,7 +941,7 @@ export default function AreaAluno() {
                         alignItems: 'center',
                         gap: '2px'
                       }}>
-                        {freqReal}% {freqReal < 75 && <AlertCircle size={14} title="MÃ­nimo exigido para aprovaÃ§Ã£o: 75%" />}
+                        {freqReal}% {freqReal < 75 && <AlertCircle size={14} title="Mínimo exigido para aprovação: 75%" />}
                       </span>
                     </div>
  
@@ -978,7 +978,7 @@ export default function AreaAluno() {
                               boxShadow: '0 4px 10px rgba(16, 185, 129, 0.2)'
                             }}
                           >
-                            ðŸ“œ Acessar Certificado
+                            📜 Acessar Certificado
                           </button>
                         </>
                       ) : isEadCompleted ? (
@@ -1008,7 +1008,7 @@ export default function AreaAluno() {
             })}
             {myCourses.length === 0 && (
               <div className="card" style={{ padding: '3rem', textCenter: 'center', backgroundColor: 'white' }}>
-                <p className="text-secondary" style={{ margin: 0 }}>VocÃª nÃ£o possui matrÃ­culas ativas no momento.</p>
+                <p className="text-secondary" style={{ margin: 0 }}>Você não possui matrículas ativas no momento.</p>
               </div>
             )}
           </div>
@@ -1079,27 +1079,27 @@ export default function AreaAluno() {
                 <div>
                   <h4 style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {course.title}
-                    {hasCert && <span style={{ fontSize: '1.15rem' }}>ðŸ†</span>}
+                    {hasCert && <span style={{ fontSize: '1.15rem' }}>🏆</span>}
                   </h4>
-                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>CÃ³digo do Curso: <strong>{course.code || ' --- '}</strong></p>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>Código do Curso: <strong>{course.code || ' --- '}</strong></p>
                 </div>
                 
                 <div>
                   {hasCert ? (
                     <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px' }}>
-                      âœ“ Certificado Emitido
+                      ✓ Certificado Emitido
                     </span>
                   ) : isEligible ? (
                     <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px' }}>
-                      â³ Aguardando HomologaÃ§Ã£o
+                      ⏳ Aguardando Homologação
                     </span>
                   ) : isEadCompleted ? (
                     <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#fff7ed', color: '#c2410c', padding: '4px 10px', borderRadius: '12px' }}>
-                      ðŸ“š Teoria 100% Â· PrÃ¡tica Pendente
+                      📚 Teoria 100% · Prática Pendente
                     </span>
                   ) : (
                     <span style={{ fontSize: '0.72rem', fontWeight: '800', background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '12px' }}>
-                      ðŸ”’ Certificado Bloqueado
+                      🔒 Certificado Bloqueado
                     </span>
                   )}
                 </div>
@@ -1107,9 +1107,9 @@ export default function AreaAluno() {
               
               <div style={{ marginTop: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
-                  <span>Progresso TeÃ³rico EAD</span>
+                  <span>Progresso Teórico EAD</span>
                   <span style={{ color: isEadCompleted ? '#10b981' : '#475569', fontWeight: '800' }}>
-                    {isEadCompleted ? 'ConcluÃ­do 100% ðŸŽ‰' : `${course.progress_percent || 0}%`}
+                    {isEadCompleted ? 'Concluído 100% 🎉' : `${course.progress_percent || 0}%`}
                   </span>
                 </div>
                 <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
@@ -1119,7 +1119,7 @@ export default function AreaAluno() {
 
               {isEadCompleted && !isEligible && !hasCert && (
                 <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.04)', borderLeft: '3px solid #f59e0b', padding: '0.75rem', borderRadius: '6px', fontSize: '0.78rem', color: '#b45309', lineHeight: '1.4' }}>
-                  ðŸ’¡ A parte teÃ³rica estÃ¡ completa! Fique atento Ã s aulas presenciais obrigatÃ³rias para liberar seu certificado.
+                  💡 A parte teórica está completa! Fique atento às aulas presenciais obrigatórias para liberar seu certificado.
                 </div>
               )}
 
@@ -1158,7 +1158,7 @@ export default function AreaAluno() {
                         boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)'
                       }}
                     >
-                      ðŸ“œ Acessar Certificado
+                      📜 Acessar Certificado
                     </button>
                   </>
                 ) : isEadCompleted ? (
@@ -1186,7 +1186,7 @@ export default function AreaAluno() {
     </div>
   );
 
-  // FunÃ§Ãµes de Agendamento de Aula PrÃ¡tica (Fase 20.1)
+  // Funções de Agendamento de Aula Prática (Fase 20.1)
   const handleRequestPracticalClass = async (classId) => {
     if (!studentData?.id) return;
     setSchedulingActionLoading(classId);
@@ -1196,7 +1196,7 @@ export default function AreaAluno() {
 
       if (error) throw error;
 
-      alert('SolicitaÃ§Ã£o de agendamento realizada com sucesso! Aguarde a confirmaÃ§Ã£o da coordenaÃ§Ã£o.');
+      alert('Solicitação de agendamento realizada com sucesso! Aguarde a confirmação da coordenação.');
       await fetchData();
     } catch (err) {
       alert('Erro ao solicitar agendamento: ' + err.message);
@@ -1215,11 +1215,11 @@ export default function AreaAluno() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays <= 7) {
-      alert('Bloqueado: Cancelamentos ou alteraÃ§Ãµes sÃ³ sÃ£o permitidos com atÃ© 7 dias de antecedÃªncia. Entre em contato com a secretaria.');
+      alert('Bloqueado: Cancelamentos ou alterações só são permitidos com até 7 dias de antecedência. Entre em contato com a secretaria.');
       return;
     }
 
-    if (!window.confirm('Deseja realmente cancelar sua solicitaÃ§Ã£o/agendamento para este final de semana?')) {
+    if (!window.confirm('Deseja realmente cancelar sua solicitação/agendamento para este final de semana?')) {
       return;
     }
 
@@ -1239,19 +1239,19 @@ export default function AreaAluno() {
     }
   };
 
-  // ABA 3: AULAS PRESENCIAIS E FREQUÃŠNCIA DETALHADA
+  // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
   const renderPresencial = () => {
     return (
       <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
-        {/* HISTÃ“RICO DE PRESENÃ‡AS */}
+        {/* HISTÓRICO DE PRESENÇAS */}
         <div>
-          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>FrequÃªncia e Chamadas Presenciais</h3>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Frequência e Chamadas Presenciais</h3>
           
           <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', marginBottom: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
-                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>FrequÃªncia PrÃ¡tica Registrada</h4>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>CÃ¡lculo baseado em {totalDadasReal} aulas ministradas na turma (mÃ­nimo exigido: 75%).</p>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>Frequência Prática Registrada</h4>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>Cálculo baseado em {totalDadasReal} aulas ministradas na turma (mínimo exigido: 75%).</p>
               </div>
 
               <div style={{ textAlign: 'right' }}>
@@ -1265,12 +1265,12 @@ export default function AreaAluno() {
                   {freqReal}%
                 </span>
                 <span style={{ fontSize: '0.72rem', fontWeight: '800', color: freqReal >= 75 ? '#047857' : '#b91c1c' }}>
-                  {freqReal >= 75 ? 'Aprovado por FrequÃªncia' : 'FrequÃªncia Insuficiente'}
+                  {freqReal >= 75 ? 'Aprovado por Frequência' : 'Frequência Insuficiente'}
                 </span>
               </div>
             </div>
 
-            {/* Barra de Progresso de FrequÃªncia */}
+            {/* Barra de Progresso de Frequência */}
             <div style={{ height: '12px', backgroundColor: '#e2e8f0', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
               <div style={{ width: `${freqReal}%`, height: '100%', backgroundColor: freqReal >= 75 ? '#10b981' : '#ef4444', transition: 'width 0.4s' }}></div>
             </div>
@@ -1279,7 +1279,7 @@ export default function AreaAluno() {
               <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', display: 'flex', gap: '0.5rem', color: '#991B1B', fontSize: '0.82rem', lineHeight: '1.4' }}>
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
                 <span>
-                  <strong>AtenÃ§Ã£o:</strong> Sua frequÃªncia prÃ¡tica estÃ¡ abaixo de 75%. De acordo com as normas regulamentares da **Abendi**, a emissÃ£o do certificado permanecerÃ¡ **bloqueada** atÃ© que as faltas sejam justificadas ou repostas com a secretaria.
+                  <strong>Atenção:</strong> Sua frequência prática está abaixo de 75%. De acordo com as normas regulamentares da **Abendi**, a emissão do certificado permanecerá **bloqueada** até que as faltas sejam justificadas ou repostas com a secretaria.
                 </span>
               </div>
             )}
@@ -1301,7 +1301,7 @@ export default function AreaAluno() {
                 {attendanceHistory.map(a => (
                   <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento PrÃ¡tico'}</td>
+                    <td style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>
                       <span style={{ 
                         padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
@@ -1319,7 +1319,7 @@ export default function AreaAluno() {
                 {attendanceHistory.length === 0 && (
                   <tr>
                     <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
-                      Nenhum registro de chamada lanÃ§ado para sua matrÃ­cula no momento.
+                      Nenhum registro de chamada lançado para sua matrícula no momento.
                     </td>
                   </tr>
                 )}
@@ -1352,7 +1352,7 @@ export default function AreaAluno() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <Clock size={14} className="text-muted" />
-                  <span>{upcomingPractical.start_time?.substring(0, 5)}h Ã s {upcomingPractical.end_time?.substring(0, 5)}h</span>
+                  <span>{upcomingPractical.start_time?.substring(0, 5)}h às {upcomingPractical.end_time?.substring(0, 5)}h</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'start', gap: '0.4rem' }}>
                   <MapPin size={14} className="text-muted" style={{ marginTop: '2px', flexShrink: 0 }} />
@@ -1371,11 +1371,11 @@ export default function AreaAluno() {
                 </div>
               </div>
 
-              {/* AÃ§Ãµes */}
+              {/* Ações */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid #FCD34D', paddingTop: '1rem' }}>
                 {hasConfirmedAttendance ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', background: '#D1FAE5', color: '#065F46', borderRadius: '10px', fontSize: '0.8rem', fontWeight: '800', width: '100%', border: '1px solid #A7F3D0' }}>
-                    <CheckCircle size={16} /> PresenÃ§a Confirmada
+                    <CheckCircle size={16} /> Presença Confirmada
                   </div>
                 ) : (
                   <button 
@@ -1387,7 +1387,7 @@ export default function AreaAluno() {
                       boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)', transition: 'all 0.2s'
                     }}
                   >
-                    âœ“ Confirmar PresenÃ§a
+                    ✓ Confirmar Presença
                   </button>
                 )}
 
@@ -1422,18 +1422,18 @@ export default function AreaAluno() {
           ) : (
             <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FEF3C7', padding: '2rem 1.5rem', textAlign: 'center' }}>
               <Clock size={32} color="#B45309" style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
-              <p style={{ fontSize: '0.85rem', color: '#B45309', margin: 0, fontWeight: '600' }}>Nenhuma aula prÃ¡tica presencial prevista no momento.</p>
+              <p style={{ fontSize: '0.85rem', color: '#B45309', margin: 0, fontWeight: '600' }}>Nenhuma aula prática presencial prevista no momento.</p>
             </div>
           )}
 
-          {/* BLOCO DE AGENDAMENTO PRÃTICO DE FIM DE SEMANA (Fase 20.1) */}
+          {/* BLOCO DE AGENDAMENTO PRÁTICO DE FIM DE SEMANA (Fase 20.1) */}
           <div style={{ marginTop: '2rem' }}>
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              ðŸ—“ï¸ Aula PrÃ¡tica (Fins de Semana)
+              🗓️ Aula Prática (Fins de Semana)
             </h3>
             
             {studentData?.practical_class ? (
-              // Aluno jÃ¡ tem agendamento (Pendente ou Confirmado)
+              // Aluno já tem agendamento (Pendente ou Confirmado)
               (() => {
                 const isConfirmed = studentData.practical_class_status === 'confirmado';
                 const prClass = studentData.practical_class;
@@ -1464,7 +1464,7 @@ export default function AreaAluno() {
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isConfirmed ? '#166534' : '#b45309', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
                       {isConfirmed ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-                      <span>{isConfirmed ? 'Agendamento Confirmado' : 'Aguardando ConfirmaÃ§Ã£o'}</span>
+                      <span>{isConfirmed ? 'Agendamento Confirmado' : 'Aguardando Confirmação'}</span>
                     </div>
 
                     <h4 style={{ color: 'var(--primary-dark)', fontSize: '1rem', fontWeight: '800', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
@@ -1495,7 +1495,7 @@ export default function AreaAluno() {
                         border: '1px solid #e2e8f0',
                         lineHeight: '1.4'
                       }}>
-                        ðŸ”’ AlteraÃ§Ãµes bloqueadas. ModificaÃ§Ãµes sÃ³ sÃ£o permitidas com atÃ© 7 dias de antecedÃªncia.
+                        🔒 Alterações bloqueadas. Modificações só são permitidas com até 7 dias de antecedência.
                       </div>
                     )}
 
@@ -1530,15 +1530,15 @@ export default function AreaAluno() {
                 );
               })()
             ) : (
-              // Aluno nÃ£o tem agendamento, listar disponÃ­veis
+              // Aluno não tem agendamento, listar disponíveis
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.82rem', color: '#475569', lineHeight: '1.4' }}>
-                  ðŸ’¡ Selecione abaixo um final de semana disponÃ­vel para agendar sua aula prÃ¡tica presencial.
+                  💡 Selecione abaixo um final de semana disponível para agendar sua aula prática presencial.
                 </div>
                 
                 {availablePracticalClasses.length === 0 ? (
                   <div className="card text-center text-muted" style={{ padding: '2rem', backgroundColor: 'white' }}>
-                    Nenhuma data de aula prÃ¡tica futura disponÃ­vel no momento para o seu curso ({studentData?.classes?.course_name || 'CEC'}).
+                    Nenhuma data de aula prática futura disponível no momento para o seu curso ({studentData?.classes?.course_name || 'CEC'}).
                   </div>
                 ) : (
                   availablePracticalClasses.map(pc => {
@@ -1550,10 +1550,10 @@ export default function AreaAluno() {
                             {pc.name}
                           </h4>
                           <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b', fontWeight: '600' }}>
-                            ðŸ“… {new Date(pc.start_date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                            📅 {new Date(pc.start_date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                           </p>
                           <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                            ðŸ“ {pc.address || 'Centro de Treinamento CEC'}
+                            📍 {pc.address || 'Centro de Treinamento CEC'}
                           </p>
                         </div>
                         
@@ -1595,7 +1595,7 @@ export default function AreaAluno() {
   // ABA 4: DESEMPENHO E NOTAS
   const renderDesempenho = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>HistÃ³rico de Notas e Desempenho</h3>
+      <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Histórico de Notas e Desempenho</h3>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '2rem' }}>
         {/* Provas Online (EAD) */}
@@ -1604,7 +1604,7 @@ export default function AreaAluno() {
           <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
-                <th style={{ padding: '0.5rem 0' }}>Teste / MÃ³dulo</th>
+                <th style={{ padding: '0.5rem 0' }}>Teste / Módulo</th>
                 <th style={{ padding: '0.5rem 0' }}>Tentativas</th>
                 <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Nota</th>
               </tr>
@@ -1615,7 +1615,7 @@ export default function AreaAluno() {
                   <td style={{ padding: '0.75rem 0' }}>
                     <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{r.lms_quizzes?.title}</div>
                     <div style={{ fontSize: '0.68rem', fontWeight: '800', color: r.lms_quizzes?.quiz_type === 'final_exam' ? '#7c3aed' : '#059669', marginTop: '2px' }}>
-                      {r.lms_quizzes?.quiz_type === 'final_exam' ? 'ðŸ† PROVA FINAL' : 'ðŸ“ EXERCÃCIO'}
+                      {r.lms_quizzes?.quiz_type === 'final_exam' ? '🏆 PROVA FINAL' : '📝 EXERCÍCIO'}
                     </div>
                   </td>
                   <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{r.attempts_count} / 3</td>
@@ -1627,7 +1627,7 @@ export default function AreaAluno() {
               {quizResults.length === 0 && (
                 <tr>
                   <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
-                    Nenhum quiz online concluÃ­do ainda.
+                    Nenhum quiz online concluído ainda.
                   </td>
                 </tr>
               )}
@@ -1635,15 +1635,15 @@ export default function AreaAluno() {
           </table>
         </div>
 
-        {/* AvaliaÃ§Ãµes Presenciais */}
+        {/* Avaliações Presenciais */}
         <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
-          <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AvaliaÃ§Ãµes PrÃ¡ticas Presenciais</h4>
+          <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avaliações Práticas Presenciais</h4>
           <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
                 <th style={{ padding: '0.5rem 0' }}>Data</th>
-                <th style={{ padding: '0.5rem 0' }}>Exame PrÃ¡tico</th>
-                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>MÃ©dia Final</th>
+                <th style={{ padding: '0.5rem 0' }}>Exame Prático</th>
+                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Média Final</th>
               </tr>
             </thead>
             <tbody>
@@ -1662,7 +1662,7 @@ export default function AreaAluno() {
               {technicalEvals.length === 0 && (
                 <tr>
                   <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
-                    Nenhuma nota presencial lanÃ§ada pelo instrutor.
+                    Nenhuma nota presencial lançada pelo instrutor.
                   </td>
                 </tr>
               )}
@@ -1673,16 +1673,16 @@ export default function AreaAluno() {
     </div>
   );
 
-  // ABA 5: FÃ“RUM DE DÃšVIDAS
+  // ABA 5: FÓRUM DE DÚVIDAS
   const renderForum = () => (
     <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
-      {/* TÃ“PICOS DO FÃ“RUM */}
+      {/* TÓPICOS DO FÓRUM */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>FÃ³rum de DÃºvidas</h3>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Fórum de Dúvidas</h3>
           <input 
             type="text" 
-            placeholder="Buscar dÃºvidas..."
+            placeholder="Buscar dúvidas..."
             value={forumSearch}
             onChange={e => setForumSearch(e.target.value)}
             style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
@@ -1718,13 +1718,13 @@ export default function AreaAluno() {
           }
           {forumTopics.length === 0 && (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'white' }}>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhuma dÃºvida registrada no fÃ³rum.</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhuma dúvida registrada no fórum.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* DETALHE DO TÃ“PICO / CRIAR TÃ“PICO */}
+      {/* DETALHE DO TÓPICO / CRIAR TÓPICO */}
       <div>
         {selectedTopic ? (
           <div className="card animate-fade-in" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', maxHeight: '72vh' }}>
@@ -1745,7 +1745,7 @@ export default function AreaAluno() {
 
             {/* Respostas */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-              <h5 style={{ fontSize: '0.82rem', fontWeight: '800', color: '#475569', margin: '0 0 4px 0' }}>Respostas PedagÃ³gicas</h5>
+              <h5 style={{ fontSize: '0.82rem', fontWeight: '800', color: '#475569', margin: '0 0 4px 0' }}>Respostas Pedagógicas</h5>
               {topicReplies.map(r => (
                 <div key={r.id} style={{ 
                   padding: '0.85rem', 
@@ -1783,13 +1783,13 @@ export default function AreaAluno() {
         ) : (
           <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <MessageSquare size={18} color="var(--primary)" /> Nova DÃºvida PedagÃ³gica
+              <MessageSquare size={18} color="var(--primary)" /> Nova Dúvida Pedagógica
             </h4>
-            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Sua pergunta ficarÃ¡ disponÃ­vel para que instrutores e outros alunos respondam.</p>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Sua pergunta ficará disponível para que instrutores e outros alunos respondam.</p>
             
             <form onSubmit={handleAddTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>TÃ­tulo da DÃºvida</label>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Título da Dúvida</label>
                 <input 
                   type="text" 
                   placeholder="Ex: Como calibrar o bloco V1 no Ultrassom?"
@@ -1801,10 +1801,10 @@ export default function AreaAluno() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Explique sua DÃºvida em Detalhes</label>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Explique sua Dúvida em Detalhes</label>
                 <textarea 
                   rows="4" 
-                  placeholder="Descreva aqui sua pergunta com o mÃ¡ximo de informaÃ§Ãµes possÃ­vel..."
+                  placeholder="Descreva aqui sua pergunta com o máximo de informações possível..."
                   value={newTopicContent}
                   onChange={e => setNewTopicContent(e.target.value)}
                   required
@@ -1813,7 +1813,7 @@ export default function AreaAluno() {
               </div>
 
               <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', fontSize: '0.85rem' }}>
-                Enviar para o FÃ³rum
+                Enviar para o Fórum
               </button>
             </form>
           </div>
@@ -1866,7 +1866,7 @@ export default function AreaAluno() {
         </div>
       </div>
 
-      {/* ÃREA DE MENSAGENS */}
+      {/* ÁREA DE MENSAGENS */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {selectedInstructor ? (
           <>
@@ -1877,7 +1877,7 @@ export default function AreaAluno() {
               </div>
               <div>
                 <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: '800', color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
-                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700' }}>â— Online</span>
+                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700' }}>● Online</span>
               </div>
             </div>
 
@@ -1918,7 +1918,7 @@ export default function AreaAluno() {
             <form onSubmit={handleSendChatMessage} style={{ padding: '1rem', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
               <input 
                 type="text" 
-                placeholder="Digite sua mensagem pedagÃ³gica..."
+                placeholder="Digite sua mensagem pedagógica..."
                 value={newChatMessage}
                 onChange={e => setNewChatMessage(e.target.value)}
                 style={{ flex: 1, padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
@@ -1931,7 +1931,7 @@ export default function AreaAluno() {
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem' }}>
             <MessageCircle size={48} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
-            <h4 style={{ margin: 0, fontWeight: 700 }}>Chat PedagÃ³gico</h4>
+            <h4 style={{ margin: 0, fontWeight: 700 }}>Chat Pedagógico</h4>
             <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0 0', textAlign: 'center' }}>Selecione um instrutor na barra lateral para iniciar sua conversa em tempo real.</p>
           </div>
         )}
@@ -1944,18 +1944,18 @@ export default function AreaAluno() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
         <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Secretaria Digital - Envio de Documentos</h3>
-        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrÃ­cula em conformidade com as regras da **Abendi** e garantir a emissÃ£o de certificados.</p>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrícula em conformidade com as regras da **Abendi** e garantir a emissão de certificados.</p>
       </div>
 
       <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
-        {/* FormulÃ¡rio de Upload */}
+        {/* Formulário de Upload */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {[
             { type: 'photo', label: 'Foto de Rosto (Foto / Selfie)', field: studentData?.doc_photo_url, signedField: signedUrls.photo },
             { type: 'id', label: 'Documento de Identidade Oficial (RG ou CNH)', field: studentData?.doc_id_url, signedField: signedUrls.id },
-            { type: 'cpf', label: 'Cadastro de Pessoa FÃ­sica (CPF)', field: studentData?.doc_cpf_url, signedField: signedUrls.cpf },
-            { type: 'address', label: 'Comprovante de ResidÃªncia recente', field: studentData?.doc_address_url, signedField: signedUrls.address },
-            { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou HistÃ³rico)', field: studentData?.doc_education_url, signedField: signedUrls.education }
+            { type: 'cpf', label: 'Cadastro de Pessoa Física (CPF)', field: studentData?.doc_cpf_url, signedField: signedUrls.cpf },
+            { type: 'address', label: 'Comprovante de Residência recente', field: studentData?.doc_address_url, signedField: signedUrls.address },
+            { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: studentData?.doc_education_url, signedField: signedUrls.education }
           ].map(doc => (
             <div key={doc.type} className="card" style={{ padding: '1.25rem', backgroundColor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: '220px' }}>
@@ -1999,17 +1999,17 @@ export default function AreaAluno() {
           ))}
         </div>
 
-        {/* Status e OrientaÃ§Ãµes Abendi */}
+        {/* Status e Orientações Abendi */}
         <div>
           <div className="card" style={{ backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
             <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0369a1', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <FileCheck size={18} /> Diretrizes de Auditoria Abendi
             </h4>
             <ul style={{ fontSize: '0.8rem', color: '#0369a1', paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: 1.4 }}>
-              <li>Os arquivos devem estar legÃ­veis e sem cortes nas bordas.</li>
-              <li>A foto de rosto deve ser frontal, com fundo claro e sem Ã³culos de sol ou bonÃ©.</li>
-              <li>Formatos aceitos: PDF, PNG, JPG e JPEG de atÃ© 5MB.</li>
-              <li>Certificados de conclusÃ£o dependem de 100% dos documentos aprovados.</li>
+              <li>Os arquivos devem estar legíveis e sem cortes nas bordas.</li>
+              <li>A foto de rosto deve ser frontal, com fundo claro e sem óculos de sol ou boné.</li>
+              <li>Formatos aceitos: PDF, PNG, JPG e JPEG de até 5MB.</li>
+              <li>Certificados de conclusão dependem de 100% dos documentos aprovados.</li>
             </ul>
           </div>
         </div>
@@ -2021,8 +2021,8 @@ export default function AreaAluno() {
   const renderCertificates = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Meus Certificados de ConclusÃ£o</h3>
-        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Visualize e baixe seus certificados digitais emitidos pela C&C Engenharia e CapacitaÃ§Ã£o.</p>
+        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Meus Certificados de Conclusão</h3>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Visualize e baixe seus certificados digitais emitidos pela C&C Engenharia e Capacitação.</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
@@ -2034,7 +2034,7 @@ export default function AreaAluno() {
             
             <div style={{ flex: 1, minWidth: 0 }}>
               <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.metadata?.course_title || cert.course_title || 'Curso CEC'}</h4>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')} Â· CÃ³digo {(cert.code || '').substring(0, 8).toUpperCase()}</span>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')} · Código {(cert.code || '').substring(0, 8).toUpperCase()}</span>
               
               <button 
                 className="btn btn-primary"
@@ -2047,7 +2047,7 @@ export default function AreaAluno() {
           </div>
         ))}
 
-        {/* Cursos aptos pendentes de emissÃ£o pela secretaria */}
+        {/* Cursos aptos pendentes de emissão pela secretaria */}
         {myCourses
           .filter(c => c.progress_percent === 100 && freqReal >= 75 && !issuedCertificates.some(cert => cert.course_id === c.id))
           .map(course => (
@@ -2058,7 +2058,7 @@ export default function AreaAluno() {
               
               <div style={{ flex: 1 }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{course.title}</h4>
-                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>ElegÃ­vel Â· Requisitos concluÃ­dos ðŸŽ‰</span>
+                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Requisitos concluídos 🎉</span>
 
                 <button
                   className="btn btn-primary"
@@ -2076,7 +2076,7 @@ export default function AreaAluno() {
         {issuedCertificates.length === 0 && !myCourses.some(c => c.progress_percent === 100 && freqReal >= 75) && (
           <div className="card" style={{ colSpan: '2', padding: '3rem', textAlign: 'center', backgroundColor: 'white', width: '100%' }}>
             <Lock size={32} color="#cbd5e1" style={{ margin: '0 auto 0.5rem' }} />
-            <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: 0 }}>VocÃª ainda nÃ£o conquistou nenhum certificado nesta conta. Conclua os mÃ³dulos teÃ³ricos (100% EAD) e atinja frequÃªncia â‰¥ 75% nas aulas presenciais para liberar!</p>
+            <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: 0 }}>Você ainda não conquistou nenhum certificado nesta conta. Conclua os módulos teóricos (100% EAD) e atinja frequência ≥ 75% nas aulas presenciais para liberar!</p>
           </div>
         )}
       </div>
@@ -2102,7 +2102,7 @@ export default function AreaAluno() {
                   <th style={{ padding: '1rem' }}>Vencimento</th>
                   <th style={{ padding: '1rem' }}>Valor</th>
                   <th style={{ padding: '1rem' }}>Status</th>
-                  <th style={{ padding: '1rem', textAlign: 'right' }}>AÃ§Ã£o</th>
+                  <th style={{ padding: '1rem', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -2112,7 +2112,7 @@ export default function AreaAluno() {
                   
                   return (
                     <tr key={index} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>{index + 1}Âª Mensalidade</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>{index + 1}ª Mensalidade</td>
                       <td style={{ padding: '0.85rem 1rem' }}>{new Date(inst.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: '800' }}>R$ {Number(inst.amount).toFixed(2)}</td>
                       <td style={{ padding: '0.85rem 1rem' }}>
@@ -2130,14 +2130,14 @@ export default function AreaAluno() {
                             className="btn btn-primary"
                             onClick={() => {
                               navigator.clipboard.writeText("00020101021126360014br.gov.bcb.pix0114cc@cursocec.com");
-                              alert("Chave PIX da C&C copiada com sucesso! FaÃ§a a transferÃªncia no app do seu banco.");
+                              alert("Chave PIX da C&C copiada com sucesso! Faça a transferência no app do seu banco.");
                             }}
                             style={{ padding: '0.35rem 0.75rem', fontSize: '0.72rem', borderRadius: '6px' }}
                           >
                             Copiar PIX
                           </button>
                         )}
-                        {isPaid && <span style={{ color: '#10b981', fontWeight: '800' }}>âœ“</span>}
+                        {isPaid && <span style={{ color: '#10b981', fontWeight: '800' }}>✓</span>}
                       </td>
                     </tr>
                   );
@@ -2155,9 +2155,9 @@ export default function AreaAluno() {
           </div>
         </div>
 
-        {/* INFORMAÃ‡Ã•ES FINANCEIRAS */}
+        {/* INFORMAÇÕES FINANCEIRAS */}
         <div>
-          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>InformaÃ§Ãµes de Pagamento</h3>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>Informações de Pagamento</h3>
           
           <div className="card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
@@ -2177,7 +2177,7 @@ export default function AreaAluno() {
                   className="btn btn-secondary" 
                   onClick={() => {
                     navigator.clipboard.writeText("cc@cursocec.com");
-                    alert("Chave PIX copiada para a Ã¡rea de transferÃªncia.");
+                    alert("Chave PIX copiada para a área de transferência.");
                   }}
                   style={{ padding: '0.5rem', fontSize: '0.78rem' }}
                 >
@@ -2187,7 +2187,7 @@ export default function AreaAluno() {
             </div>
             
             <p style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4, margin: 0, fontStyle: 'italic' }}>
-              Para pagamento via Boleto BancÃ¡rio ou Nota Fiscal, entre em contato diretamente com a nossa secretaria financeira pelo canal oficial.
+              Para pagamento via Boleto Bancário ou Nota Fiscal, entre em contato diretamente com a nossa secretaria financeira pelo canal oficial.
             </p>
           </div>
         </div>
@@ -2211,11 +2211,11 @@ export default function AreaAluno() {
 
     const modalityBadge = (mod) => {
       const colors = { presencial: '#0ea5e9', ead: '#8b5cf6', hibrido: '#10b981', online: '#8b5cf6' };
-      const labels = { presencial: 'ðŸ« Presencial', ead: 'ðŸ’» EAD', hibrido: 'âš¡ HÃ­brido', online: 'ðŸ’» Online' };
+      const labels = { presencial: '🏫 Presencial', ead: '💻 EAD', hibrido: '⚡ Híbrido', online: '💻 Online' };
       const bg = colors[mod] || '#64748b';
       return (
         <span style={{ fontSize: '0.68rem', fontWeight: '800', background: `${bg}18`, color: bg, padding: '3px 8px', borderRadius: '10px', border: `1px solid ${bg}30` }}>
-          {labels[mod] || mod?.toUpperCase() || 'HÃBRIDO'}
+          {labels[mod] || mod?.toUpperCase() || 'HÍBRIDO'}
         </span>
       );
     };
@@ -2232,7 +2232,7 @@ export default function AreaAluno() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-        {/* CABEÃ‡ALHO */}
+        {/* CABEÇALHO */}
         <div style={{
           background: 'linear-gradient(135deg, #3b0764 0%, #7c3aed 50%, #1d4ed8 100%)',
           color: 'white',
@@ -2250,12 +2250,12 @@ export default function AreaAluno() {
             </div>
             <div>
               <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, lineHeight: 1 }}>Vitrine de Cursos</h2>
-              <p style={{ margin: '4px 0 0 0', opacity: 0.8, fontSize: '0.88rem' }}>Explore, salve na lista de desejos e solicite sua matrÃ­cula via WhatsApp</p>
+              <p style={{ margin: '4px 0 0 0', opacity: 0.8, fontSize: '0.88rem' }}>Explore, salve na lista de desejos e solicite sua matrícula via WhatsApp</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem', position: 'relative' }}>
             <div style={{ background: 'rgba(255,255,255,0.12)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <BookOpen size={14} /> {availableCourses.length} cursos disponÃ­veis
+              <BookOpen size={14} /> {availableCourses.length} cursos disponíveis
             </div>
             <div style={{ background: 'rgba(255,255,255,0.12)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Heart size={14} /> {wishlist.length} na sua wishlist
@@ -2263,7 +2263,7 @@ export default function AreaAluno() {
           </div>
         </div>
 
-        {/* WISHLIST RÃPIDA */}
+        {/* WISHLIST RÁPIDA */}
         {wishlistCourses.length > 0 && (
           <div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7c3aed', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2305,7 +2305,7 @@ export default function AreaAluno() {
                       gap: '0.35rem'
                     }}
                   >
-                    <Zap size={12} /> Solicitar MatrÃ­cula
+                    <Zap size={12} /> Solicitar Matrícula
                   </button>
                 </div>
               ))}
@@ -2319,7 +2319,7 @@ export default function AreaAluno() {
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input
               type="text"
-              placeholder="Buscar curso, cÃ³digo ou Ã¡rea..."
+              placeholder="Buscar curso, código ou área..."
               value={vitrineSearch}
               onChange={e => setVitrineSearch(e.target.value)}
               style={{
@@ -2375,10 +2375,10 @@ export default function AreaAluno() {
                     flexShrink: 0
                   }}>
 
-                    {/* BotÃ£o Wishlist */}
+                    {/* Botão Wishlist */}
                     <button
                       onClick={() => toggleWishlist(course.id)}
-                      title={inWishlist ? 'Remover da lista de desejos' : 'Adicionar Ã  lista de desejos'}
+                      title={inWishlist ? 'Remover da lista de desejos' : 'Adicionar à lista de desejos'}
                       style={{
                         position: 'absolute',
                         top: '10px',
@@ -2400,17 +2400,17 @@ export default function AreaAluno() {
                       <Heart size={16} fill={inWishlist ? '#ef4444' : 'none'} color={inWishlist ? '#ef4444' : '#64748b'} />
                     </button>
 
-                    {/* Badge JÃ¡ Matriculado */}
+                    {/* Badge Já Matriculado */}
                     {alreadyEnrolled && (
                       <div style={{ position: 'absolute', bottom: '10px', left: '12px' }}>
                         <span style={{ fontSize: '0.68rem', fontWeight: '900', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-                          âœ… JÃ¡ matriculado
+                          ✅ Já matriculado
                         </span>
                       </div>
                     )}
                   </div>
 
-                  {/* ConteÃºdo do Card */}
+                  {/* Conteúdo do Card */}
                   <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       {modalityBadge(course.modality)}
@@ -2419,15 +2419,15 @@ export default function AreaAluno() {
 
                     <h4 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#1e293b', margin: 0, lineHeight: 1.35 }}>{course.title}</h4>
 
-                    {/* PreÃ§os dinÃ¢micos */}
+                    {/* Preços dinâmicos */}
                     {course.price_pix ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <span style={{ fontSize: '1rem', fontWeight: 900, color: '#15803d' }}>
-                          âš¡ R$ {Number(course.price_pix).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no PIX
+                          ⚡ R$ {Number(course.price_pix).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no PIX
                         </span>
                         {course.price_card && course.max_installments && (
                           <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                            ou {course.max_installments}x de R$ {(Number(course.price_card) / Number(course.max_installments)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no cartÃ£o
+                            ou {course.max_installments}x de R$ {(Number(course.price_card) / Number(course.max_installments)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no cartão
                           </span>
                         )}
                       </div>
@@ -2441,7 +2441,7 @@ export default function AreaAluno() {
                       </p>
                     )}
 
-                    {/* AÃ§Ãµes */}
+                    {/* Ações */}
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
                       <button
                         onClick={() => toggleWishlist(course.id)}
@@ -2488,7 +2488,7 @@ export default function AreaAluno() {
                         }}
                       >
                         <Zap size={13} />
-                        {alreadyEnrolled ? 'JÃ¡ Matriculado' : 'Quero me Matricular'}
+                        {alreadyEnrolled ? 'Já Matriculado' : 'Quero me Matricular'}
                       </button>
                     </div>
                   </div>
@@ -2513,14 +2513,14 @@ export default function AreaAluno() {
             <Phone size={28} />
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ fontSize: '1rem', fontWeight: '800', color: '#065f46', margin: '0 0 4px 0' }}>Ficou com dÃºvidas? Fale com nossa secretaria!</h4>
+            <h4 style={{ fontSize: '1rem', fontWeight: '800', color: '#065f46', margin: '0 0 4px 0' }}>Ficou com dúvidas? Fale com nossa secretaria!</h4>
             <p style={{ fontSize: '0.82rem', color: '#047857', margin: 0, lineHeight: 1.5 }}>
-              Nossa equipe estÃ¡ disponÃ­vel para te ajudar a escolher o treinamento ideal, verificar prÃ©-requisitos e condiÃ§Ãµes especiais de pagamento.
+              Nossa equipe está disponível para te ajudar a escolher o treinamento ideal, verificar pré-requisitos e condições especiais de pagamento.
             </p>
           </div>
           <button
             onClick={() => {
-              const msg = encodeURIComponent(`OlÃ¡! Me chamo *${userName}*. Gostaria de saber mais sobre os cursos disponÃ­veis na C&C Engenharia e CapacitaÃ§Ã£o. Pode me ajudar?`);
+              const msg = encodeURIComponent(`Olá! Me chamo *${userName}*. Gostaria de saber mais sobre os cursos disponíveis na C&C Engenharia e Capacitação. Pode me ajudar?`);
               window.open(`https://wa.me/5521965554180?text=${msg}`, '_blank');
             }}
             style={{
@@ -2556,7 +2556,7 @@ export default function AreaAluno() {
               <Megaphone size={28} className="text-warning" /> Quadro de Avisos Oficial
             </h2>
             <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0 0' }}>
-              Fique por dentro de todas as manutenÃ§Ãµes, prazos e novidades da C&C Engenharia.
+              Fique por dentro de todas as manutenções, prazos e novidades da C&C Engenharia.
             </p>
           </div>
         </div>
@@ -2592,11 +2592,11 @@ export default function AreaAluno() {
                 </p>
                 <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#64748b' }}>
                   <span>
-                    Autor: <strong>{ann.author?.full_name || 'CoordenaÃ§Ã£o PedagÃ³gica'}</strong>
+                    Autor: <strong>{ann.author?.full_name || 'Coordenação Pedagógica'}</strong>
                   </span>
                   {ann.expires_at && (
                     <span>
-                      VÃ¡lido atÃ©: <strong>{new Date(ann.expires_at).toLocaleDateString('pt-BR')}</strong>
+                      Válido até: <strong>{new Date(ann.expires_at).toLocaleDateString('pt-BR')}</strong>
                     </span>
                   )}
                 </div>
@@ -2615,9 +2615,9 @@ export default function AreaAluno() {
     );
   };
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // CONTROLE GERAL DA RENDERIZAÃ‡ÃƒO
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════
+  // CONTROLE GERAL DA RENDERIZAÇÃO
+  // ═══════════════════════════════════════════
   
   // Se estiver carregando, exibe loader premium
   if (loading) {
@@ -2629,7 +2629,7 @@ export default function AreaAluno() {
     );
   }
 
-  // Se nÃ£o aceitou o termo de compromisso de 6 meses, exibe o termo impeditivo
+  // Se não aceitou o termo de compromisso de 6 meses, exibe o termo impeditivo
   if (studentData && studentData.terms_accepted === false) {
     return (
       <div className="animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', padding: '1rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -2637,19 +2637,19 @@ export default function AreaAluno() {
           <div style={{ display: 'inline-flex', padding: '1.25rem', backgroundColor: '#fee2e2', borderRadius: '50%', color: '#ef4444', marginBottom: '1.5rem' }}>
             <AlertCircle size={40} />
           </div>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#991b1b', margin: 0 }}>AtenÃ§Ã£o: Prazo de ConclusÃ£o</h2>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#991b1b', margin: 0 }}>Atenção: Prazo de Conclusão</h2>
           <p style={{ color: '#7f1d1d', marginBottom: '2rem', fontSize: '1.05rem', lineHeight: '1.6', fontWeight: 600, marginTop: '0.5rem' }}>
-            Antes de acessar o seu portal, vocÃª precisa declarar ciÃªncia e concordÃ¢ncia com os prazos limites da instituiÃ§Ã£o.
+            Antes de acessar o seu portal, você precisa declarar ciência e concordância com os prazos limites da instituição.
           </p>
           
           <div style={{ backgroundColor: 'white', border: '1px solid #fee2e2', borderRadius: '16px', padding: '1.5rem', textAlign: 'left', marginBottom: '2.5rem', color: '#4b5563', fontSize: '0.95rem', lineHeight: '1.6' }}>
             <p style={{ margin: 0 }}>
-              VocÃª terÃ¡ o prazo mÃ¡ximo e improrrogÃ¡vel de <strong>6 (seis) meses</strong>, contados a partir da data de matrÃ­cula, para concluir integralmente todas as etapas do curso:
+              Você terá o prazo máximo e improrrogável de <strong>6 (seis) meses</strong>, contados a partir da data de matrícula, para concluir integralmente todas as etapas do curso:
             </p>
             <ul style={{ margin: '0.75rem 0 0 0', paddingLeft: '1.25rem' }}>
-              <li><strong>Parte TeÃ³rica:</strong> Aulas online gravadas e testes no portal EAD.</li>
-              <li><strong>Parte PrÃ¡tica:</strong> Aulas prÃ¡ticas presenÃ§a nos laboratÃ³rios.</li>
-              <li><strong>AvaliaÃ§Ã£o Final:</strong> Provas tÃ©cnicas necessÃ¡rias para emissÃ£o do certificado.</li>
+              <li><strong>Parte Teórica:</strong> Aulas online gravadas e testes no portal EAD.</li>
+              <li><strong>Parte Prática:</strong> Aulas práticas presença nos laboratórios.</li>
+              <li><strong>Avaliação Final:</strong> Provas técnicas necessárias para emissão do certificado.</li>
             </ul>
           </div>
 
@@ -2665,7 +2665,7 @@ export default function AreaAluno() {
     );
   }
 
-  // Se houver pendÃªncia Abendi, exibe bloqueio amigÃ¡vel
+  // Se houver pendência Abendi, exibe bloqueio amigável
   if (missingDocs) {
     return (
       <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '4rem auto', padding: '0 1.5rem' }}>
@@ -2673,16 +2673,16 @@ export default function AreaAluno() {
           <AlertCircle size={48} color="#b45309" style={{ margin: '0 auto 1rem' }} />
           <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#92400E' }}>Falta pouco para acessar suas aulas!</h2>
           <p style={{ color: '#B45309', marginBottom: '2.5rem', fontSize: '1.05rem', lineHeight: '1.6', maxWidth: '600px', margin: '0 auto 2.5rem' }}>
-            Por exigÃªncia da certificaÃ§Ã£o nacional **Abendi**, precisamos que vocÃª conclua o envio dos seus documentos obrigatÃ³rios antes de liberar o acesso completo Ã  plataforma LMS.
+            Por exigência da certificação nacional **Abendi**, precisamos que você conclua o envio dos seus documentos obrigatórios antes de liberar o acesso completo à plataforma LMS.
           </p>
           
           <div style={{ display: 'grid', gap: '1.25rem', textAlign: 'left', maxWidth: '550px', margin: '0 auto' }}>
             {[
-              { type: 'photo', label: 'Foto de Rosto (VocÃª pode tirar uma selfie agora)' },
+              { type: 'photo', label: 'Foto de Rosto (Você pode tirar uma selfie agora)' },
               { type: 'id', label: 'Documento de Identidade com Foto (RG ou CNH)' },
               { type: 'cpf', label: 'CPF' },
-              { type: 'address', label: 'Comprovante de ResidÃªncia atualizado' },
-              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou HistÃ³rico)' }
+              { type: 'address', label: 'Comprovante de Residência atualizado' },
+              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)' }
             ].map((doc) => (
               <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
@@ -2723,7 +2723,7 @@ export default function AreaAluno() {
     if (path === '/area-aluno/cursos') {
       return renderCursos();
     } else if (path === '/area-aluno/ead') {
-      return renderCursos(); // Aulas EAD tambÃ©m lista e direciona para player
+      return renderCursos(); // Aulas EAD também lista e direciona para player
     } else if (path === '/area-aluno/presencial') {
       return renderPresencial();
     } else if (path === '/area-aluno/desempenho') {
@@ -2756,7 +2756,7 @@ export default function AreaAluno() {
       `}</style>
       {getActiveTabContent()}
 
-      {/* MODAL DE CAPTURA DE SELFIE INTERATIVA COM MÃSCARA REDONDA DE PRIVACIDADE */}
+      {/* MODAL DE CAPTURA DE SELFIE INTERATIVA COM MÁSCARA REDONDA DE PRIVACIDADE */}
       {showSelfieModal && createPortal((
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '440px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid #e2e8f0', textAlign: 'center', boxSizing: 'border-box' }} className="animate-scale-up">
@@ -2764,10 +2764,10 @@ export default function AreaAluno() {
               Capturar Selfie
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 1.5rem 0', lineHeight: 1.4 }}>
-              Posicione seu rosto no centro da bola para encaixar a foto. A imagem serÃ¡ recortada em cÃ­rculo para sua total privacidade.
+              Posicione seu rosto no centro da bola para encaixar a foto. A imagem será recortada em círculo para sua total privacidade.
             </p>
 
-            {/* VÃ­deo com a CÃ¢mera */}
+            {/* Vídeo com a Câmera */}
             <div style={{
               position: 'relative',
               width: 'min(280px, 70vw)',
@@ -2790,7 +2790,7 @@ export default function AreaAluno() {
                   transform: 'scaleX(-1)' // Efeito espelho natural
                 }}
               />
-              {/* CÃ­rculo visual de encaixe */}
+              {/* Círculo visual de encaixe */}
               <div style={{
                 position: 'absolute',
                 inset: 0,
@@ -2800,7 +2800,7 @@ export default function AreaAluno() {
               }} />
             </div>
 
-            {/* AÃ§Ãµes do Modal */}
+            {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button 
                 onClick={captureSelfie}
