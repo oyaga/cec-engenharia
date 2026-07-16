@@ -103,6 +103,7 @@ export default function LMSAdmin() {
 
     const [courseForm, setCourseForm] = useState({
         title: '',
+        code: '',
         description: '',
         thumbnail_url: '',
         min_theoretical_hours: 0,
@@ -267,6 +268,7 @@ export default function LMSAdmin() {
             if (selectedCourse) {
                 await coursesApi.update(selectedCourse.id, {
                     title: courseForm.title,
+                    code: courseForm.code,
                     description: courseForm.description,
                     thumbnail_url: courseForm.thumbnail_url,
                     min_theoretical_hours: courseForm.min_theoretical_hours,
@@ -294,7 +296,7 @@ export default function LMSAdmin() {
             }
 
             alert('Curso salvo com sucesso!')
-            setCourseForm({ title: '', description: '', thumbnail_url: '', min_theoretical_hours: 0, is_published: false, instructor_payment_type: 'fixed', instructor_payment_value: 0 })
+            setCourseForm({ title: '', code: '', description: '', thumbnail_url: '', min_theoretical_hours: 0, is_published: false, instructor_payment_type: 'fixed', instructor_payment_value: 0 })
             setSelectedCourse(null)
             setView('list')
             fetchCourses()
@@ -357,6 +359,7 @@ export default function LMSAdmin() {
                                         e.stopPropagation()
                                         setCourseForm({
                                             title: course.title,
+                                            code: course.code || '',
                                             description: course.description || '',
                                             thumbnail_url: course.thumbnail_url || '',
                                             min_theoretical_hours: course.min_theoretical_hours || 0,
@@ -400,13 +403,26 @@ export default function LMSAdmin() {
             <div className="card">
                 <div className="form-group">
                     <label className="form-label">Título do Curso</label>
-                    <input 
-                        type="text" 
-                        className="form-control" 
-                        value={courseForm.title} 
+                    <input
+                        type="text"
+                        className="form-control"
+                        value={courseForm.title}
                         onChange={e => setCourseForm({...courseForm, title: e.target.value})}
                         placeholder="Ex: Inspetor de Controle Dimensional - Base"
                     />
+                </div>
+                <div className="form-group">
+                    <label className="form-label">Código do Curso</label>
+                    <input
+                        type="text"
+                        className="form-control"
+                        value={courseForm.code}
+                        onChange={e => setCourseForm({...courseForm, code: e.target.value})}
+                        placeholder="Ex: CD-CM"
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.78rem' }}>
+                        A página pública do curso (/curso/&lt;código&gt;) é encontrada por este código.
+                    </small>
                 </div>
                 <div className="form-group">
                     <label className="form-label">Descrição / Ementa</label>
@@ -483,7 +499,7 @@ export default function LMSAdmin() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
                     <button className="btn btn-secondary" onClick={() => {
                         setSelectedCourse(null)
-                        setCourseForm({ title: '', description: '', thumbnail_url: '', min_theoretical_hours: 0, is_published: false, instructor_payment_type: 'fixed', instructor_payment_value: 0, create_class_container: true })
+                        setCourseForm({ title: '', code: '', description: '', thumbnail_url: '', min_theoretical_hours: 0, is_published: false, instructor_payment_type: 'fixed', instructor_payment_value: 0, create_class_container: true })
                         setView('list')
                     }}>Cancelar</button>
                     <button className="btn btn-primary" onClick={handleSaveCourse}>{selectedCourse ? 'Salvar Alterações' : 'Criar Curso'}</button>
