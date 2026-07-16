@@ -181,15 +181,19 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Acadêmico: turmas (classes) + instrutores ───
 		acadH := academic.NewHandler(gdb)
+		staffOnly := middleware.RequireRole(staffRoles...)
 		cl := v1.Group("/classes")
-		cl.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
+		cl.Use(middleware.RequireAuth(tm))
+		// GET liberado a qualquer autenticado; o handler filtra para o aluno
+		// ver apenas a própria turma (a Área do Aluno depende disto).
 		cl.GET("", acadH.ListClasses)
-		cl.POST("", cch.InvalidateOn(ckUpcoming), acadH.CreateClass)
-		cl.PUT("/:id", cch.InvalidateOn(ckUpcoming), acadH.UpdateClass)
-		cl.DELETE("/:id", cch.InvalidateOn(ckUpcoming), acadH.DeleteClass)
-		cl.GET("/:id/instructors", acadH.ListClassInstructors)
-		cl.POST("/:id/instructors", acadH.AddClassInstructor)
-		cl.DELETE("/:id/instructors/:linkId", acadH.RemoveClassInstructor)
+		// Mutações e leituras administrativas continuam staff-only.
+		cl.POST("", staffOnly, cch.InvalidateOn(ckUpcoming), acadH.CreateClass)
+		cl.PUT("/:id", staffOnly, cch.InvalidateOn(ckUpcoming), acadH.UpdateClass)
+		cl.DELETE("/:id", staffOnly, cch.InvalidateOn(ckUpcoming), acadH.DeleteClass)
+		cl.GET("/:id/instructors", staffOnly, acadH.ListClassInstructors)
+		cl.POST("/:id/instructors", staffOnly, acadH.AddClassInstructor)
+		cl.DELETE("/:id/instructors/:linkId", staffOnly, acadH.RemoveClassInstructor)
 
 		ai := v1.Group("/available-instructors")
 		ai.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
@@ -246,14 +250,15 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Students (alunos) ───
 		studentsH := students.NewHandler(gdb)
-		cl.GET("/:id/students", studentsH.ClassStudents)
+		cl.GET("/:id/students", staffOnly, studentsH.ClassStudents)
 		st := v1.Group("/students")
-		st.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
+		st.Use(middleware.RequireAuth(tm))
+		// GET liberado; o handler força o aluno a ver só o próprio cadastro.
 		st.GET("", studentsH.List)
-		st.POST("", studentsH.Create)
-		st.GET("/:id", studentsH.Get)
-		st.PUT("/:id", studentsH.Update)
-		st.DELETE("/:id", studentsH.Delete)
+		st.POST("", staffOnly, studentsH.Create)
+		st.GET("/:id", staffOnly, studentsH.Get)
+		st.PUT("/:id", staffOnly, studentsH.Update)
+		st.DELETE("/:id", staffOnly, studentsH.Delete)
 
 		// ─── Storage (arquivos) ───
 		storageH := storage.NewHandler(cfg.StorageDir, cfg.PublicURL)
@@ -264,10 +269,11 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Avaliações (student_evaluations — A1) ───
 		ev := v1.Group("/evaluations")
-		ev.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "instrutor"))
-		ev.GET("", acadH.ListEvaluations)
-		ev.POST("", acadH.CreateEvaluation)
-		ev.DELETE("", acadH.DeleteEvaluations)
+		ev.Use(middleware.RequireAuth(tm))
+		evStaff := middleware.RequireRole("admin", "coordenador", "instrutor")
+		ev.GET("", acadH.ListEvaluations) // aluno vê apenas as próprias notas
+		ev.POST("", evStaff, acadH.CreateEvaluation)
+		ev.DELETE("", evStaff, acadH.DeleteEvaluations)
 
 		// ─── Configurações do sistema (C1 — só admin, segredos mascarados) ───
 		settingsH := settings.NewHandler(gdb)
@@ -285,35 +291,39 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Financeiro (RBAC admin/coordenador; C4 PIN por hash) ───
 		finH := financial.NewHandler(gdb)
+		finStaff := middleware.RequireRole("admin", "coordenador")
 		fg := v1.Group("/financial")
-		fg.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador"))
+		fg.Use(middleware.RequireAuth(tm))
+		// O aluno vê apenas as próprias parcelas (handler filtra); o resto é staff.
 		fg.GET("/records", finH.ListRecords)
-		fg.POST("/records", finH.CreateRecord)
-		fg.PUT("/records/:id", finH.UpdateRecord)
-		fg.DELETE("/records/:id", finH.DeleteRecord)
-		fg.GET("/costs", finH.ListCosts)
-		fg.POST("/costs", finH.CreateCost)
-		fg.PUT("/costs/:id", finH.UpdateCost)
-		fg.DELETE("/costs/:id", finH.DeleteCost)
-		fg.GET("/expenses", finH.ListExpenses)
-		fg.POST("/expenses", finH.CreateExpense)
-		fg.PUT("/expenses/:id", finH.UpdateExpense)
-		fg.DELETE("/expenses/:id", finH.DeleteExpense)
-		fg.GET("/invoices", finH.ListInvoices)
-		fg.POST("/invoices", finH.CreateInvoice)
-		fg.POST("/pin", finH.SetPin)
-		fg.POST("/pin/verify", finH.VerifyPin)
+		fg.POST("/records", finStaff, finH.CreateRecord)
+		fg.PUT("/records/:id", finStaff, finH.UpdateRecord)
+		fg.DELETE("/records/:id", finStaff, finH.DeleteRecord)
+		fg.GET("/costs", finStaff, finH.ListCosts)
+		fg.POST("/costs", finStaff, finH.CreateCost)
+		fg.PUT("/costs/:id", finStaff, finH.UpdateCost)
+		fg.DELETE("/costs/:id", finStaff, finH.DeleteCost)
+		fg.GET("/expenses", finStaff, finH.ListExpenses)
+		fg.POST("/expenses", finStaff, finH.CreateExpense)
+		fg.PUT("/expenses/:id", finStaff, finH.UpdateExpense)
+		fg.DELETE("/expenses/:id", finStaff, finH.DeleteExpense)
+		fg.GET("/invoices", finStaff, finH.ListInvoices)
+		fg.POST("/invoices", finStaff, finH.CreateInvoice)
+		fg.POST("/pin", finStaff, finH.SetPin)
+		fg.POST("/pin/verify", finStaff, finH.VerifyPin)
 
-		// ─── Cursos LMS (admin) ───
+		// ─── Cursos LMS ───
+		// GETs de um curso liberados a qualquer autenticado (o aluno matriculado
+		// precisa ver a estrutura/aulas); lista completa e mutações são staff.
 		cg2 := v1.Group("/courses")
-		cg2.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
-		cg2.GET("", lmsH.List)
+		cg2.Use(middleware.RequireAuth(tm))
 		cg2.GET("/:id", lmsH.Get)
-		cg2.POST("", cch.InvalidateOn(ckCourses), lmsH.Create)
-		cg2.PUT("/:id", cch.InvalidateOn(ckCourses), lmsH.Update)
-		cg2.DELETE("/:id", cch.InvalidateOn(ckCourses), lmsH.Delete)
 		cg2.GET("/:id/structure", lmsH.Structure)
 		cg2.GET("/:id/quizzes", lmsH.ListQuizzes)
+		cg2.GET("", staffOnly, lmsH.List)
+		cg2.POST("", staffOnly, cch.InvalidateOn(ckCourses), lmsH.Create)
+		cg2.PUT("/:id", staffOnly, cch.InvalidateOn(ckCourses), lmsH.Update)
+		cg2.DELETE("/:id", staffOnly, cch.InvalidateOn(ckCourses), lmsH.Delete)
 
 		// ─── LMS conteúdo (admin/instrutor gerenciam) ───
 		lmsAdmin := v1.Group("/lms")

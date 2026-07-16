@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/middleware"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -36,9 +37,14 @@ type classItem struct {
 }
 
 // ListClasses: GET /classes — turmas com contagens e instrutores agregados.
+// O aluno recebe apenas a(s) própria(s) turma(s); o staff recebe todas.
 func (h *Handler) ListClasses(c *gin.Context) {
+	q := h.db.Order("created_at DESC")
+	if middleware.Role(c) == "aluno" {
+		q = q.Where("id IN (SELECT turma_id FROM students WHERE user_id = ? AND turma_id IS NOT NULL)", middleware.UserID(c))
+	}
 	var classes []models.Class
-	if err := h.db.Order("created_at DESC").Find(&classes).Error; err != nil {
+	if err := q.Find(&classes).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao listar turmas")
 		return
 	}
@@ -407,7 +413,9 @@ func (h *Handler) DeleteQualification(c *gin.Context) {
 func (h *Handler) ListEvaluations(c *gin.Context) {
 	list := []models.StudentEvaluation{}
 	q := h.db.Order("created_at DESC")
-	if sid := c.Query("student_id"); sid != "" {
+	if middleware.Role(c) == "aluno" {
+		q = q.Where("student_id IN (SELECT id FROM students WHERE user_id = ?)", middleware.UserID(c))
+	} else if sid := c.Query("student_id"); sid != "" {
 		q = q.Where("student_id = ?", sid)
 	}
 	q.Find(&list)

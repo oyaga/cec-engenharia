@@ -22,7 +22,9 @@ func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
 func (h *Handler) ListRecords(c *gin.Context) {
 	list := []models.FinancialRecord{}
 	q := h.db.Order("created_at DESC")
-	if sid := c.Query("student_id"); sid != "" {
+	if middleware.Role(c) == "aluno" {
+		q = q.Where("student_id IN (SELECT id FROM students WHERE user_id = ?)", middleware.UserID(c))
+	} else if sid := c.Query("student_id"); sid != "" {
 		q = q.Where("student_id = ?", sid)
 	}
 	q.Find(&list)

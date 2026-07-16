@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/middleware"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,7 +31,11 @@ func (h *Handler) List(c *gin.Context) {
 		Joins("LEFT JOIN classes cl ON cl.id = s.turma_id").
 		Order("s.full_name")
 
-	if v := c.Query("user_id"); v != "" {
+	// O aluno só enxerga o próprio cadastro (ignora filtros de user_id de
+	// outros); o staff pode filtrar por user_id livremente.
+	if middleware.Role(c) == "aluno" {
+		q = q.Where("s.user_id = ?", middleware.UserID(c))
+	} else if v := c.Query("user_id"); v != "" {
 		q = q.Where("s.user_id = ?", v)
 	}
 	if v := c.Query("turma_id"); v != "" {
