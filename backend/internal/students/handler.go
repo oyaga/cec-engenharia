@@ -147,7 +147,16 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
 		return
 	}
-	allowed := map[string]bool{
+
+	// O aluno pode editar apenas o PRÓPRIO cadastro e só campos de autoatendimento
+	// (aceite, documentos, contato, agendamento prático). O staff edita tudo.
+	isAluno := middleware.Role(c) == "aluno"
+	if isAluno && (s.UserID == nil || *s.UserID != middleware.UserID(c)) {
+		httpx.Error(c, http.StatusForbidden, "acesso negado")
+		return
+	}
+
+	staffAllowed := map[string]bool{
 		"full_name": true, "cpf": true, "rg": true, "birth_date": true, "birth_place": true,
 		"marital_status": true, "email": true, "phone": true, "education_level": true,
 		"parents_names": true, "address": true, "turma_id": true, "status": true,
@@ -159,6 +168,18 @@ func (h *Handler) Update(c *gin.Context) {
 		"how_knew": true, "how_knew_other": true, "cancellation_date": true, "refund_value": true,
 		"cancellation_reason": true, "cancellation_note": true, "doc_exams_url": true,
 		"asaas_customer_id": true, "asaas_payment_id": true,
+	}
+	selfAllowed := map[string]bool{
+		"terms_accepted": true, "phone": true, "email": true, "address": true,
+		"marital_status": true, "education_level": true, "parents_names": true,
+		"birth_place": true, "rg": true, "birth_date": true,
+		"doc_photo_url": true, "doc_id_url": true, "doc_cpf_url": true,
+		"doc_address_url": true, "doc_education_url": true, "doc_exams_url": true,
+		"practical_class_id": true, "practical_class_status": true,
+	}
+	allowed := staffAllowed
+	if isAluno {
+		allowed = selfAllowed
 	}
 	updates := map[string]any{}
 	for k, v := range body {

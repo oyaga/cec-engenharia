@@ -257,7 +257,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		st.GET("", studentsH.List)
 		st.POST("", staffOnly, studentsH.Create)
 		st.GET("/:id", staffOnly, studentsH.Get)
-		st.PUT("/:id", staffOnly, studentsH.Update)
+		// Aluno pode atualizar o próprio cadastro (aceite, docs, contato); o
+		// handler valida a posse e restringe os campos. Staff atualiza tudo.
+		st.PUT("/:id", middleware.RequireRole("admin", "coordenador", "atendente", "aluno"), studentsH.Update)
 		st.DELETE("/:id", staffOnly, studentsH.Delete)
 
 		// ─── Storage (arquivos) ───
