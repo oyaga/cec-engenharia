@@ -32,7 +32,9 @@ Explica **para que serve** cada item do menu e **como usar** no dia a dia.
   falta.
 
 - **Quem fala com você:** avisos gerais aparecem no **Quadro de Avisos**; dúvidas
-  de conteúdo vão no **Fórum**; conversa direta com o instrutor é em **Mensagens**.
+  de conteúdo (visíveis à turma) vão no **Fórum**; e conversas privadas em tempo
+  real ficam em **Mensagens** — onde você escolhe falar com **Professores**,
+  **Secretaria** ou **Colegas** de turma.
 
 ---
 
@@ -51,19 +53,24 @@ presencial) e frequência, e os **avisos recentes** da secretaria.
 - Clique em **Acessar Certificado** quando ele estiver disponível.
 
 ## Meus Cursos
-**Para que serve:** a lista completa dos cursos em que você está matriculado.
+**Para que serve:** a lista completa dos cursos EAD em que você está matriculado.
 
-**O que mostra:** um cartão por curso, com o **status** (certificado emitido,
-aguardando homologação, teoria concluída ou bloqueado), o **progresso** da teoria
-e a **frequência** presencial.
+**O que mostra:** um cartão **para cada curso** que você tem — o sistema suporta
+**vários cursos ao mesmo tempo** (se você comprou mais de um, todos aparecem
+aqui). Cada cartão traz o **status** (certificado emitido, aguardando homologação,
+teoria concluída ou bloqueado), o **progresso** da teoria (barra e %) e a
+**frequência** presencial.
 
 **Como usar:**
 - **Estudar EAD / Revisar Aulas EAD:** abre o **player de aulas** do curso.
-- Dentro do player você **assiste às aulas** na ordem, e o sistema **registra o
-  tempo** assistido para liberar a próxima etapa. Ao final de um módulo, aparece a
-  **prova online**.
-- **Prova online:** você tem até **3 tentativas**. A nota e o número de tentativas
-  ficam registrados em *Meu Desempenho*.
+- **Ordem obrigatória (trava sequencial):** dentro do player, você só libera a
+  **próxima aula depois de concluir a anterior** — as aulas ainda bloqueadas
+  aparecem com um **cadeado** e não podem ser abertas (a Aula 1 sempre abre).
+- **Como uma aula é concluída:** ficando nela pelo **tempo mínimo** de
+  visualização (um cronômetro). Quando atinge o tempo, a aula ganha um **✓ verde**
+  e a próxima destrava automaticamente.
+- Ao final de um módulo, aparece a **prova online**: você tem até **3 tentativas**;
+  a nota e o número de tentativas ficam registrados em *Meu Desempenho*.
 
 ## Aulas Presenciais
 **Para que serve:** acompanhar a parte prática — sua frequência e as próximas
@@ -115,14 +122,27 @@ semana**.
 resumido na tela Início.
 
 ## Mensagens
-**Para que serve:** conversar diretamente com seus **instrutores**.
+**Para que serve:** conversar em **tempo real** e em **particular** com as pessoas
+da escola. Diferente do Fórum (que é público para a turma), aqui a conversa é 1 a 1.
 
-**Como usar:** escolha o instrutor na lista à esquerda e escreva no campo de baixo.
-As mensagens ficam salvas na conversa.
+**Com quem você pode falar (três categorias, no topo da lista):**
+- **Professores** — os instrutores.
+- **Secretaria** — a equipe administrativa da escola.
+- **Colegas** — outros alunos da **sua turma**.
 
-> Observação: pode haver um pequeno atraso até o instrutor responder — não é um
-> chat em tempo real com garantia de resposta imediata. Para assuntos urgentes,
-> use o WhatsApp da secretaria.
+**Como usar:**
+- Escolha a categoria (Professores / Secretaria / Colegas), use a **busca** para
+  achar a pessoa e clique nela. A **primeira conversa já abre sozinha** ao entrar.
+- Escreva no campo de baixo e envie. As mensagens ficam salvas na conversa.
+- **Tempo real:** quando a pessoa está conectada, as mensagens aparecem **na hora**,
+  sem atualizar a página.
+
+**Os indicadores da tela:**
+- **● Online / Off (no topo da lista):** é o status da sua **conexão em tempo real**.
+  *Online* (verde) = mensagens instantâneas; *Off* = ainda funciona, mas as
+  mensagens chegam ao atualizar. Ele reconecta sozinho se cair.
+- **Bolinha verde no contato:** aquela pessoa está **online agora**.
+- **Número vermelho no contato:** quantas mensagens **não lidas** você tem dela.
 
 ## Dúvidas / Fórum
 **Para que serve:** tirar dúvidas de conteúdo que ficam **visíveis para a turma**
@@ -202,8 +222,9 @@ em mais de um.
 
 ### Fazer um curso EAD do zero até o certificado
 1. **Início** ou **Meus Cursos** → **Estudar EAD** no curso.
-2. Assista às aulas na ordem (o tempo é registrado) → faça a **prova online**
-   (até 3 tentativas).
+2. Assista às aulas **na ordem** — cada uma só destrava depois que você conclui a
+   anterior (ficando o tempo mínimo nela) → ao fim do módulo, faça a **prova
+   online** (até 3 tentativas).
 3. Se o curso tiver prática, vá em **Aulas Presenciais** e mantenha sua
    **frequência ≥ 75%** (confirmando presença nas chamadas).
 4. Cumpriu teoria + frequência? Vá em **Certificados** → **Emitir meu certificado**
