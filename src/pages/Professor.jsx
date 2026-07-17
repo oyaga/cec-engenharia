@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { classesApi, studentsApi, attendanceApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
-import { connectSocket, disconnectSocket, onSocketMessage } from '../lib/socket'
+import ChatPanel from '../components/ChatPanel'
 import { useAuth } from '../contexts/AuthContext'
 import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
@@ -232,26 +232,7 @@ export default function Professor() {
         }
     }, [activeTab, selectedStudentId])
 
-    // Chat em tempo real (WebSocket): recebe mensagens dos alunos ao vivo.
-    const selectedStudentIdRef = useRef(selectedStudentId)
-    useEffect(() => { selectedStudentIdRef.current = selectedStudentId }, [selectedStudentId])
-    useEffect(() => {
-        if (!uid) return
-        connectSocket()
-        const off = onSocketMessage((data) => {
-            if (data?.type !== 'message' || !data.message) return
-            const msg = data.message
-            const partnerId = msg.sender_id === uid ? msg.receiver_id : msg.sender_id
-            if (selectedStudentIdRef.current === partnerId) {
-                setDirectMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
-            } else if (msg.sender_id !== uid) {
-                setDirectChats(prev => prev.map(c => c.id === partnerId
-                    ? { ...c, unreadCount: (c.unreadCount || 0) + 1, lastMessage: msg.content, lastTime: msg.created_at }
-                    : c))
-            }
-        })
-        return () => { off(); disconnectSocket() }
-    }, [uid])
+    // O chat de mensagens é gerido pelo componente ChatPanel (WebSocket próprio).
 
     useEffect(() => {
         if (activeTab === 'analytics') {
@@ -1781,178 +1762,11 @@ export default function Professor() {
         )
     }
 
-    const renderMessagesTab = () => {
-        const activeChatPartner = directChats.find(c => c.id === selectedStudentId)
-
-        return (
-            <div className="card animate-fade-in" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '600px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', flexShrink: 0 }}>
-                    <div>
-                        <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Bate-papo Direto e Dúvidas</h3>
-                        <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>Comunicação em tempo real com os alunos das suas turmas presenciais.</p>
-                    </div>
-                </div>
-
-                {directError ? (
-                    <div style={{ margin: 'auto', textAlign: 'center', padding: '2rem', color: '#EF4444' }}>
-                        <AlertCircle size={40} style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ fontWeight: '600' }}>Central de Mensagens Indisponível no Momento</p>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Aguarde a execução da migração de banco `supabase_messages_migration.sql` pelo administrador para ativar o bate-papo.</p>
-                    </div>
-                ) : (
-                    <div className="prof-messages-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: '1.5rem' }}>
-
-                        {/* LADO ESQUERDO: Lista de Conversas / Contatos */}
-                        <div className="prof-messages-list" style={{ width: '280px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-color)', paddingRight: '1rem', overflowY: 'auto', flexShrink: 0 }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>Alunos / Contatos</span>
-                            
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                {directChats.map(chat => {
-                                    const isSelected = chat.id === selectedStudentId
-                                    return (
-                                        <div 
-                                            key={chat.id} 
-                                            onClick={() => { setSelectedStudentId(chat.id); fetchActiveChat(chat.id) }}
-                                            style={{
-                                                padding: '0.75rem',
-                                                borderRadius: '8px',
-                                                backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
-                                                border: isSelected ? '1px solid var(--primary)' : '1px solid transparent',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: '4px',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onMouseOver={e => !isSelected && (e.currentTarget.style.backgroundColor = '#F8FAFC')}
-                                            onMouseOut={e => !isSelected && (e.currentTarget.style.backgroundColor = 'transparent')}
-                                        >
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontWeight: '700', fontSize: '0.85rem', color: isSelected ? 'var(--primary)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '170px' }}>
-                                                    {chat.full_name}
-                                                </span>
-                                                {chat.unreadCount > 0 && (
-                                                    <span style={{ backgroundColor: 'var(--danger)', color: 'white', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '999px', fontWeight: 'bold' }}>
-                                                        {chat.unreadCount}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
-                                                    {chat.lastMessage || 'Nenhuma mensagem trocada'}
-                                                </span>
-                                            </div>
-                                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', alignSelf: 'flex-end', marginTop: '2px' }}>
-                                                {chat.className}
-                                            </span>
-                                        </div>
-                                    )
-                                })}
-                                {directChats.length === 0 && (
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>Nenhum aluno matriculado localizado.</span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* LADO DIREITO: Janela de Conversa Ativa */}
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                            {selectedStudentId && activeChatPartner ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                                    
-                                    {/* Topo do Chat */}
-                                    <div style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                                        <div>
-                                            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-primary)' }}>{activeChatPartner.full_name}</span>
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>· Turma: {activeChatPartner.className}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Área de Mensagens */}
-                                    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', margin: '0.75rem 0', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                        {loadingDirect ? (
-                                            <span style={{ margin: 'auto', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Carregando conversa...</span>
-                                        ) : directMessages.length === 0 ? (
-                                            <span style={{ margin: 'auto', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center', maxWidth: '250px', lineHeight: '1.4' }}>
-                                                Nenhuma mensagem trocada ainda. Digite sua mensagem abaixo para iniciar a conversa!
-                                            </span>
-                                        ) : (
-                                            directMessages.map((m, idx) => {
-                                                const isMe = m.sender_id !== selectedStudentId
-                                                return (
-                                                    <div 
-                                                        key={m.id || idx} 
-                                                        style={{
-                                                            alignSelf: isMe ? 'flex-end' : 'flex-start',
-                                                            backgroundColor: isMe ? 'var(--primary)' : '#E2E8F0',
-                                                            color: isMe ? 'white' : '#1E293B',
-                                                            padding: '0.6rem 0.9rem',
-                                                            borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
-                                                            maxWidth: '75%',
-                                                            fontSize: '0.82rem',
-                                                            lineHeight: '1.4',
-                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                                                            display: 'flex',
-                                                            flexDirection: 'column',
-                                                            gap: '2px'
-                                                        }}
-                                                    >
-                                                        <span>{m.content}</span>
-                                                        <span style={{ fontSize: '0.6', alignSelf: 'flex-end', opacity: 0.7 }}>
-                                                            {new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                    </div>
-                                                )
-                                            })
-                                        )}
-                                    </div>
-
-                                    {/* Form de Digitação */}
-                                    <form onSubmit={handleSendDirectMessage} style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                                        <input 
-                                            type="text" 
-                                            placeholder="Escreva sua resposta..."
-                                            value={newDirectText}
-                                            onChange={e => setNewDirectText(e.target.value)}
-                                            style={{
-                                                flex: 1,
-                                                padding: '0.65rem 0.75rem',
-                                                border: '1px solid #cbd5e1',
-                                                borderRadius: '8px',
-                                                fontSize: '0.85rem',
-                                                outline: 'none'
-                                            }}
-                                        />
-                                        <button 
-                                            type="submit" 
-                                            disabled={!newDirectText.trim()}
-                                            className="btn btn-primary"
-                                            style={{
-                                                padding: '0.65rem 1.25rem',
-                                                fontWeight: '700',
-                                                fontSize: '0.85rem',
-                                                border: 'none',
-                                                borderRadius: '8px',
-                                                cursor: !newDirectText.trim() ? 'not-allowed' : 'pointer'
-                                            }}
-                                        >
-                                            Responder
-                                        </button>
-                                    </form>
-
-                                </div>
-                            ) : (
-                                <div style={{ margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', color: '#94A3B8' }}>
-                                    <Clock size={36} style={{ opacity: 0.5 }} />
-                                    <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>Selecione um aluno na lista para iniciar o bate-papo</span>
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
-                )}
-            </div>
-        )
-    }
+    const renderMessagesTab = () => (
+        <div style={{ height: 'calc(100vh - 220px)', minHeight: 480, border: '1px solid #e8edf3', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 40px -20px rgba(15,23,42,0.2)' }}>
+            <ChatPanel />
+        </div>
+    )
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
