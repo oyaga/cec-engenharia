@@ -3,7 +3,6 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { 
     Home,
     BookOpen,
-    PlayCircle,
     Calendar,
     TrendingUp,
     MessageSquare,
@@ -20,6 +19,18 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationBell from './NotificationBell'
+
+// Rótulo de grupo do menu (ex.: "Meus estudos") — só um separador visual.
+function SectionLabel({ children }) {
+    return (
+        <div style={{
+            fontSize: '0.68rem', letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: '#94a3b8', fontWeight: 700, padding: '1.1rem 1rem 0.35rem'
+        }}>
+            {children}
+        </div>
+    )
+}
 
 export default function StudentLayout() {
     const { session, userProfile, logout } = useAuth()
@@ -183,15 +194,15 @@ export default function StudentLayout() {
                     }}
                     className={`student-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}
                 >
-                    <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+                    <nav style={{ padding: '0.75rem 1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+
+                        {/* ── Meus estudos ── */}
+                        <SectionLabel>Meus estudos</SectionLabel>
                         <NavLink to="/area-aluno" end style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <Home size={18} /> Início
                         </NavLink>
                         <NavLink to="/area-aluno/cursos" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <BookOpen size={18} /> Meus Cursos
-                        </NavLink>
-                        <NavLink to="/area-aluno/ead" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
-                            <PlayCircle size={18} /> Aulas EAD
                         </NavLink>
                         <NavLink to="/area-aluno/presencial" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <Calendar size={18} /> Aulas Presenciais
@@ -199,39 +210,47 @@ export default function StudentLayout() {
                         <NavLink to="/area-aluno/desempenho" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <TrendingUp size={18} /> Meu Desempenho
                         </NavLink>
-                        <NavLink to="/area-aluno/mensagens" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
-                            <MessageSquare size={18} /> Mensagens
+                        <NavLink to="/area-aluno/certificados" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
+                            <Award size={18} /> Certificados
                         </NavLink>
+
+                        {/* ── Comunicação ── */}
+                        <SectionLabel>Comunicação</SectionLabel>
                         <NavLink to="/area-aluno/avisos" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <Megaphone size={18} /> Quadro de Avisos
+                        </NavLink>
+                        <NavLink to="/area-aluno/mensagens" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
+                            <MessageSquare size={18} /> Mensagens
                         </NavLink>
                         <NavLink to="/area-aluno/forum" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <HelpCircle size={18} /> Dúvidas / Fórum
                         </NavLink>
+
+                        {/* ── Minha conta ── */}
+                        <SectionLabel>Minha conta</SectionLabel>
                         <NavLink to="/area-aluno/financeiro" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <DollarSign size={18} /> Financeiro
                         </NavLink>
                         <NavLink to="/area-aluno/documentos" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
                             <FileText size={18} /> Documentos
                         </NavLink>
-                        <NavLink to="/area-aluno/certificados" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
-                            <Award size={18} /> Certificados
+                        <NavLink to="/aluno/perfil" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
+                            <User size={18} /> Meu Perfil
                         </NavLink>
-                        <NavLink 
-                            to="/area-aluno/vitrine" 
+
+                        {/* ── Descubra ── */}
+                        <SectionLabel>Descubra</SectionLabel>
+                        <NavLink
+                            to="/area-aluno/vitrine"
                             style={({ isActive }) => ({
                                 ...navLinkStyle({ isActive }),
                                 background: isActive ? 'var(--primary-light)' : 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.06) 100%)',
                                 color: isActive ? 'var(--primary)' : '#7c3aed',
                                 border: '1px solid rgba(139,92,246,0.15)',
-                                marginTop: '0.5rem'
                             })}
                             onClick={() => setMobileMenuOpen(false)}
                         >
                             <Sparkles size={18} /> Vitrine de Cursos
-                        </NavLink>
-                        <NavLink to="/aluno/perfil" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
-                            <User size={18} /> Meu Perfil
                         </NavLink>
                     </nav>
                     
