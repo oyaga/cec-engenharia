@@ -52,9 +52,9 @@ export default function Cursos() {
         practical_hours: 20,
         min_attendance: 75,
         min_grade: 6.0,
-        default_value: 0.0,
+        default_value: '',
         max_instructors: 8,
-        status: 'ativo',
+        is_published: false,
         thumbnail_url: '',
         price_card: '',
         price_pix: '',
@@ -78,19 +78,20 @@ export default function Cursos() {
         try {
             const { courses: data } = await coursesApi.list()
 
-            // Map standard database records to rich dashboard details with default fallbacks
+            // Campos ausentes ficam como estão: inventar preço/código aqui fazia o
+            // valor fictício ser gravado no banco ao abrir e salvar o curso.
             const mapped = (data || []).map(c => ({
                 id: c.id,
                 title: c.title || '',
-                code: c.code || getFallbackCode(c.title),
+                code: c.code || '',
                 description: c.description || '',
                 min_theoretical_hours: c.min_theoretical_hours || c.theoretical_hours || 40,
                 practical_hours: c.practical_hours || 20,
                 min_attendance: c.min_attendance || 75,
                 min_grade: c.min_grade || 6.0,
-                default_value: c.default_value || 1200.00,
+                default_value: c.default_value ?? null,
                 max_instructors: c.max_instructors || 8,
-                status: c.status || 'ativo',
+                is_published: !!c.is_published,
                 thumbnail_url: c.thumbnail_url || '',
                 created_at: c.created_at,
                 price_card: c.price_card || null,
@@ -116,14 +117,6 @@ export default function Cursos() {
         }
     }
 
-    const getFallbackCode = (title) => {
-        if (!title) return 'CD-GEN'
-        if (title.toLowerCase().includes('líquido') || title.toLowerCase().includes('lp')) return 'CD-CL'
-        if (title.toLowerCase().includes('medição') || title.toLowerCase().includes('espessura') || title.toLowerCase().includes('me')) return 'CD-MC'
-        if (title.toLowerCase().includes('ultrassom') || title.toLowerCase().includes('us')) return 'CD-TO'
-        return 'CD-GEN'
-    }
-
     useEffect(() => {
         fetchCourses()
     }, [])
@@ -138,9 +131,9 @@ export default function Cursos() {
             practical_hours: 20,
             min_attendance: 75,
             min_grade: 6.0,
-            default_value: 1200.00,
+            default_value: '',
             max_instructors: 8,
-            status: 'ativo',
+            is_published: false,
             thumbnail_url: '',
             price_card: '',
             price_pix: '',
@@ -170,9 +163,9 @@ export default function Cursos() {
             practical_hours: course.practical_hours,
             min_attendance: course.min_attendance,
             min_grade: course.min_grade,
-            default_value: course.default_value,
+            default_value: course.default_value ? formatCurrencyBRL(course.default_value) : '',
             max_instructors: course.max_instructors,
-            status: course.status,
+            is_published: course.is_published,
             thumbnail_url: course.thumbnail_url,
             price_card: course.price_card ? formatCurrencyBRL(course.price_card) : '',
             price_pix: course.price_pix ? formatCurrencyBRL(course.price_pix) : '',
@@ -215,13 +208,15 @@ export default function Cursos() {
         const boletoVal = parseCurrencyBRL(form.price_boleto)
         const financingVal = parseCurrencyBRL(form.price_financing)
 
-        // Calcula o default_value automaticamente baseando-se nos preços detalhados
-        const calculatedDefaultValue = pixVal || 
-                                     cardVal || 
-                                     boletoVal || 
-                                     financingVal || 
-                                     parseCurrencyBRL(form.default_value) || 
-                                     0.0
+        // Calcula o default_value automaticamente baseando-se nos preços detalhados.
+        // Sem nenhum preço informado o curso fica sem valor (null) — gravar 0.0
+        // faria um curso "sob consulta" virar um curso gratuito.
+        const calculatedDefaultValue = pixVal ||
+                                     cardVal ||
+                                     boletoVal ||
+                                     financingVal ||
+                                     parseCurrencyBRL(form.default_value) ||
+                                     null
 
         try {
             const payload = {
@@ -235,7 +230,7 @@ export default function Cursos() {
                 min_grade: parseFloat(form.min_grade) || 6.0,
                 default_value: calculatedDefaultValue,
                 max_instructors: parseInt(form.max_instructors) || 8,
-                status: form.status,
+                is_published: form.is_published,
                 price_card: cardVal || null,
                 price_pix: pixVal || null,
                 price_boleto: boletoVal || null,
@@ -270,7 +265,8 @@ export default function Cursos() {
         const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               c.description.toLowerCase().includes(searchTerm.toLowerCase())
-        const matchesStatus = statusFilter === 'todos' || c.status === statusFilter
+        const matchesStatus = statusFilter === 'todos' ||
+                              (statusFilter === 'publicados' ? c.is_published : !c.is_published)
         return matchesSearch && matchesStatus
     })
 
@@ -343,8 +339,8 @@ export default function Cursos() {
                         }}
                     >
                         <option value="todos">Todos os Cursos</option>
-                        <option value="ativo">Apenas Ativos</option>
-                        <option value="inativo">Apenas Inativos</option>
+                        <option value="publicados">Apenas Publicados</option>
+                        <option value="nao_publicados">Apenas Não Publicados</option>
                     </select>
                 </div>
             </div>
@@ -364,7 +360,9 @@ export default function Cursos() {
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
                     {filtered.map(course => {
-                        const isAtivo = course.status === 'ativo';
+                        // "Publicado" é o que o site público, a vitrine do aluno e o
+                        // vínculo de turma realmente enxergam (is_published).
+                        const isAtivo = course.is_published;
                         return (
                             <div 
                                 key={course.id}
@@ -392,8 +390,8 @@ export default function Cursos() {
                                     )}
                                     
                                     <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
-                                        <span style={{ fontSize: '0.7rem', fontWeight: '800', backgroundColor: 'var(--primary)', color: 'white', padding: '3px 8px', borderRadius: '4px' }}>
-                                            {course.code}
+                                        <span style={{ fontSize: '0.7rem', fontWeight: '800', backgroundColor: course.code ? 'var(--primary)' : '#94a3b8', color: 'white', padding: '3px 8px', borderRadius: '4px' }}>
+                                            {course.code || 'SEM CÓDIGO'}
                                         </span>
                                         <span style={{ 
                                             fontSize: '0.7rem', 
@@ -403,7 +401,7 @@ export default function Cursos() {
                                             padding: '3px 8px', 
                                             borderRadius: '4px' 
                                         }}>
-                                            {isAtivo ? 'ATIVO' : 'INATIVO'}
+                                            {isAtivo ? 'PUBLICADO' : 'NÃO PUBLICADO'}
                                         </span>
                                     </div>
                                 </div>
@@ -452,8 +450,10 @@ export default function Cursos() {
                                             ) : (
                                                 <>
                                                     <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: '600', textTransform: 'uppercase' }}>Valor Padrão</span>
-                                                    <strong style={{ fontSize: '1.15rem', color: 'var(--primary-dark)', fontWeight: '800' }}>
-                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(course.default_value)}
+                                                    <strong style={{ fontSize: '1.15rem', color: course.default_value ? 'var(--primary-dark)' : '#94a3b8', fontWeight: '800' }}>
+                                                        {course.default_value
+                                                            ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(course.default_value)
+                                                            : 'Sob consulta'}
                                                     </strong>
                                                 </>
                                             )}
@@ -631,14 +631,14 @@ export default function Cursos() {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Status *</label>
+                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Publicação *</label>
                                     <select
-                                        value={form.status}
-                                        onChange={e => setForm(prev => ({ ...prev, status: e.target.value }))}
+                                        value={form.is_published ? 'sim' : 'nao'}
+                                        onChange={e => setForm(prev => ({ ...prev, is_published: e.target.value === 'sim' }))}
                                         style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem', backgroundColor: 'white' }}
                                     >
-                                        <option value="ativo">Ativo</option>
-                                        <option value="inativo">Inativo</option>
+                                        <option value="nao">Não publicado</option>
+                                        <option value="sim">Publicado (visível no site e para alunos)</option>
                                     </select>
                                 </div>
                             </div>

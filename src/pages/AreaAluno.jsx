@@ -346,8 +346,10 @@ export default function AreaAluno() {
           description: c.description || lmsMatch?.description,
           thumbnail_url: c.image || lmsMatch?.thumbnail_url,
           code: lmsMatch?.code || slug?.toUpperCase(),
-          price_card: priceCard || 3000,
-          price_pix: pricePix || 2500,
+          // Curso sem preço cadastrado fica sem preço: os valores fictícios que
+          // ficavam aqui eram indistinguíveis dos reais para o aluno.
+          price_card: priceCard || null,
+          price_pix: pricePix || null,
           max_installments: maxInstallments,
           modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: slug.startsWith('nr') ? 'NR' : 'END',
@@ -366,17 +368,23 @@ export default function AreaAluno() {
         const details = courseDetails[c.slug] || {};
         const investment = details.investment || {};
         
-        let pricePix = 2500;
-        let priceCard = 3000;
+        // Fallback offline: só o texto do CMS local. Não há tabela de preços
+        // embutida aqui — valores congelados no código não acompanham reajuste
+        // e chegavam ao aluno como se fossem os preços vigentes.
+        let pricePix = null;
+        let priceCard = null;
         let maxInstallments = 10;
-        
-        if (c.slug === 'cd-cl') { pricePix = 3300; priceCard = 3800; maxInstallments = 10; }
-        else if (c.slug === 'cd-et') { pricePix = 4800; priceCard = 5200; maxInstallments = 10; }
-        else if (c.slug === 'cd-mc') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
-        else if (c.slug === 'cd-to') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
-        else if (c.slug === 'laser-tracker-caldeiraria') { pricePix = 5300; priceCard = 5900; maxInstallments = 10; }
-        else if (c.slug === 'retreinamento-teorico-cd-cl') { pricePix = 1550; priceCard = 1800; maxInstallments = 10; }
-        else if (c.slug === 'retreinamento-pratico-cd-cl') { pricePix = 2100; priceCard = 2400; maxInstallments = 10; }
+
+        if (investment.pix) {
+          const match = investment.pix.match(/R\$\s*([0-9.,]+)/);
+          if (match) pricePix = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+        }
+        if (investment.credit) {
+          const match = investment.credit.match(/R\$\s*([0-9.,]+)/);
+          if (match) priceCard = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+          const matchInstallments = investment.credit.match(/([0-9]+)\s*x/i);
+          if (matchInstallments) maxInstallments = parseInt(matchInstallments[1], 10);
+        }
 
         return {
           id: c.slug || `cms-local-${index}`,

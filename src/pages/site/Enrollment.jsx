@@ -212,11 +212,10 @@ const Enrollment = () => {
     }
     
     if (!val) return 'Sob Consulta';
-    
-    // Se o preço estiver cadastrado como decimal por engano (ex: 3.8 em vez de 3800)
-    if (val > 0 && val < 100) {
-      val = val * 1000;
-    }
+
+    // O preço cadastrado é exibido como está. Havia aqui um ajuste que
+    // multiplicava por 1000 qualquer valor abaixo de 100, supondo erro de
+    // cadastro — isso transformava um curso legítimo de R$ 80 em R$ 80.000.
     return val;
   };
 
