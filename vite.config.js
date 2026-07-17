@@ -9,7 +9,17 @@ export default defineConfig({
     host: true, // aceita localhost, 127.0.0.1 e o IP da máquina
     proxy: {
       // API + WebSocket na mesma origem do frontend (elimina CORS no dev).
-      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      // Normaliza o header Origin para um valor que o backend aceita, para o
+      // dev funcionar abrindo por localhost, 127.0.0.1 ou IP da rede.
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
+        },
+      },
       '/ws': { target: 'http://127.0.0.1:8080', changeOrigin: true, ws: true },
       '/asaas-sandbox': {
         target: 'https://sandbox.asaas.com/api/v3',
