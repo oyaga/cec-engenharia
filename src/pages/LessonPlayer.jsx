@@ -168,6 +168,22 @@ export default function LessonPlayer() {
                     setIsCompleted(statusMap[lessonId]?.is_completed || false)
                 }
 
+                // TRAVA SEQUENCIAL (acesso direto por URL / botão "próxima"):
+                // se a aula pedida está bloqueada porque a anterior não foi
+                // concluída, redireciona para a próxima aula liberada.
+                const reqIdx = (lessons || []).findIndex(l => l.id === lessonId)
+                if (reqIdx > 0 && !statusMap[lessons[reqIdx - 1].id]?.is_completed) {
+                    let allowedIdx = 0
+                    while (allowedIdx < lessons.length - 1 && statusMap[lessons[allowedIdx].id]?.is_completed) {
+                        allowedIdx++
+                    }
+                    const target = lessons[allowedIdx]
+                    if (target && target.id !== lessonId && courseId) {
+                        navigate(`/curso/${courseId}/aula/${target.id}`, { replace: true })
+                        return
+                    }
+                }
+
                 // Dados do estudante (turma/prática/upload)
                 try {
                     const { students } = await studentsApi.list({ user_id: session.user.id })
@@ -1521,8 +1537,12 @@ export default function LessonPlayer() {
                             }
                         }
 
-                        // AULA LIVRE (ignore lessonStatus), mas BLOQUEADA POR QUIZ anterior
-                        const isLocked = isBlockedByQuiz
+                        // TRAVA SEQUENCIAL: a aula só abre se a IMEDIATAMENTE
+                        // anterior estiver concluída (a 1ª sempre abre). Some-se a
+                        // isso o bloqueio por prova de módulo anterior.
+                        const prevLesson = idx > 0 ? allLessons[idx - 1] : null
+                        const isBlockedByPrev = !!prevLesson && !lessonStatus[prevLesson.id]?.is_completed
+                        const isLocked = !isCurrent && (isBlockedByQuiz || isBlockedByPrev)
                         
                         // Verificar se existe quiz para este módulo logo após esta aula (se for a última do módulo)
                         const isLastInModule = idx === allLessons.length - 1 || allLessons[idx+1].module_id !== lessonModule
