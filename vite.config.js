@@ -16,7 +16,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true, // o WebSocket do chat vive em /api/v1/ws/chat
         configure: (proxy) => {
+          // Normaliza a origem tanto nas requisições HTTP quanto no upgrade do
+          // WebSocket (evento separado), para o backend aceitar por qualquer host.
           proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
+          proxy.on('proxyReqWs', (proxyReq) => {
             proxyReq.setHeader('origin', 'http://localhost:5173')
           })
         },
