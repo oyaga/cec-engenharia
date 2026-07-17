@@ -1893,9 +1893,9 @@ export default function AreaAluno() {
     const selOnline = selectedInstructor ? online(selectedInstructor.id) : false;
     const firstName = (n) => (n || '').split(' ')[0];
 
-    return (
+    return createPortal((
       <div className="aa-chat-window">
-        <div className="aa-stack aa-chat-shell" style={{ flex: 1, display: 'grid', gridTemplateColumns: '340px 1fr', minHeight: 0, backgroundColor: 'white', overflow: 'hidden' }}>
+        <div className="aa-stack aa-chat-shell" style={{ flex: 1, display: 'grid', gridTemplateColumns: '340px 1fr', gridTemplateRows: '100%', minHeight: 0, backgroundColor: 'white', overflow: 'hidden' }}>
 
         {/* ── LISTA DE CONTATOS ── */}
         <div style={{ borderRight: '1px solid #eef2f7', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#fbfcfe', minHeight: 0 }}>
@@ -2016,7 +2016,7 @@ export default function AreaAluno() {
         </div>
         </div>
       </div>
-    );
+    ), document.body);
   };
 
   // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
