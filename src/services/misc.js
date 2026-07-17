@@ -15,6 +15,7 @@ export const ordersApi = {
 export const messagesApi = {
   list: (withUser) => request(`/messages${withUser ? `?with=${withUser}` : ''}`),
   create: (payload) => request('/messages', { method: 'POST', body: payload }),
+  contacts: () => request('/messages/contacts'),
   markRead: (id) => request(`/messages/${id}/read`, { method: 'PUT' }),
 };
 

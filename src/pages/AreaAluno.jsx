@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
 import { lmsApi } from '../services/lms';
 import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi, upcomingClassesApi } from '../services/misc';
+import { connectSocket, disconnectSocket, onSocketMessage, onSocketStatus } from '../lib/socket';
 import { financialApi, evaluationsApi } from '../services/financial';
 import { uploadFile } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -106,6 +107,13 @@ export default function AreaAluno() {
   const [chatMessages, setChatMessages] = useState([]);
   const [newChatMessage, setNewChatMessage] = useState('');
   const messagesEndRef = useRef(null);
+  // Chat: contatos por categoria, presença online, não-lidos e status do WS.
+  const [contacts, setContacts] = useState({ professores: [], secretaria: [], alunos: [] });
+  const [contactTab, setContactTab] = useState('professores');
+  const [onlineIds, setOnlineIds] = useState([]);
+  const [unreadBy, setUnreadBy] = useState({});
+  const [wsConnected, setWsConnected] = useState(false);
+  const selectedContactRef = useRef(null);
 
   // Estados para Agendamento Prático (Fase 20.1)
   const [availablePracticalClasses, setAvailablePracticalClasses] = useState([]);
@@ -129,6 +137,28 @@ export default function AreaAluno() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, selectedInstructor]);
+
+  // Mantém uma ref do contato aberto (evita closure velha no WebSocket).
+  useEffect(() => { selectedContactRef.current = selectedInstructor; }, [selectedInstructor]);
+
+  // Chat em tempo real: conecta ao WebSocket e entrega mensagens ao vivo.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    connectSocket();
+    const offMsg = onSocketMessage((data) => {
+      if (data?.type !== 'message' || !data.message) return;
+      const msg = data.message;
+      const myId = session.user.id;
+      const partnerId = msg.sender_id === myId ? msg.receiver_id : msg.sender_id;
+      if (selectedContactRef.current?.id === partnerId) {
+        setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+      } else if (msg.sender_id !== myId) {
+        setUnreadBy(prev => ({ ...prev, [partnerId]: (prev[partnerId] || 0) + 1 }));
+      }
+    });
+    const offStatus = onSocketStatus(setWsConnected);
+    return () => { offMsg(); offStatus(); disconnectSocket(); };
+  }, [session?.user?.id]);
 
   // Carregamento geral de dados do Supabase
   const fetchData = async () => {
@@ -232,7 +262,7 @@ export default function AreaAluno() {
 
       // 10. Fórum, instrutores, vitrine
       loadForum(activeTurmaId);
-      loadInstructors(activeTurmaId);
+      loadContacts();
       loadAvailableCourses();
 
       // 11. Aulas práticas de fim de semana disponíveis
@@ -439,18 +469,23 @@ export default function AreaAluno() {
   };
 
   // Carregar instrutores da turma do aluno para o Chat
-  const loadInstructors = async (activeTurmaId) => {
+  // Carrega os contatos do chat (professores, secretaria, colegas) + presença.
+  const loadContacts = async () => {
     try {
-      if (activeTurmaId) {
-        const { instructors } = await classesApi.listInstructors(activeTurmaId);
-        if (instructors && instructors.length > 0) {
-          setInstructors(instructors.map(i => i.user).filter(Boolean));
-          return;
-        }
-      }
-      setInstructors([]);
-    } catch (err) {
-      setInstructors([]);
+      const data = await messagesApi.contacts();
+      const next = {
+        professores: data.professores || [],
+        secretaria: data.secretaria || [],
+        alunos: data.alunos || [],
+      };
+      setContacts(next);
+      setOnlineIds(data.online || []);
+      // Abre na primeira categoria que tiver alguém.
+      if (next.professores.length) setContactTab('professores');
+      else if (next.secretaria.length) setContactTab('secretaria');
+      else if (next.alunos.length) setContactTab('alunos');
+    } catch {
+      setContacts({ professores: [], secretaria: [], alunos: [] });
     }
   };
 
@@ -544,6 +579,7 @@ export default function AreaAluno() {
   const handleSelectInstructorChat = async (inst) => {
     setSelectedInstructor(inst);
     setChatMessages([]);
+    setUnreadBy(prev => ({ ...prev, [inst.id]: 0 }));
     if (!session?.user?.id) return;
 
     try {
@@ -1837,121 +1873,122 @@ export default function AreaAluno() {
   );
 
   // ABA 6: CHAT COM INSTRUTOR
-  const renderMensagens = () => (
-    <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem', height: '70vh', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '16px', overflow: 'hidden' }}>
-      {/* LISTA DE CONTATOS */}
-      <div style={{ borderRight: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc' }}>
-          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary-dark)' }}>Instrutores & Suporte</h4>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {instructors.map(inst => (
-            <div 
-              key={inst.id} 
-              onClick={() => handleSelectInstructorChat(inst)}
-              style={{ 
-                padding: '0.85rem 1rem', 
-                borderBottom: '1px solid #f1f5f9', 
-                cursor: 'pointer',
-                backgroundColor: selectedInstructor?.id === inst.id ? 'var(--primary-light)' : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                transition: 'all 0.2s'
-              }}
-            >
-              <div style={{ 
-                width: '32px', height: '32px', borderRadius: '50%', 
-                backgroundColor: 'var(--primary)', color: 'white', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                fontWeight: 'bold', fontSize: '0.8rem' 
-              }}>
-                {inst.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.full_name}</div>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.email}</div>
-              </div>
+  const renderMensagens = () => {
+    const online = (id) => onlineIds.includes(id);
+    const tabs = [
+      { key: 'professores', label: 'Professores' },
+      { key: 'secretaria', label: 'Secretaria' },
+      { key: 'alunos', label: 'Colegas' },
+    ];
+    const list = contacts[contactTab] || [];
+    const subtitleFor = () => contactTab === 'professores' ? 'Instrutor'
+      : contactTab === 'secretaria' ? 'Secretaria' : 'Colega de turma';
+    const selOnline = selectedInstructor ? online(selectedInstructor.id) : false;
+
+    return (
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '72vh', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        {/* LISTA DE CONTATOS */}
+        <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#fbfcfe' }}>
+          <div style={{ padding: '1rem 1.15rem 0.85rem', borderBottom: '1px solid #eef2f7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--primary-dark)' }}>Conversas</h4>
+              <span title={wsConnected ? 'Conectado em tempo real' : 'Reconectando...'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 700, color: wsConnected ? '#10b981' : '#94a3b8' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: wsConnected ? '#10b981' : '#cbd5e1' }} />
+                {wsConnected ? 'Tempo real' : 'Off'}
+              </span>
             </div>
-          ))}
-          {instructors.length === 0 && (
-            <p style={{ fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>Carregando contatos...</p>
+            <div style={{ display: 'flex', gap: 6, marginTop: '0.85rem' }}>
+              {tabs.map(t => {
+                const count = (contacts[t.key] || []).length;
+                const active = contactTab === t.key;
+                return (
+                  <button key={t.key} onClick={() => setContactTab(t.key)}
+                    style={{ flex: 1, padding: '0.4rem 0.2rem', borderRadius: 8, border: '1px solid ' + (active ? 'var(--primary)' : '#e2e8f0'), backgroundColor: active ? 'var(--primary)' : 'white', color: active ? 'white' : '#475569', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', transition: 'all .15s' }}>
+                    {t.label}{count ? ` ${count}` : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {list.map(c => {
+              const isSel = selectedInstructor?.id === c.id;
+              const unread = unreadBy[c.id] || 0;
+              const on = online(c.id);
+              return (
+                <div key={c.id} onClick={() => handleSelectInstructorChat(c)}
+                  style={{ padding: '0.8rem 1.15rem', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', backgroundColor: isSel ? 'var(--primary-light)' : 'transparent', display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                      {(c.full_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    {on && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%', backgroundColor: '#10b981', border: '2px solid white' }} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
+                    <div style={{ fontSize: '0.7rem', color: on ? '#10b981' : '#94a3b8' }}>{on ? 'online' : subtitleFor()}</div>
+                  </div>
+                  {unread > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10, backgroundColor: '#ef4444', color: 'white', fontSize: '0.68rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</span>}
+                </div>
+              );
+            })}
+            {list.length === 0 && (
+              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+                <p style={{ fontSize: '0.8rem', margin: 0 }}>Nenhum contato nesta categoria.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ÁREA DE MENSAGENS */}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {selectedInstructor ? (
+            <>
+              <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                  {selectedInstructor.full_name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
+                  <span style={{ fontSize: '0.68rem', color: selOnline ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{selOnline ? '● Online agora' : '○ Offline'}</span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem', backgroundColor: '#f8fafc' }}>
+                {chatMessages.length === 0 && (
+                  <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem', marginTop: '2rem' }}>Nenhuma mensagem ainda. Diga olá! 👋</p>
+                )}
+                {chatMessages.map(msg => {
+                  const isMe = msg.sender_id === session?.user?.id;
+                  return (
+                    <div key={msg.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', backgroundColor: isMe ? 'var(--primary)' : 'white', color: isMe ? 'white' : '#1e293b', padding: '0.6rem 0.85rem', borderRadius: isMe ? '14px 14px 2px 14px' : '14px 14px 14px 2px', maxWidth: '72%', fontSize: '0.85rem', lineHeight: 1.4, boxShadow: '0 1px 2px rgba(0,0,0,0.06)', border: isMe ? 'none' : '1px solid #eef2f7', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span>{msg.content}</span>
+                      <span style={{ fontSize: '0.58rem', alignSelf: 'flex-end', opacity: 0.65 }}>{new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <form onSubmit={handleSendChatMessage} style={{ padding: '0.85rem 1rem', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
+                <input type="text" placeholder="Escreva uma mensagem..." value={newChatMessage} onChange={e => setNewChatMessage(e.target.value)}
+                  style={{ flex: 1, padding: '0.7rem 0.9rem', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }} />
+                <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.35rem', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Send size={16} />
+                </button>
+              </form>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem', backgroundColor: '#f8fafc' }}>
+              <MessageCircle size={52} style={{ opacity: 0.35, marginBottom: '0.6rem' }} />
+              <h4 style={{ margin: 0, fontWeight: 800, color: 'var(--primary-dark)' }}>Suas conversas</h4>
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '6px 0 0 0', textAlign: 'center', maxWidth: 320 }}>Escolha <b>Professores</b>, <b>Secretaria</b> ou <b>Colegas</b> na lateral e selecione alguém para conversar em tempo real.</p>
+            </div>
           )}
         </div>
       </div>
-
-      {/* ÁREA DE MENSAGENS */}
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {selectedInstructor ? (
-          <>
-            {/* Header do Chat */}
-            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                {selectedInstructor.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: '800', color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
-                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700' }}>● Online</span>
-              </div>
-            </div>
-
-            {/* Listagem de Mensagens */}
-            <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem', backgroundColor: '#f8fafc' }}>
-              {chatMessages.map(msg => {
-                const isMe = msg.sender_id === session?.user?.id;
-                return (
-                  <div 
-                    key={msg.id}
-                    style={{ 
-                      alignSelf: isMe ? 'flex-end' : 'flex-start',
-                      backgroundColor: isMe ? 'var(--primary)' : 'white',
-                      color: isMe ? 'white' : '#1e293b',
-                      padding: '0.6rem 0.85rem',
-                      borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
-                      maxWidth: '70%',
-                      fontSize: '0.82rem',
-                      lineHeight: '1.4',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                      border: isMe ? 'none' : '1px solid #e2e8f0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
-                    }}
-                  >
-                    <span>{msg.content}</span>
-                    <span style={{ fontSize: '0.6rem', alignSelf: 'flex-end', opacity: 0.65, marginTop: '2px' }}>
-                      {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Form */}
-            <form onSubmit={handleSendChatMessage} style={{ padding: '1rem', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
-              <input 
-                type="text" 
-                placeholder="Digite sua mensagem pedagógica..."
-                value={newChatMessage}
-                onChange={e => setNewChatMessage(e.target.value)}
-                style={{ flex: 1, padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Send size={16} />
-              </button>
-            </form>
-          </>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem' }}>
-            <MessageCircle size={48} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
-            <h4 style={{ margin: 0, fontWeight: 700 }}>Chat Pedagógico</h4>
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0 0', textAlign: 'center' }}>Selecione um instrutor na barra lateral para iniciar sua conversa em tempo real.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
   const renderDocumentos = () => (

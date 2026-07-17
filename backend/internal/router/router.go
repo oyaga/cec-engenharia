@@ -235,6 +235,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		authAny.GET("/orders", miscH.ListOrders)
 		authAny.POST("/orders", miscH.CreateOrder)
 		authAny.PUT("/orders/:id", miscH.UpdateOrder)
+		authAny.GET("/messages/contacts", miscH.Contacts)
 		authAny.GET("/messages", miscH.ListMessages)
 		authAny.POST("/messages", miscH.CreateMessage)
 		authAny.PUT("/messages/:id/read", miscH.MarkMessageRead)
