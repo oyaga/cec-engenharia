@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { classesApi, studentsApi, attendanceApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
+import { connectSocket, disconnectSocket, onSocketMessage } from '../lib/socket'
 import { useAuth } from '../contexts/AuthContext'
 import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
@@ -218,18 +219,39 @@ export default function Professor() {
     useEffect(() => {
         if (activeTab === 'messages') {
             fetchDirectChats()
+            // Rede de segurança lenta (30s); o tempo real vem do WebSocket abaixo.
             const interval = setInterval(() => {
                 fetchDirectChats()
                 if (selectedStudentId) {
-                    // Buscar novas mensagens silenciosamente
                     messagesApi.list(selectedStudentId).then(({ messages }) => {
                         if (messages) setDirectMessages(messages)
                     }).catch(() => {})
                 }
-            }, 10000)
+            }, 30000)
             return () => clearInterval(interval)
         }
     }, [activeTab, selectedStudentId])
+
+    // Chat em tempo real (WebSocket): recebe mensagens dos alunos ao vivo.
+    const selectedStudentIdRef = useRef(selectedStudentId)
+    useEffect(() => { selectedStudentIdRef.current = selectedStudentId }, [selectedStudentId])
+    useEffect(() => {
+        if (!uid) return
+        connectSocket()
+        const off = onSocketMessage((data) => {
+            if (data?.type !== 'message' || !data.message) return
+            const msg = data.message
+            const partnerId = msg.sender_id === uid ? msg.receiver_id : msg.sender_id
+            if (selectedStudentIdRef.current === partnerId) {
+                setDirectMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+            } else if (msg.sender_id !== uid) {
+                setDirectChats(prev => prev.map(c => c.id === partnerId
+                    ? { ...c, unreadCount: (c.unreadCount || 0) + 1, lastMessage: msg.content, lastTime: msg.created_at }
+                    : c))
+            }
+        })
+        return () => { off(); disconnectSocket() }
+    }, [uid])
 
     useEffect(() => {
         if (activeTab === 'analytics') {
