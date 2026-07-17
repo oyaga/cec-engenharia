@@ -1886,7 +1886,7 @@ export default function AreaAluno() {
     const selOnline = selectedInstructor ? online(selectedInstructor.id) : false;
 
     return (
-      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '72vh', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div className="aa-stack aa-chat-shell" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', height: 'calc(100dvh - 190px)', minHeight: 480, backgroundColor: 'white', border: '1px solid #eef2f7', borderRadius: '18px', overflow: 'hidden', boxShadow: '0 18px 50px -20px rgba(15, 23, 42, 0.22)' }}>
         {/* LISTA DE CONTATOS */}
         <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#fbfcfe' }}>
           <div style={{ padding: '1rem 1.15rem 0.85rem', borderBottom: '1px solid #eef2f7' }}>
