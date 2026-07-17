@@ -14,6 +14,34 @@ import (
 	"gorm.io/datatypes"
 )
 
+// ───────────── Escopo por aluno ─────────────
+
+// isStaff — papéis que administram o LMS e podem ver/gravar dados de qualquer
+// aluno. Espelha o grupo lmsAdmin do router.
+func isStaff(c *gin.Context) bool {
+	switch middleware.Role(c) {
+	case "admin", "coordenador", "instrutor":
+		return true
+	}
+	return false
+}
+
+// scopedStudentID resolve de quem são os dados que a requisição pode tocar.
+// O aluno alcança apenas a si mesmo: um student_id vindo do cliente só é
+// respeitado para staff. Sem isso, qualquer autenticado lê e grava progresso,
+// notas e certificados de qualquer outro aluno.
+func scopedStudentID(c *gin.Context, requested string) uuid.UUID {
+	self := middleware.UserID(c)
+	if requested == "" || !isStaff(c) {
+		return self
+	}
+	id, err := uuid.Parse(requested)
+	if err != nil {
+		return self
+	}
+	return id
+}
+
 // ───────────── Estrutura do curso (módulos + aulas) ─────────────
 
 type moduleWithLessons struct {
@@ -121,13 +149,16 @@ func (h *Handler) UpsertTaskSubmission(c *gin.Context) {
 }
 
 // ListTimeLogs: GET /lms/time-logs?student_id=
+// Sem student_id o padrão é o próprio usuário — antes a ausência do filtro
+// devolvia os logs de todos os alunos.
 func (h *Handler) ListTimeLogs(c *gin.Context) {
 	list := []models.LMSTimeLog{}
-	q := h.db.Order("created_at DESC")
-	if sid := c.Query("student_id"); sid != "" {
-		q = q.Where("student_id = ?", sid)
+	q := h.db.Order("created_at DESC").
+		Where("student_id = ?", scopedStudentID(c, c.Query("student_id")))
+	if err := q.Find(&list).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar os registros de tempo")
+		return
 	}
-	q.Find(&list)
 	c.JSON(http.StatusOK, gin.H{"logs": list})
 }
 
@@ -139,11 +170,16 @@ func (h *Handler) LogTime(c *gin.Context) {
 		return
 	}
 	t.ID = uuid.Nil
-	if t.StudentID == nil {
-		sid := middleware.UserID(c)
-		t.StudentID = &sid
+	requested := ""
+	if t.StudentID != nil {
+		requested = t.StudentID.String()
 	}
-	h.db.Create(&t)
+	sid := scopedStudentID(c, requested)
+	t.StudentID = &sid
+	if err := h.db.Create(&t).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar o tempo de estudo")
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"ok": true})
 }
 
@@ -167,12 +203,12 @@ func (h *Handler) DeleteLesson(c *gin.Context) {
 
 // ListProgress: GET /lms/progress?student_id=
 func (h *Handler) ListProgress(c *gin.Context) {
-	sid := c.Query("student_id")
-	if sid == "" {
-		sid = middleware.UserID(c).String()
-	}
 	list := []models.LMSStudentProgress{}
-	h.db.Where("student_id = ?", sid).Find(&list)
+	err := h.db.Where("student_id = ?", scopedStudentID(c, c.Query("student_id"))).Find(&list).Error
+	if err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar o progresso")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"progress": list})
 }
 
@@ -188,10 +224,12 @@ func (h *Handler) UpsertProgress(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "lesson_id é obrigatório")
 		return
 	}
-	sid := middleware.UserID(c)
+	requested := ""
 	if body.StudentID != nil {
-		sid = *body.StudentID
+		requested = body.StudentID.String()
 	}
+	sid := scopedStudentID(c, requested)
+
 	var p models.LMSStudentProgress
 	err := h.db.Where("student_id = ? AND lesson_id = ?", sid, body.LessonID).First(&p).Error
 	if err != nil {
@@ -203,10 +241,15 @@ func (h *Handler) UpsertProgress(c *gin.Context) {
 	if body.IsCompleted {
 		p.IsCompleted = true
 	}
+	p.LastAccessed = time.Now()
 	if p.ID == uuid.Nil {
-		h.db.Create(&p)
+		err = h.db.Create(&p).Error
 	} else {
-		h.db.Save(&p)
+		err = h.db.Save(&p).Error
+	}
+	if err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao salvar o progresso")
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"progress": p})
 }
@@ -221,6 +264,8 @@ func (h *Handler) ListQuizzes(c *gin.Context) {
 }
 
 // GetQuiz: GET /lms/quizzes/:id — com questões.
+// Para o aluno as questões saem SEM correct_option_index: o gabarito só é
+// revelado na resposta de SubmitQuizResult, depois da prova entregue.
 func (h *Handler) GetQuiz(c *gin.Context) {
 	var quiz models.LMSQuiz
 	if err := h.db.First(&quiz, "id = ?", c.Param("id")).Error; err != nil {
@@ -228,8 +273,25 @@ func (h *Handler) GetQuiz(c *gin.Context) {
 		return
 	}
 	questions := []models.LMSQuestion{}
-	h.db.Where("quiz_id = ?", quiz.ID).Find(&questions)
-	c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": questions})
+	if err := h.db.Where("quiz_id = ?", quiz.ID).Find(&questions).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar as questões")
+		return
+	}
+	if isStaff(c) {
+		c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": questions})
+		return
+	}
+	out := make([]gin.H, 0, len(questions))
+	for _, q := range questions {
+		out = append(out, gin.H{
+			"id":            q.ID,
+			"quiz_id":       q.QuizID,
+			"question_text": q.QuestionText,
+			"image_url":     q.ImageURL,
+			"options":       q.Options,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": out})
 }
 
 func (h *Handler) CreateQuiz(c *gin.Context) { h.create(c, &models.LMSQuiz{}, "quiz") }
@@ -248,37 +310,100 @@ func (h *Handler) DeleteQuestion(c *gin.Context) {
 // ───────────── Resultados de prova ─────────────
 
 // SubmitQuizResult: POST /lms/quiz-results
+// O cliente envia apenas as respostas escolhidas; nota, aprovação e número da
+// tentativa são calculados aqui contra lms_questions. Aceitar score/is_approved
+// do corpo permitia forjar aprovação e, com ela, o certificado de conclusão.
 func (h *Handler) SubmitQuizResult(c *gin.Context) {
-	var r models.LMSQuizResult
-	if err := c.ShouldBindJSON(&r); err != nil {
-		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
+	var body struct {
+		QuizID  uuid.UUID      `json:"quiz_id" binding:"required"`
+		Answers map[string]int `json:"answers"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "quiz_id é obrigatório")
 		return
 	}
-	r.ID = uuid.Nil
-	if r.StudentID == nil {
-		sid := middleware.UserID(c)
-		r.StudentID = &sid
+
+	var quiz models.LMSQuiz
+	if err := h.db.First(&quiz, "id = ?", body.QuizID).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "quiz não encontrado")
+		return
 	}
-	if err := h.db.Create(&r).Error; err != nil {
+	questions := []models.LMSQuestion{}
+	if err := h.db.Where("quiz_id = ?", quiz.ID).Find(&questions).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar as questões")
+		return
+	}
+	if len(questions) == 0 {
+		httpx.Error(c, http.StatusUnprocessableEntity, "prova sem questões cadastradas")
+		return
+	}
+
+	sid := middleware.UserID(c)
+	var attempts int64
+	if err := h.db.Model(&models.LMSQuizResult{}).
+		Where("student_id = ? AND quiz_id = ?", sid, quiz.ID).Count(&attempts).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao verificar tentativas")
+		return
+	}
+	if quiz.MaxAttempts > 0 && attempts >= int64(quiz.MaxAttempts) {
+		httpx.Error(c, http.StatusUnprocessableEntity, "número máximo de tentativas atingido")
+		return
+	}
+
+	correct := 0
+	feedback := make(map[string]any, len(questions))
+	for _, q := range questions {
+		chosen, answered := body.Answers[q.ID.String()]
+		hit := answered && chosen == q.CorrectOptionIndex
+		if hit {
+			correct++
+		}
+		var userAnswer any
+		if answered {
+			userAnswer = chosen
+		}
+		feedback[q.ID.String()] = gin.H{
+			"is_correct":     hit,
+			"user_answer":    userAnswer,
+			"correct_answer": q.CorrectOptionIndex,
+		}
+	}
+	score := int(math.Round(float64(correct) / float64(len(questions)) * 100))
+	passing := quiz.PassingGrade
+	if passing <= 0 {
+		passing = 70
+	}
+
+	// Cada tentativa é gravada com a nota real. A "melhor nota" deixa de ser
+	// responsabilidade do cliente: quem precisa dela (elegibilidade do
+	// certificado) já busca por is_approved/score DESC.
+	result := models.LMSQuizResult{
+		StudentID:     &sid,
+		QuizID:        &quiz.ID,
+		Score:         score,
+		AttemptsCount: int(attempts) + 1,
+		IsApproved:    score >= passing,
+		CompletedAt:   time.Now(),
+	}
+	if err := h.db.Create(&result).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao salvar resultado")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"result": r})
+	c.JSON(http.StatusCreated, gin.H{"result": result, "feedback": feedback})
 }
 
 // ListQuizResults: GET /lms/quiz-results?student_id=&quiz_id=
 func (h *Handler) ListQuizResults(c *gin.Context) {
 	q := h.db.Model(&models.LMSQuizResult{}).Order("completed_at DESC")
-	sid := c.Query("student_id")
-	if sid == "" {
-		sid = middleware.UserID(c).String()
-	}
-	q = q.Where("student_id = ?", sid)
+	q = q.Where("student_id = ?", scopedStudentID(c, c.Query("student_id")))
 	if qid := c.Query("quiz_id"); qid != "" {
 		q = q.Where("quiz_id = ?", qid)
 	}
 	list := []models.LMSQuizResult{}
-	q.Find(&list)
+	if err := q.Find(&list).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar resultados")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"results": list})
 }
 
@@ -321,16 +446,23 @@ func (h *Handler) ListCertificates(c *gin.Context) {
 	list := []models.LMSIssuedCertificate{}
 	q := h.db.Order("issued_at DESC")
 	if c.Query("all") == "true" {
-		// Listagem administrativa (todos os certificados).
-		q.Find(&list)
+		// Listagem administrativa (todos os certificados) — só para staff.
+		if !isStaff(c) {
+			httpx.Error(c, http.StatusForbidden, "acesso negado para este papel")
+			return
+		}
+		if err := q.Find(&list).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar certificados")
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"certificates": list})
 		return
 	}
-	sid := c.Query("student_id")
-	if sid == "" {
-		sid = middleware.UserID(c).String()
+	err := q.Where("student_id = ?", scopedStudentID(c, c.Query("student_id"))).Find(&list).Error
+	if err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar certificados")
+		return
 	}
-	q.Where("student_id = ?", sid).Find(&list)
 	c.JSON(http.StatusOK, gin.H{"certificates": list})
 }
 
@@ -357,6 +489,11 @@ func (h *Handler) IssueCertificate(c *gin.Context) {
 // servidor (100% das aulas + aprovação na prova final, se houver), portanto
 // o endpoint pode ficar aberto a qualquer usuário autenticado. Idempotente:
 // se já existe certificado para (aluno, curso), devolve o existente.
+//
+// Esta validação só vale enquanto as tabelas que ela consulta não forem
+// graváveis pelo próprio aluno: lms_student_progress aceita apenas o
+// student_id do token, e is_approved em lms_quiz_results é calculado por
+// SubmitQuizResult. Afrouxar qualquer um dos dois reabre a emissão forjada.
 func (h *Handler) ClaimCertificate(c *gin.Context) {
 	var body struct {
 		CourseID uuid.UUID `json:"course_id" binding:"required"`
@@ -448,14 +585,53 @@ func (h *Handler) ClaimCertificate(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"certificate": cert})
 }
 
+// maskCPF devolve o CPF como ***.456.789-** — o bastante para conferir a
+// identidade sem publicar o documento inteiro.
+func maskCPF(raw string) string {
+	digits := make([]rune, 0, 11)
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			digits = append(digits, r)
+		}
+	}
+	if len(digits) != 11 {
+		return ""
+	}
+	return "***." + string(digits[3:6]) + "." + string(digits[6:9]) + "-**"
+}
+
 // ValidateCertificate: GET /public/validate-certificate/:code (sem auth)
+// Endpoint público: devolve só o necessário para conferir a autenticidade.
+// A metadata crua fica de fora — ela carrega o CPF do aluno em texto claro.
 func (h *Handler) ValidateCertificate(c *gin.Context) {
 	var cert models.LMSIssuedCertificate
 	if err := h.db.First(&cert, "code = ?", c.Param("code")).Error; err != nil {
 		c.JSON(http.StatusOK, gin.H{"valid": false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"valid": true, "certificate": cert})
+	meta := map[string]any{}
+	_ = json.Unmarshal(cert.Metadata, &meta)
+
+	str := func(k string) string {
+		if v, ok := meta[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	public := gin.H{
+		"id":           cert.ID,
+		"code":         cert.Code,
+		"issued_at":    cert.IssuedAt,
+		"student_name": str("student_name"),
+		"student_cpf":  maskCPF(str("cpf")),
+		"course_name":  str("course_title"),
+	}
+	for _, k := range []string{"hours", "grade"} {
+		if v, ok := meta[k]; ok {
+			public[k] = v
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"valid": true, "certificate": public})
 }
 
 // ───────────── Avisos (lms_announcements) ─────────────
