@@ -1,7 +1,35 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone, Bot } from 'lucide-react'
+import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone, Bot, Inbox, Star, UserCheck, Presentation, BarChart3, CreditCard, LifeBuoy } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+
+// Estilo de um link de menu (ativo x inativo).
+const linkStyle = ({ isActive }) => ({
+    display: 'flex', alignItems: 'center', gap: '0.7rem', padding: '0.6rem 0.85rem',
+    borderRadius: '8px', textDecoration: 'none', fontSize: '0.92rem',
+    color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+    fontWeight: isActive ? 600 : 500,
+})
+
+function NavItem({ to, icon: Icon, label, hint }) {
+    return (
+        <NavLink to={to} style={linkStyle}>
+            <Icon size={18} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{label}</span>
+            {hint && <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400 }}>{hint}</span>}
+        </NavLink>
+    )
+}
+
+function NavSection({ label }) {
+    return (
+        <div style={{ fontSize: '0.68rem', letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: 'var(--text-muted)', fontWeight: 700, padding: '1rem 0.85rem 0.35rem' }}>
+            {label}
+        </div>
+    )
+}
 
 export default function Sidebar() {
     const { session, userProfile: authProfile, logout } = useAuth()
@@ -36,7 +64,7 @@ export default function Sidebar() {
 
     const hasAccess = (permissionKey, defaultAllowedRoles = []) => {
         if (!userProfile && !userRole) return false
-        
+
         const email = userProfile?.email || ''
         // 1. Bypass total para admins/desenvolvedores
         if (userRole === 'admin' || userProfile?.role === 'admin' || isDeveloperAccount(email)) {
@@ -46,11 +74,40 @@ export default function Sidebar() {
         if (userProfile?.permissions?.[permissionKey] === true) {
             return true
         }
-        // 3. Se não tiver nada no JSONB para a chave, mas o cargo padrão do usuário estiver na lista de cargos permitidos (retrocompatibilidade)
+        // 3. Retrocompatibilidade: cargo padrão na lista de cargos permitidos
         if (userRole && defaultAllowedRoles.includes(userRole)) {
             return true
         }
         return false
+    }
+
+    // Só o admin (e desenvolvedor) pode abrir a Área do Aluno para pré-visualizar.
+    const isAdmin = userRole === 'admin' || userProfile?.role === 'admin' || isDeveloperAccount(userProfile?.email || '')
+
+    // Atalhos de permissão para condicionar cada grupo (título só aparece com item).
+    const staff = ['admin', 'coordenador', 'atendente']
+    const gest = ['admin', 'coordenador']
+    const can = {
+        painel: hasAccess('access_dashboard', staff),
+        matriculas: hasAccess('access_matriculas', staff),
+        leads: hasAccess('access_leads', staff),
+        depoimentos: hasAccess('access_dashboard', staff),
+        alunos: hasAccess('access_alunos', staff),
+        turmas: hasAccess('access_turmas', staff),
+        cursos: hasAccess('access_cursos', gest),
+        ead: hasAccess('access_lms', ['admin', 'coordenador', 'administrativo']),
+        certificados: hasAccess('access_certificados', gest),
+        instrutores: hasAccess('access_instrutores', gest),
+        professor: hasAccess('access_instrutor_portal', ['admin', 'coordenador', 'instrutor']),
+        financeiro: hasAccess('access_financeiro', gest),
+        relatorios: hasAccess('access_relatorios', gest),
+        chat: hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente', 'administrativo']),
+        funcionarios: hasAccess('access_equipe', gest),
+        comunicados: hasAccess('access_comunicados', gest),
+        config: hasAccess('access_config', gest),
+        asaas: hasAccess('access_config_asaas', gest),
+        auditoria: hasAccess('access_auditoria', gest),
+        ouvidoria: hasAccess('access_ouvidoria', gest),
     }
 
     const handleLogout = async () => {
@@ -109,392 +166,79 @@ export default function Sidebar() {
                     </button>
                 </div>
 
-            <nav style={{ padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
-                
-                {/* Menus Visíveis para Todos */}
-                <NavLink
-                    to="/meus-cursos"
-                    style={({ isActive }) => ({
-                        display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                        borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                        backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                        fontWeight: isActive ? '600' : '500'
-                    })}
-                >
-                    <PlayCircle size={20} />
-                    Meus Cursos
-                    <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Área do Aluno)</span>
-                </NavLink>
+                <nav style={{ padding: '0.5rem 0.75rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
 
-                {/* Menus Administrativos e Coordenação */}
-                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/dashboard"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '1rem'
-                        })}
-                    >
-                        <LayoutDashboard size={20} />
-                        Painel Administrativo
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Dashboard)</span>
-                    </NavLink>
-                )}
+                    {/* ── Início ── */}
+                    {can.painel && <>
+                        <NavSection label="Início" />
+                        <NavItem to="/dashboard" icon={LayoutDashboard} label="Painel" hint="Visão geral" />
+                    </>}
 
-                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente', 'administrativo']) && (
-                    <NavLink
-                        to="/secretaria/chat"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <MessageSquare size={20} />
-                        Chat Interno
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Equipe)</span>
-                    </NavLink>
-                )}
+                    {/* ── Comercial ── */}
+                    {(can.matriculas || can.leads || can.depoimentos) && <>
+                        <NavSection label="Comercial" />
+                        {can.matriculas && <NavItem to="/secretaria/matriculas" icon={ClipboardList} label="Matrículas" hint="Inscrições" />}
+                        {can.leads && <NavItem to="/leads-admin" icon={Inbox} label="Leads de contato" />}
+                        {can.depoimentos && <NavItem to="/admin/testimonials" icon={Star} label="Depoimentos" />}
+                    </>}
 
-                {hasAccess('access_alunos', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/alunos"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <UsersIcon size={20} />
-                        Listagem de Alunos
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Portal do Aluno)</span>
-                    </NavLink>
-                )}
+                    {/* ── Acadêmico ── */}
+                    {(can.alunos || can.turmas || can.cursos || can.ead || can.certificados || can.instrutores || can.professor) && <>
+                        <NavSection label="Acadêmico" />
+                        {can.alunos && <NavItem to="/alunos" icon={UsersIcon} label="Alunos" />}
+                        {can.turmas && <NavItem to="/turmas" icon={GraduationCap} label="Turmas" />}
+                        {can.cursos && <NavItem to="/secretaria/cursos" icon={BookOpen} label="Cursos" hint="Catálogo" />}
+                        {can.ead && <NavItem to="/lms" icon={Video} label="Plataforma EAD" hint="Aulas & provas" />}
+                        {can.certificados && <NavItem to="/secretaria/certificados" icon={Award} label="Certificados" />}
+                        {can.instrutores && <NavItem to="/secretaria/instrutores" icon={UserCheck} label="Instrutores" />}
+                        {can.professor && <NavItem to="/professor" icon={Presentation} label="Portal do instrutor" hint="Notas & freq." />}
+                    </>}
 
-                {hasAccess('access_matriculas', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/secretaria/matriculas"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <ClipboardList size={20} />
-                        Matrículas
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Fila / Inscrições)</span>
-                    </NavLink>
-                )}
+                    {/* ── Financeiro ── */}
+                    {(can.financeiro || can.relatorios) && <>
+                        <NavSection label="Financeiro" />
+                        {can.financeiro && <NavItem to="/financeiro" icon={DollarSign} label="Financeiro" />}
+                        {can.relatorios && <NavItem to="/relatorios" icon={BarChart3} label="Relatórios" />}
+                    </>}
 
-                {hasAccess('access_leads', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/leads-admin"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <MessageSquare size={20} />
-                        Leads de Contato
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Mensagens do Site)</span>
-                    </NavLink>
-                )}
+                    {/* ── Equipe ── */}
+                    {(can.chat || can.funcionarios || can.comunicados) && <>
+                        <NavSection label="Equipe" />
+                        {can.chat && <NavItem to="/secretaria/chat" icon={MessageSquare} label="Chat interno" />}
+                        {can.funcionarios && <NavItem to="/secretaria/funcionarios" icon={UsersIcon} label="Funcionários" hint="Acessos" />}
+                        {can.comunicados && <NavItem to="/secretaria/comunicados" icon={Megaphone} label="Comunicados" />}
+                    </>}
 
-                {hasAccess('access_dashboard', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/admin/testimonials"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <MessageSquare size={20} />
-                        Depoimentos / Prova Social
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Avaliações Site)</span>
-                    </NavLink>
-                )}
+                    {/* ── Sistema ── */}
+                    {(can.config || can.asaas || can.auditoria || can.ouvidoria) && <>
+                        <NavSection label="Sistema" />
+                        {can.config && <NavItem to="/config" icon={Settings} label="Configurações" hint="Documentos" />}
+                        {can.asaas && <NavItem to="/config-asaas" icon={CreditCard} label="Pagamentos" hint="Asaas" />}
+                        {can.config && <NavItem to="/agente-maria" icon={Bot} label="Agente Maria" hint="WhatsApp" />}
+                        {can.ouvidoria && <NavItem to="/ouvidoria-admin" icon={LifeBuoy} label="Ouvidoria" />}
+                        {can.auditoria && <NavItem to="/auditoria" icon={ShieldCheck} label="Auditoria" hint="Registros" />}
+                    </>}
 
-                {/* 
-                {hasAccess('access_turmas', ['admin', 'coordenador', 'atendente']) && (
-                    <NavLink
-                        to="/turmas"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <GraduationCap size={20} />
-                        Turmas
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Calendário do Site)</span>
-                    </NavLink>
-                )}
-                */}
+                    {/* ── Pré-visualização (só admin) ── */}
+                    {isAdmin && <>
+                        <NavSection label="Pré-visualização" />
+                        <NavItem to="/meus-cursos" icon={PlayCircle} label="Área do aluno" hint="Ver como aluno" />
+                    </>}
 
-                {hasAccess('access_cursos', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/secretaria/cursos"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <BookOpen size={20} />
-                        Cursos
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Maria Antônia)</span>
-                    </NavLink>
-                )}
+                </nav>
 
-                {hasAccess('access_financeiro', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/financeiro"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <DollarSign size={20} />
-                        Financeiro
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Faturamento & Caixa)</span>
-                    </NavLink>
-                )}
-
-                {hasAccess('access_relatorios', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/relatorios"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <ShieldCheck size={20} />
-                        Relatórios
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Analytics)</span>
-                    </NavLink>
-                )}
-
-                {hasAccess('access_instrutores', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/secretaria/instrutores"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '0.5rem'
-                        })}
-                    >
-                        <Award size={20} />
-                        Instrutores
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Abendi PR-127)</span>
-                    </NavLink>
-                )}
-
-                {hasAccess('access_certificados', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/secretaria/certificados"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500',
-                            marginTop: '0.5rem'
-                        })}
-                    >
-                        <Award size={20} />
-                        Certificados
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Geração & Assinatura)</span>
-                    </NavLink>
-                )}
-
-                {hasAccess('access_instrutor_portal', ['admin', 'coordenador', 'instrutor']) && (
-                    <NavLink
-                        to="/professor"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <BookOpen size={20} />
-                        Portal do Instrutor
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Lançar Freq/Notas)</span>
-                    </NavLink>
-                )}
-
-                {hasAccess('access_auditoria', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/auditoria"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <ShieldCheck size={20} />
-                        Auditoria
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Logs de Ações)</span>
-                    </NavLink>
-                )}
-                
-                {hasAccess('access_ouvidoria', ['admin', 'coordenador']) && (
-                    <NavLink
-                        to="/ouvidoria-admin"
-                        style={({ isActive }) => ({
-                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            fontWeight: isActive ? '600' : '500'
-                        })}
-                    >
-                        <ShieldCheck size={20} />
-                        Ouvidoria
-                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Reclamações Site)</span>
-                    </NavLink>
-                )}
-
-                {(hasAccess('access_equipe', ['admin', 'coordenador', 'administrativo']) || 
-                  hasAccess('access_lms', ['admin', 'coordenador', 'administrativo']) || 
-                  hasAccess('access_comunicados', ['admin', 'coordenador', 'administrativo']) ||
-                  hasAccess('access_config', ['admin', 'coordenador', 'administrativo']) ||
-                  hasAccess('access_config_asaas', ['admin', 'coordenador', 'administrativo'])) && (
-                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                        {hasAccess('access_equipe', ['admin', 'coordenador']) && (
-                            <NavLink
-                                to="/secretaria/funcionarios"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500'
-                                })}
-                            >
-                                <UsersIcon size={20} />
-                                Funcionários
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Acessos Painel)</span>
-                            </NavLink>
-                        )}
-
-                        {hasAccess('access_lms', ['admin', 'coordenador', 'administrativo']) && (
-                            <NavLink
-                                to="/lms"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500',
-                                    marginTop: '0.5rem'
-                                })}
-                            >
-                                <Video size={20} />
-                                Plataforma EAD
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Videoaulas & Provas)</span>
-                            </NavLink>
-                        )}
-
-                        {hasAccess('access_comunicados', ['admin', 'coordenador']) && (
-                            <NavLink
-                                to="/secretaria/comunicados"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500',
-                                    marginTop: '0.5rem'
-                                })}
-                            >
-                                <Megaphone size={20} />
-                                Comunicados
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Avisos no Portal)</span>
-                            </NavLink>
-                        )}
-
-                        {hasAccess('access_config', ['admin', 'coordenador']) && (
-                            <NavLink
-                                to="/config"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500',
-                                    marginTop: '0.5rem'
-                                })}
-                            >
-                                <Settings size={20} />
-                                Configurações
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Modelos PDF/Contrato)</span>
-                            </NavLink>
-                        )}
-
-
-                        {hasAccess('access_config_asaas', ['admin', 'coordenador']) && (
-                            <NavLink
-                                to="/config-asaas"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500',
-                                    marginTop: '0.5rem'
-                                })}
-                            >
-                                <Settings size={20} />
-                                Configurações Asaas
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(API Gateway)</span>
-                            </NavLink>
-                        )}
-
-                        {hasAccess('access_config', ['admin', 'coordenador']) && (
-                            <NavLink
-                                to="/agente-maria"
-                                style={({ isActive }) => ({
-                                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                                    borderRadius: 'var(--radius-md)', color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                    fontWeight: isActive ? '600' : '500',
-                                    marginTop: '0.5rem'
-                                })}
-                            >
-                                <Bot size={20} />
-                                Agente Maria
-                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: 'auto', fontWeight: 'normal' }}>(Chatbot WhatsApp)</span>
-                            </NavLink>
-                        )}
+                <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500, letterSpacing: '0.05em' }}>
+                        App-CEC v1.15.0 (EAD & Docs)
                     </div>
-                )}
-            </nav>
-
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500, letterSpacing: '0.05em' }}>
-                    App-CEC v1.15.0 (EAD & Docs)
+                    <button
+                        onClick={handleLogout}
+                        className="btn"
+                        style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--text-secondary)', backgroundColor: 'transparent' }}>
+                        <LogOut size={20} />
+                        Sair do Sistema
+                    </button>
                 </div>
-                <button
-                    onClick={handleLogout}
-                    className="btn"
-                    style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--text-secondary)', backgroundColor: 'transparent' }}>
-                    <LogOut size={20} />
-                    Sair do Sistema
-                </button>
-            </div>
             </aside>
         </>
     )
