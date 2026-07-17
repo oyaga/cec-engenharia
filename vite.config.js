@@ -6,7 +6,11 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    host: true, // aceita localhost, 127.0.0.1 e o IP da máquina
     proxy: {
+      // API + WebSocket na mesma origem do frontend (elimina CORS no dev).
+      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/ws': { target: 'http://127.0.0.1:8080', changeOrigin: true, ws: true },
       '/asaas-sandbox': {
         target: 'https://sandbox.asaas.com/api/v3',
         changeOrigin: true,
