@@ -4,6 +4,7 @@ import { ClipboardList, Plus, Search, Filter, Eye, XCircle, DollarSign, Loader2,
 import { classesApi, coursesApi, studentsApi } from '../services/academic'
 import { authApi } from '../lib/api'
 import { auditApi } from '../services/financial'
+import { createOrFindCustomer, createBoletoPayment } from '../services/asaas'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Matriculas() {
@@ -29,6 +30,7 @@ export default function Matriculas() {
     const [selectedEnrollment, setSelectedEnrollment] = useState(null)
     const [saving, setSaving] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
+    const [generatingBoletoId, setGeneratingBoletoId] = useState(null)
 
     // Form Nova Matrícula
     const [form, setForm] = useState({
@@ -230,8 +232,41 @@ export default function Matriculas() {
         }
     }
 
-    const handleGenerateInvoice = (enrollment) => {
-        alert(`[Asaas - Sprint B] Boleto Bancário gerado com sucesso para a matrícula ${enrollment.matricula_numero} no valor de R$ ${enrollment.value.toFixed(2)}. link de pagamento enviado para o e-mail: ${enrollment.email}`)
+    const handleGenerateInvoice = async (enrollment) => {
+        if (generatingBoletoId) return
+        if (!enrollment.value || enrollment.value <= 0) {
+            alert('Esta matrícula não tem valor definido — não é possível gerar o boleto.')
+            return
+        }
+        setGeneratingBoletoId(enrollment.id)
+        try {
+            const customer = await createOrFindCustomer({
+                name: enrollment.student_name,
+                cpf: enrollment.cpf,
+                email: enrollment.email,
+                phone: enrollment.phone,
+                id: enrollment.student_id || enrollment.id,
+            })
+            const customerId = customer?.id || customer?.customer?.id
+            if (!customerId) throw new Error('Cliente não pôde ser criado no Asaas.')
+
+            const payment = await createBoletoPayment(
+                customerId,
+                enrollment.value,
+                `Matrícula ${enrollment.matricula_numero} — ${enrollment.student_name}`
+            )
+            const url = payment?.bankSlipUrl || payment?.invoiceUrl
+            if (url) {
+                window.open(url, '_blank')
+                alert(`Boleto gerado para a matrícula ${enrollment.matricula_numero} (R$ ${enrollment.value.toFixed(2)}). O link de pagamento foi aberto em uma nova aba.`)
+            } else {
+                alert('Boleto gerado no Asaas, mas o link ainda está sendo processado. Consulte em instantes na tela de Pagamentos.')
+            }
+        } catch (err) {
+            alert('Não foi possível gerar o boleto: ' + (err.message || 'verifique se a integração com o Asaas está configurada na tela de Pagamentos.'))
+        } finally {
+            setGeneratingBoletoId(null)
+        }
     }
 
     // Filtragem de Matrículas
@@ -446,12 +481,13 @@ export default function Matriculas() {
                                                 </button>
                                                 {!isCancelado && !isConcluido && (
                                                     <>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleGenerateInvoice(e)}
-                                                            style={{ padding: '0.4rem', backgroundColor: '#ecfdf5', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                                                            disabled={generatingBoletoId === e.id}
+                                                            style={{ padding: '0.4rem', backgroundColor: '#ecfdf5', border: 'none', borderRadius: '6px', cursor: generatingBoletoId === e.id ? 'wait' : 'pointer', opacity: generatingBoletoId === e.id ? 0.5 : 1 }}
                                                             title="Gerar Boleto (Asaas)"
                                                         >
-                                                            <DollarSign size={15} color="#059669" />
+                                                            {generatingBoletoId === e.id ? <Loader2 size={15} color="#059669" className="animate-spin" /> : <DollarSign size={15} color="#059669" />}
                                                         </button>
                                                         <button 
                                                             onClick={() => triggerCancel(e)}

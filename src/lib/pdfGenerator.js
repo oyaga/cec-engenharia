@@ -19,11 +19,11 @@ export const generateDocument = async (type, student, options = {}) => {
     doc.setFont('helvetica')
 
     if (type === 'contrato') {
-        generateContractPDF(doc, student, bgImage)
+        generateContractPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'recibo') {
-        generateReceiptPDF(doc, student, bgImage)
+        generateReceiptPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'inscrito') {
-        generateDeclarationInscritoPDF(doc, student, bgImage)
+        generateDeclarationInscritoPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'termino') {
         generateDeclarationTerminoPDF(doc, student, bgImage)
     } else if (type === 'matricula') {
@@ -208,7 +208,45 @@ async function generateCustomCertificatePDF(doc, student, options, settingsMap =
     }
 }
 
-function generateContractPDF(doc, student) {
+// Substitui as variáveis do editor de modelos ({{NOME_ALUNO}} etc.) pelos
+// dados reais do aluno. Usado quando a secretaria salva um modelo em ConfigDocs.
+function applyDocVariables(template, student) {
+    const map = {
+        '{{NOME_ALUNO}}': student.name || '',
+        '{{CPF}}': student.cpf || '',
+        '{{RG}}': student.rg || '',
+        '{{NOME_TURMA}}': student.class || student.class_name || '',
+        '{{NOME_CURSO}}': student.course || student.course_name || student.class || '',
+        '{{VALOR_CURSO}}': student.value != null ? `R$ ${Number(student.value).toFixed(2)}` : (student.valor || student.value_label || ''),
+        '{{DATA_HOJE}}': new Date().toLocaleDateString('pt-BR'),
+    }
+    let out = template
+    for (const [k, v] of Object.entries(map)) {
+        out = out.split(k).join(v)
+    }
+    return out
+}
+
+// Renderiza um modelo customizado (texto-base salvo em ConfigDocs) paginado no PDF.
+function renderTemplateBody(doc, template, student) {
+    const text = applyDocVariables(template, student)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    const lines = doc.splitTextToSize(text, 180)
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const lineH = 6
+    let y = 20
+    lines.forEach(line => {
+        if (y > pageHeight - 20) { doc.addPage(); y = 20 }
+        doc.text(line, 15, y)
+        y += lineH
+    })
+}
+
+function generateContractPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_contrato']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.text('CONTRATO DE TREINAMENTO E CAPACITAÇÃO PROFISSIONAL', 105, 20, { align: 'center' })
@@ -250,7 +288,10 @@ A modalidade PIX PARCELADO está sujeita à verificação de compensação mensa
     doc.text('Assinatura do Aluno Contratante', 105, 190, { align: 'center' })
 }
 
-function generateReceiptPDF(doc, student) {
+function generateReceiptPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_recibo']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(18)
     doc.text('RECIBO DE PAGAMENTO', 105, 30, { align: 'center' })
     doc.setFontSize(12)
@@ -260,7 +301,10 @@ function generateReceiptPDF(doc, student) {
     doc.text(`Rio de Janeiro, ${new Date().toLocaleDateString('pt-BR')}`, 15, 140)
 }
 
-function generateDeclarationInscritoPDF(doc, student) {
+function generateDeclarationInscritoPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_declaracao']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(18)
     doc.setFont('helvetica', 'bold')
     doc.text('DECLARAÇÃO DE INSCRITO', 105, 40, { align: 'center' })

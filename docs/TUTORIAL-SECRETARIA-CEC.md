@@ -63,6 +63,10 @@ cobrança e cancelamento.
 - **Ver Detalhes** (ícone de olho) para conferir a ficha da matrícula.
 - **Nova Matrícula** para uma venda presencial (cadastra aluno + turma +
   financeiro num modal rápido).
+- **Gerar Boleto (Asaas)** (ícone verde de cifrão): cria uma cobrança de boleto
+  real no Asaas com o valor da matrícula e abre o link de pagamento em nova aba
+  para você enviar ao aluno. Requer a integração do Asaas configurada em
+  **Sistema → Pagamentos**.
 - **Cancelar Matrícula** (X vermelho): um gestor cancela direto; o **atendente**
   precisa digitar o e-mail/senha de um coordenador ou admin para autorizar.
 
@@ -212,6 +216,10 @@ rateio de turmas e notas fiscais.
 5. **Despesas:** **Nova Despesa** → depois **Liquidar** quando pagar (anexe
    comprovante).
 6. **Fluxo de Caixa:** filtre por mês e **Exporte a Planilha (CSV)**.
+7. **Emissão NFs:** aba de **registro fiscal manual**. Clique **Emitir Nova NF**,
+   informe CPF, valor e número da NF e **Salvar NF** — o registro fica gravado e
+   vinculado ao aluno quando o CPF corresponde a um cadastro. As notas registradas
+   aparecem na lista da própria aba.
 
 **KPIs:** Receita confirmada, Receita pendente, Despesas pagas e Saldo.
 
@@ -265,8 +273,11 @@ Recibo), o papel timbrado, o Manual do Aluno e os assets do site (logo/banner).
 
 **Como usar:** escolha o tipo de documento → edite o texto usando as **variáveis**
 (`{{NOME_ALUNO}}`, `{{CPF}}`, `{{NOME_CURSO}}`, `{{VALOR_CURSO}}`, `{{DATA_HOJE}}`…)
-→ **Prévia PDF** para conferir → **Subir Timbre** se quiser fundo. Em "Assets do
-Site" troque logo e banner.
+→ **Prévia PDF** para conferir → **Salvar Modelo** para gravar. A partir daí, os
+PDFs gerados para os alunos (Contrato, Declaração, Recibo em **Alunos → Gerar
+PDFs**) passam a usar o texto que você salvou, com as variáveis preenchidas
+automaticamente. Use **Subir Timbre** se quiser um papel timbrado de fundo. Em
+"Assets do Site" troque logo e banner.
 
 ## Pagamentos (Asaas)
 **Para que serve:** conectar o **gateway de pagamento** — é o que liga a matrícula

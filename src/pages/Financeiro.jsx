@@ -62,9 +62,11 @@ export default function Financeiro() {
     const [receiptPreview, setReceiptPreview] = useState(null)
     const [savingExpense, setSavingExpense] = useState(false)
 
-    // Form inputs de Notas Fiscais (manter anterior)
+    // Form inputs de Notas Fiscais (registro fiscal manual)
     const [showNewNfForm, setShowNewNfForm] = useState(false)
-    const [newNf, setNewNf] = useState({ student: '', amount: '', issueDate: '' })
+    const [newNf, setNewNf] = useState({ cpf: '', name: '', class_label: '', amount: '', nf_number: '' })
+    const [invoices, setInvoices] = useState([])
+    const [savingNf, setSavingNf] = useState(false)
 
     // Modal de Zoom do Comprovante
     const [selectedReceipt, setSelectedReceipt] = useState(null)
@@ -183,15 +185,17 @@ export default function Financeiro() {
             const { classes: clsData } = await classesApi.list()
             const { courses: lmsData } = await coursesApi.list()
 
-            // 4. Despesas + 5. Registros financeiros
+            // 4. Despesas + 5. Registros financeiros + 6. Notas Fiscais
             const { expenses: expData } = await financialApi.listExpenses()
             const { records: finData } = await financialApi.listRecords()
+            const { invoices: nfData } = await financialApi.listInvoices()
 
             setClasses(clsData || [])
             setLmsCourses(lmsData || [])
             setStudentsData((stdData || []).map(s => ({ ...s, classes: { id: s.turma_id, name: s.turma_name, course_name: s.turma_course } })))
             setFinancialRecords(finData || [])
             setExpenses(expData || [])
+            setInvoices(nfData || [])
 
         } catch (error) {
             console.error("Erro geral no carregamento financeiro:", error)
@@ -1245,6 +1249,35 @@ export default function Financeiro() {
         </div>
     )
 
+    // Registra uma Nota Fiscal manual, vinculando ao aluno pelo CPF quando possível.
+    const handleSaveNf = async () => {
+        if (savingNf) return
+        const amount = parseFloat(newNf.amount)
+        if (!amount || amount <= 0) { alert('Informe um valor válido para a NF.'); return }
+        setSavingNf(true)
+        try {
+            const cpfDigits = (newNf.cpf || '').replace(/\D/g, '')
+            const match = cpfDigits.length >= 11
+                ? studentsData.find(s => (s.cpf || '').replace(/\D/g, '') === cpfDigits)
+                : null
+            const payload = {
+                amount,
+                nf_number: newNf.nf_number ? String(newNf.nf_number) : null,
+                issue_date: new Date().toISOString(),
+            }
+            if (match) payload.student_id = match.id
+            await financialApi.createInvoice(payload)
+            await fetchData()
+            setNewNf({ cpf: '', name: '', class_label: '', amount: '', nf_number: '' })
+            setShowNewNfForm(false)
+            alert(`Nota Fiscal registrada com sucesso${match ? ` e vinculada ao aluno ${match.name}` : ''}.`)
+        } catch (err) {
+            alert('Erro ao registrar NF: ' + err.message)
+        } finally {
+            setSavingNf(false)
+        }
+    }
+
     // 🧾 TAB 6: NOTAS FISCAIS
     const renderNfTab = () => (
         <div className="card animate-fade-in" style={{ padding: '2rem' }}>
@@ -1262,25 +1295,57 @@ export default function Financeiro() {
                 <div style={{ padding: '1.5rem', backgroundColor: '#FAF9F6', marginBottom: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                     <h4 style={{ marginBottom: '1rem', color: 'var(--primary)', fontSize: '0.95rem', fontWeight: '700' }}>Cadastrar Registro Fiscal Manual</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
-                        <div><label className="form-label">CPF Aluno</label><input type="text" className="form-control" placeholder="000.000.000-00" /></div>
-                        <div><label className="form-label">Nome Sacado</label><input type="text" className="form-control" /></div>
-                        <div><label className="form-label">Turma Vinculada</label><input type="text" className="form-control" /></div>
-                        <div><label className="form-label">Valor (R$)</label><input type="number" step="0.01" className="form-control" /></div>
-                        <div><label className="form-label">Número da NF</label><input type="text" className="form-control" placeholder="Ex: 2026154" /></div>
+                        <div><label className="form-label">CPF Aluno</label><input type="text" className="form-control" placeholder="000.000.000-00" value={newNf.cpf} onChange={e => setNewNf({ ...newNf, cpf: e.target.value })} /></div>
+                        <div><label className="form-label">Nome Sacado</label><input type="text" className="form-control" value={newNf.name} onChange={e => setNewNf({ ...newNf, name: e.target.value })} /></div>
+                        <div><label className="form-label">Turma Vinculada</label><input type="text" className="form-control" value={newNf.class_label} onChange={e => setNewNf({ ...newNf, class_label: e.target.value })} /></div>
+                        <div><label className="form-label">Valor (R$)</label><input type="number" step="0.01" className="form-control" value={newNf.amount} onChange={e => setNewNf({ ...newNf, amount: e.target.value })} /></div>
+                        <div><label className="form-label">Número da NF</label><input type="text" className="form-control" placeholder="Ex: 2026154" value={newNf.nf_number} onChange={e => setNewNf({ ...newNf, nf_number: e.target.value })} /></div>
                         <div>
-                            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => { alert('Nota Fiscal registrada e vinculada com sucesso no banco de dados!'); setShowNewNfForm(false) }}>
-                                Salvar NF
+                            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={handleSaveNf} disabled={savingNf}>
+                                {savingNf ? 'Salvando...' : 'Salvar NF'}
                             </button>
                         </div>
                     </div>
+                    <p className="text-muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0 0' }}>
+                        O registro é vinculado automaticamente ao aluno quando o CPF corresponde a um cadastro existente.
+                    </p>
                 </div>
             )}
 
-            <div style={{ backgroundColor: '#eff6ff', border: '1px dashed #3B82F6', borderRadius: 'var(--radius-md)', padding: '3rem', textAlign: 'center', color: '#1E40AF' }}>
-                <Receipt size={48} style={{ opacity: 0.5, marginBottom: '1rem', margin: '0 auto' }} />
-                <p style={{ fontWeight: 600, margin: '0 0 4px 0' }}>Tudo sincronizado!</p>
-                <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>Todas as notas fiscais deste mês foram processadas automaticamente pela automação do Asaas.</p>
-            </div>
+            {invoices.length === 0 ? (
+                <div style={{ backgroundColor: '#eff6ff', border: '1px dashed #3B82F6', borderRadius: 'var(--radius-md)', padding: '3rem', textAlign: 'center', color: '#1E40AF' }}>
+                    <Receipt size={48} style={{ opacity: 0.5, marginBottom: '1rem', margin: '0 auto' }} />
+                    <p style={{ fontWeight: 600, margin: '0 0 4px 0' }}>Nenhuma nota fiscal registrada</p>
+                    <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>Use "Emitir Nova NF" para lançar um registro fiscal manual vinculado a uma matrícula.</p>
+                </div>
+            ) : (
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                <th style={{ padding: '0.75rem 1rem' }}>Nº NF</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>Aluno</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>Emissão</th>
+                                <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {invoices.map(nf => {
+                                const st = studentsData.find(s => s.id === nf.student_id)
+                                const when = nf.issue_date || nf.created_at
+                                return (
+                                    <tr key={nf.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
+                                        <td style={{ padding: '1rem', fontWeight: 500 }}>{nf.nf_number || '—'}</td>
+                                        <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{st ? st.name : 'Não vinculado'}</td>
+                                        <td style={{ padding: '1rem' }}>{when ? new Date(when).toLocaleDateString('pt-BR') : '—'}</td>
+                                        <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 600 }}>R$ {Number(nf.amount || 0).toFixed(2)}</td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     )
 

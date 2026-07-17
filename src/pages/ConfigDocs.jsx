@@ -65,6 +65,7 @@ export default function ConfigDocs() {
     const [siteAssets, setSiteAssets] = useState({ logo: '', banner: '' })
     const [loading, setLoading] = useState(true)
     const [configError, setConfigError] = useState(null)
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
     useEffect(() => {
         const fetchConfig = async () => {
@@ -101,6 +102,12 @@ export default function ConfigDocs() {
                         logo: logo?.value || '',
                         banner: banner?.value || ''
                     })
+
+                    // Carrega o modelo de texto salvo para o documento ativo (se houver)
+                    if (activeDoc !== 'site_assets') {
+                        const tpl = settings.find(s => s.key === `doc_template_${activeDoc}`)
+                        if (tpl && tpl.value) setTemplateContent(tpl.value)
+                    }
                 }
             } catch (err) {
                 console.error("Erro ao carregar configurações:", err)
@@ -138,6 +145,19 @@ export default function ConfigDocs() {
             alert('Erro ao fazer upload: ' + error.message)
         } finally {
             setIsUploadingAsset(false)
+        }
+    }
+
+    const handleSaveTemplate = async () => {
+        if (activeDoc === 'site_assets') return
+        setIsSavingTemplate(true)
+        try {
+            await settingsApi.save({ [`doc_template_${activeDoc}`]: templateContent })
+            alert('Modelo salvo com sucesso! Ele passará a ser usado ao gerar este documento para os alunos.')
+        } catch (error) {
+            alert('Erro ao salvar modelo: ' + error.message)
+        } finally {
+            setIsSavingTemplate(false)
         }
     }
 
@@ -219,9 +239,11 @@ export default function ConfigDocs() {
                     <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Modelos de Documentos Oficiais</h2>
                     <p className="text-muted">Ajuste os textos padrões de Contratos e Declarações.</p>
                 </div>
-                <button className="btn btn-primary">
-                    <Save size={18} /> Salvar Modelo
-                </button>
+                {activeDoc !== 'site_assets' && (
+                    <button className="btn btn-primary" onClick={handleSaveTemplate} disabled={isSavingTemplate}>
+                        <Save size={18} /> {isSavingTemplate ? 'Salvando...' : 'Salvar Modelo'}
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[250px_1fr_300px] gap-6 items-start">
