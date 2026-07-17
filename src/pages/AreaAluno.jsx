@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
 import { lmsApi } from '../services/lms';
 import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi, upcomingClassesApi } from '../services/misc';
-import { connectSocket, disconnectSocket, onSocketMessage, onSocketStatus } from '../lib/socket';
+import { connectSocket, onSocketMessage, onSocketStatus, isSocketConnected } from '../lib/socket';
 import { financialApi, evaluationsApi } from '../services/financial';
 import { uploadFile } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -113,6 +113,7 @@ export default function AreaAluno() {
   const [onlineIds, setOnlineIds] = useState([]);
   const [unreadBy, setUnreadBy] = useState({});
   const [wsConnected, setWsConnected] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
   const selectedContactRef = useRef(null);
 
   // Estados para Agendamento Prático (Fase 20.1)
@@ -145,6 +146,7 @@ export default function AreaAluno() {
   useEffect(() => {
     if (!session?.user?.id) return;
     connectSocket();
+    setWsConnected(isSocketConnected());
     const offMsg = onSocketMessage((data) => {
       if (data?.type !== 'message' || !data.message) return;
       const msg = data.message;
@@ -157,7 +159,8 @@ export default function AreaAluno() {
       }
     });
     const offStatus = onSocketStatus(setWsConnected);
-    return () => { offMsg(); offStatus(); disconnectSocket(); };
+    // Mantém o socket vivo entre telas (não desconecta ao trocar de aba).
+    return () => { offMsg(); offStatus(); };
   }, [session?.user?.id]);
 
   // Carregamento geral de dados do Supabase
@@ -480,10 +483,13 @@ export default function AreaAluno() {
       };
       setContacts(next);
       setOnlineIds(data.online || []);
-      // Abre na primeira categoria que tiver alguém.
-      if (next.professores.length) setContactTab('professores');
-      else if (next.secretaria.length) setContactTab('secretaria');
-      else if (next.alunos.length) setContactTab('alunos');
+      // Abre na primeira categoria que tiver alguém e já seleciona o 1º contato.
+      const firstTab = next.professores.length ? 'professores'
+        : next.secretaria.length ? 'secretaria'
+        : next.alunos.length ? 'alunos' : 'professores';
+      setContactTab(firstTab);
+      const first = next[firstTab]?.[0];
+      if (first && !selectedContactRef.current) handleSelectInstructorChat(first);
     } catch {
       setContacts({ professores: [], secretaria: [], alunos: [] });
     }
@@ -1880,111 +1886,134 @@ export default function AreaAluno() {
       { key: 'secretaria', label: 'Secretaria' },
       { key: 'alunos', label: 'Colegas' },
     ];
-    const list = contacts[contactTab] || [];
-    const subtitleFor = () => contactTab === 'professores' ? 'Instrutor'
-      : contactTab === 'secretaria' ? 'Secretaria' : 'Colega de turma';
+    const subtitleFor = (tab) => tab === 'professores' ? 'Instrutor'
+      : tab === 'secretaria' ? 'Secretaria' : 'Colega de turma';
+    const q = chatSearch.trim().toLowerCase();
+    const list = (contacts[contactTab] || []).filter(c => !q || (c.full_name || '').toLowerCase().includes(q));
     const selOnline = selectedInstructor ? online(selectedInstructor.id) : false;
+    const firstName = (n) => (n || '').split(' ')[0];
 
     return (
-      <div className="aa-stack aa-chat-shell" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', height: 'calc(100dvh - 190px)', minHeight: 480, backgroundColor: 'white', border: '1px solid #eef2f7', borderRadius: '18px', overflow: 'hidden', boxShadow: '0 18px 50px -20px rgba(15, 23, 42, 0.22)' }}>
-        {/* LISTA DE CONTATOS */}
-        <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#fbfcfe' }}>
-          <div style={{ padding: '1rem 1.15rem 0.85rem', borderBottom: '1px solid #eef2f7' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--primary-dark)' }}>Conversas</h4>
-              <span title={wsConnected ? 'Conectado em tempo real' : 'Reconectando...'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 700, color: wsConnected ? '#10b981' : '#94a3b8' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: wsConnected ? '#10b981' : '#cbd5e1' }} />
-                {wsConnected ? 'Tempo real' : 'Off'}
+      <div className="aa-chat-window">
+        <div className="aa-stack aa-chat-shell" style={{ flex: 1, display: 'grid', gridTemplateColumns: '340px 1fr', minHeight: 0, backgroundColor: 'white', overflow: 'hidden' }}>
+
+        {/* ── LISTA DE CONTATOS ── */}
+        <div style={{ borderRight: '1px solid #eef2f7', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#fbfcfe', minHeight: 0 }}>
+          <div style={{ padding: '1.15rem 1.25rem 0.9rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.9rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-dark)' }}>Mensagens</h3>
+              <span title={wsConnected ? 'Conectado em tempo real' : 'Reconectando...'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: wsConnected ? '#10b981' : '#94a3b8' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: wsConnected ? '#10b981' : '#cbd5e1', boxShadow: wsConnected ? '0 0 0 3px rgba(16,185,129,0.15)' : 'none' }} />
+                {wsConnected ? 'Online' : 'Off'}
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: '0.85rem' }}>
+            <input value={chatSearch} onChange={e => setChatSearch(e.target.value)} placeholder="Buscar contato..."
+              style={{ width: '100%', boxSizing: 'border-box', padding: '0.6rem 0.85rem', borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: 'white', fontSize: '0.82rem', outline: 'none', marginBottom: '0.85rem' }} />
+            <div style={{ display: 'flex', gap: 4, backgroundColor: '#eef2f7', padding: 4, borderRadius: 12 }}>
               {tabs.map(t => {
                 const count = (contacts[t.key] || []).length;
                 const active = contactTab === t.key;
                 return (
-                  <button key={t.key} onClick={() => setContactTab(t.key)}
-                    style={{ flex: 1, padding: '0.4rem 0.2rem', borderRadius: 8, border: '1px solid ' + (active ? 'var(--primary)' : '#e2e8f0'), backgroundColor: active ? 'var(--primary)' : 'white', color: active ? 'white' : '#475569', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', transition: 'all .15s' }}>
-                    {t.label}{count ? ` ${count}` : ''}
+                  <button key={t.key} onClick={() => { setContactTab(t.key); setChatSearch(''); }}
+                    style={{ flex: 1, padding: '0.45rem 0.2rem', borderRadius: 9, border: 'none', backgroundColor: active ? 'white' : 'transparent', color: active ? 'var(--primary-dark)' : '#64748b', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', transition: 'all .15s', boxShadow: active ? '0 1px 3px rgba(15,23,42,0.12)' : 'none' }}>
+                    {t.label} {count ? <span style={{ opacity: 0.55 }}>{count}</span> : ''}
                   </button>
                 );
               })}
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 0.5rem 0.5rem' }}>
             {list.map(c => {
               const isSel = selectedInstructor?.id === c.id;
               const unread = unreadBy[c.id] || 0;
               const on = online(c.id);
               return (
                 <div key={c.id} onClick={() => handleSelectInstructorChat(c)}
-                  style={{ padding: '0.8rem 1.15rem', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', backgroundColor: isSel ? 'var(--primary-light)' : 'transparent', display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                  style={{ padding: '0.7rem 0.85rem', borderRadius: 12, cursor: 'pointer', backgroundColor: isSel ? 'var(--primary-light)' : 'transparent', display: 'flex', alignItems: 'center', gap: '0.7rem', marginBottom: 2 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem' }}>
                       {(c.full_name || '?').charAt(0).toUpperCase()}
                     </div>
-                    {on && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%', backgroundColor: '#10b981', border: '2px solid white' }} />}
+                    {on && <span style={{ position: 'absolute', bottom: 1, right: 1, width: 12, height: 12, borderRadius: '50%', backgroundColor: '#10b981', border: '2.5px solid #fbfcfe' }} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
-                    <div style={{ fontSize: '0.7rem', color: on ? '#10b981' : '#94a3b8' }}>{on ? 'online' : subtitleFor()}</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
+                    <div style={{ fontSize: '0.72rem', color: on ? '#10b981' : '#94a3b8', fontWeight: on ? 600 : 400 }}>{on ? '● online agora' : subtitleFor(contactTab)}</div>
                   </div>
-                  {unread > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10, backgroundColor: '#ef4444', color: 'white', fontSize: '0.68rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</span>}
+                  {unread > 0 && <span style={{ minWidth: 22, height: 22, padding: '0 6px', borderRadius: 11, backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{unread}</span>}
                 </div>
               );
             })}
             {list.length === 0 && (
-              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
-                <p style={{ fontSize: '0.8rem', margin: 0 }}>Nenhum contato nesta categoria.</p>
+              <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+                <p style={{ fontSize: '0.82rem', margin: 0 }}>{q ? 'Nenhum contato encontrado.' : 'Ninguém nesta categoria ainda.'}</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* ÁREA DE MENSAGENS */}
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* ── CONVERSA ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'radial-gradient(circle at 50% 0%, #f5f8fc 0%, #eef2f7 100%)' }}>
           {selectedInstructor ? (
             <>
-              <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                  {selectedInstructor.full_name.charAt(0).toUpperCase()}
+              <div style={{ padding: '0.9rem 1.5rem', borderBottom: '1px solid #e8edf3', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    {selectedInstructor.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  {selOnline && <span style={{ position: 'absolute', bottom: 1, right: 1, width: 12, height: 12, borderRadius: '50%', backgroundColor: '#10b981', border: '2.5px solid white' }} />}
                 </div>
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
-                  <span style={{ fontSize: '0.68rem', color: selOnline ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{selOnline ? '● Online agora' : '○ Offline'}</span>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
+                  <span style={{ fontSize: '0.72rem', color: selOnline ? '#10b981' : '#94a3b8', fontWeight: 600 }}>{selOnline ? 'Online agora' : 'Offline'}</span>
                 </div>
               </div>
 
-              <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem', backgroundColor: '#f8fafc' }}>
-                {chatMessages.length === 0 && (
-                  <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem', marginTop: '2rem' }}>Nenhuma mensagem ainda. Diga olá! 👋</p>
-                )}
-                {chatMessages.map(msg => {
-                  const isMe = msg.sender_id === session?.user?.id;
-                  return (
-                    <div key={msg.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', backgroundColor: isMe ? 'var(--primary)' : 'white', color: isMe ? 'white' : '#1e293b', padding: '0.6rem 0.85rem', borderRadius: isMe ? '14px 14px 2px 14px' : '14px 14px 14px 2px', maxWidth: '72%', fontSize: '0.85rem', lineHeight: 1.4, boxShadow: '0 1px 2px rgba(0,0,0,0.06)', border: isMe ? 'none' : '1px solid #eef2f7', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <span>{msg.content}</span>
-                      <span style={{ fontSize: '0.58rem', alignSelf: 'flex-end', opacity: 0.65 }}>{new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '1.5rem' }}>
+                <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {chatMessages.length === 0 && (
+                    <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', marginTop: '3rem' }}>
+                      <MessageCircle size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
+                      <p style={{ margin: 0 }}>Nenhuma mensagem ainda.<br />Diga olá para {firstName(selectedInstructor.full_name)}! 👋</p>
                     </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
+                  )}
+                  {chatMessages.map(msg => {
+                    const isMe = msg.sender_id === session?.user?.id;
+                    return (
+                      <div key={msg.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
+                        <div style={{ backgroundColor: isMe ? 'var(--primary)' : 'white', color: isMe ? 'white' : '#1e293b', padding: '0.6rem 0.9rem', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px', fontSize: '0.88rem', lineHeight: 1.45, boxShadow: '0 1px 2px rgba(15,23,42,0.08)', border: isMe ? 'none' : '1px solid #eef2f7', wordBreak: 'break-word' }}>
+                          {msg.content}
+                        </div>
+                        <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: 3, textAlign: isMe ? 'right' : 'left', padding: '0 4px' }}>
+                          {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
 
-              <form onSubmit={handleSendChatMessage} style={{ padding: '0.85rem 1rem', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
-                <input type="text" placeholder="Escreva uma mensagem..." value={newChatMessage} onChange={e => setNewChatMessage(e.target.value)}
-                  style={{ flex: 1, padding: '0.7rem 0.9rem', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }} />
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.35rem', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Send size={16} />
-                </button>
-              </form>
+              <div style={{ padding: '0.9rem 1.5rem 1.1rem', flexShrink: 0 }}>
+                <form onSubmit={handleSendChatMessage} style={{ maxWidth: 720, margin: '0 auto', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                  <input type="text" placeholder={`Mensagem para ${firstName(selectedInstructor.full_name)}...`} value={newChatMessage} onChange={e => setNewChatMessage(e.target.value)}
+                    style={{ flex: 1, padding: '0.8rem 1.15rem', borderRadius: 24, border: '1px solid #dbe3ec', backgroundColor: 'white', fontSize: '0.88rem', outline: 'none', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }} />
+                  <button type="submit" aria-label="Enviar" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: newChatMessage.trim() ? 'var(--primary)' : '#cbd5e1', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: newChatMessage.trim() ? 'pointer' : 'default', flexShrink: 0, transition: 'background .15s' }}>
+                    <Send size={18} />
+                  </button>
+                </form>
+              </div>
             </>
           ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem', backgroundColor: '#f8fafc' }}>
-              <MessageCircle size={52} style={{ opacity: 0.35, marginBottom: '0.6rem' }} />
-              <h4 style={{ margin: 0, fontWeight: 800, color: 'var(--primary-dark)' }}>Suas conversas</h4>
-              <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '6px 0 0 0', textAlign: 'center', maxWidth: 320 }}>Escolha <b>Professores</b>, <b>Secretaria</b> ou <b>Colegas</b> na lateral e selecione alguém para conversar em tempo real.</p>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem', textAlign: 'center' }}>
+              <div style={{ width: 76, height: 76, borderRadius: '50%', backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 24px -8px rgba(15,23,42,0.2)' }}>
+                <MessageCircle size={36} style={{ color: 'var(--primary)' }} />
+              </div>
+              <h3 style={{ margin: 0, fontWeight: 800, color: 'var(--primary-dark)', fontSize: '1.1rem' }}>Escolha uma conversa</h3>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '8px 0 0 0', maxWidth: 340 }}>Selecione um contato à esquerda — <b>Professores</b>, <b>Secretaria</b> ou <b>Colegas</b> — para conversar em tempo real.</p>
             </div>
           )}
+        </div>
         </div>
       </div>
     );
@@ -2798,11 +2827,23 @@ export default function AreaAluno() {
     }
   };
 
+  const isChatFull = location.pathname === '/area-aluno/mensagens';
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="animate-fade-in" style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <style>{`
         @media (max-width: 768px) {
           .aa-stack { grid-template-columns: 1fr !important; }
+        }
+        /* Chat como JANELA: preenche a area a direita do menu, abaixo do topo. */
+        .aa-chat-window {
+          position: fixed;
+          top: 70px; left: 260px; right: 0; bottom: 0;
+          background: #ffffff;
+          z-index: 20;
+          display: flex;
+        }
+        @media (max-width: 768px) {
+          .aa-chat-window { left: 0; top: 71px; }
         }
       `}</style>
       {getActiveTabContent()}
