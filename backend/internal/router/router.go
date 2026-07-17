@@ -375,6 +375,11 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		lmsAuth.GET("/forum/topics/:id/replies", lmsH.TopicReplies)
 		lmsAuth.GET("/certificates", lmsH.ListCertificates)
 		lmsAuth.POST("/certificates/claim", lmsH.ClaimCertificate)
+		lmsAuth.GET("/my-courses", lmsH.MyCourses)
+
+		// Matrícula EAD (staff matricula/desmatricula alunos em cursos)
+		lmsAdmin.POST("/enrollments", lmsH.Enroll)
+		lmsAdmin.DELETE("/enrollments", lmsH.Unenroll)
 	}
 
 	// ─── Frontend (SPA) servido pela própria API (imagem única) ───

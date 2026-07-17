@@ -158,20 +158,26 @@ export default function AreaAluno() {
         setMissingDocs(hasMissing);
       }
 
-      // 3. Cursos + progresso
+      // 3. Cursos matriculados (EAD) + progresso — vários cursos por aluno.
       const { progress: progressData } = await lmsApi.progress();
       const turma = (allClasses || []).find(c => c.id === activeTurmaId);
-      const lmsCourseId = turma?.lms_course_id;
-      if (student?.has_lms_access && lmsCourseId) {
-        try {
-          const { course } = await coursesApi.get(lmsCourseId);
-          if (course && course.is_published) {
-            const { lessons: courseLessons } = await lmsApi.courseLessons(lmsCourseId);
-            const done = (courseLessons || []).filter(l => (progressData || []).some(p => p.lesson_id === l.id && p.is_completed)).length;
-            const percentage = courseLessons?.length ? Math.round((done / courseLessons.length) * 100) : 0;
-            setMyCourses([{ ...course, progress_percent: percentage }]);
-          }
-        } catch { /* sem curso liberado */ }
+      try {
+        const { courses } = await lmsApi.myCourses();
+        setMyCourses(courses || []);
+      } catch {
+        // Fallback (backend antigo sem /my-courses): usa o curso da turma.
+        const lmsCourseId = turma?.lms_course_id;
+        if (student?.has_lms_access && lmsCourseId) {
+          try {
+            const { course } = await coursesApi.get(lmsCourseId);
+            if (course && course.is_published) {
+              const { lessons: courseLessons } = await lmsApi.courseLessons(lmsCourseId);
+              const done = (courseLessons || []).filter(l => (progressData || []).some(p => p.lesson_id === l.id && p.is_completed)).length;
+              const percentage = courseLessons?.length ? Math.round((done / courseLessons.length) * 100) : 0;
+              setMyCourses([{ ...course, progress_percent: percentage }]);
+            }
+          } catch { /* sem curso liberado */ }
+        }
       }
 
       // 4. Próxima aula prática presencial

@@ -24,6 +24,11 @@ export const lmsApi = {
   progress: (student_id) => request(`/lms/progress${student_id ? `?student_id=${student_id}` : ''}`),
   saveProgress: (payload) => request('/lms/progress', { method: 'POST', body: payload }),
 
+  // Matrículas EAD (aluno vê seus cursos; staff matricula/desmatricula)
+  myCourses: () => request('/lms/my-courses'),
+  enroll: (user_id, course_id) => request('/lms/enrollments', { method: 'POST', body: { user_id, course_id } }),
+  unenroll: (user_id, course_id) => request(`/lms/enrollments?user_id=${user_id}&course_id=${course_id}`, { method: 'DELETE' }),
+
   // Quizzes
   courseQuizzes: (courseId) => request(`/courses/${courseId}/quizzes`),
   quiz: (id) => request(`/lms/quizzes/${id}`),
