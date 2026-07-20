@@ -7,13 +7,15 @@ import { useAuth } from '../contexts/AuthContext'
 import { 
   GraduationCap, Award, Calendar, ShieldCheck, Search, Plus, 
   Trash2, FileText, CheckCircle, AlertTriangle, AlertCircle, Eye, 
-  Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX 
+  Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX, Copy, KeyRound, Users
 } from 'lucide-react'
 
 export default function Instrutores() {
     const { session, userProfile } = useAuth()
     const [qualifications, setQualifications] = useState([])
     const [loading, setLoading] = useState(true)
+    const [accessUsers, setAccessUsers] = useState([])
+    const [accessSearch, setAccessSearch] = useState('')
     const [showWizard, setShowWizard] = useState(false)
     const [wizardStep, setWizardStep] = useState(1)
     
@@ -67,7 +69,11 @@ export default function Instrutores() {
             setCurrentUserProfile(userProfile || null)
 
             // 1. Carregar as qualificações PR-127
-            const { qualifications: qualData } = await qualificationsApi.list()
+            const [{ qualifications: qualData }, { users }] = await Promise.all([
+                qualificationsApi.list(),
+                usersApi.list(['instrutor', 'admin', 'coordenador', 'atendente'])
+            ])
+            setAccessUsers(users || [])
 
             if (qualData && qualData.length > 0) {
                 setQualifications(qualData)
@@ -394,6 +400,26 @@ export default function Instrutores() {
     })
 
     const isCoordenadorOrAdmin = currentUserProfile?.role === 'admin' || currentUserProfile?.role === 'coordenador'
+    const roleLabels = { instrutor: 'Professor', admin: 'Administrador', coordenador: 'Coordenação', atendente: 'Secretaria' }
+    const permissionLabels = {
+        access_dashboard: 'Painel', access_alunos: 'Alunos', access_matriculas: 'Matrículas',
+        access_leads: 'Leads', access_turmas: 'Turmas', access_cursos: 'Cursos',
+        access_financeiro: 'Financeiro', access_relatorios: 'Relatórios', access_instrutores: 'Instrutores',
+        access_certificados: 'Certificados', access_ouvidoria: 'Ouvidoria', access_equipe: 'Equipe',
+        access_lms: 'EAD', access_comunicados: 'Comunicados', access_config: 'Configurações',
+        access_config_asaas: 'Asaas', access_instrutor_portal: 'Portal do Professor'
+    }
+    const visibleAccessUsers = accessUsers.filter(user => {
+        const term = accessSearch.trim().toLowerCase()
+        return !term || user.full_name?.toLowerCase().includes(term) || user.email?.toLowerCase().includes(term) || roleLabels[user.role]?.toLowerCase().includes(term)
+    })
+
+    const copyAccess = async (user) => {
+        const path = user.role === 'instrutor' ? '/login' : '/secretaria'
+        const text = `Acesso CEC\nEndereço: ${window.location.origin}${path}\nE-mail: ${user.email}\nSenha: use sua senha pessoal ou a opção Esqueci minha senha.`
+        try { await navigator.clipboard.writeText(text); alert('Dados de acesso copiados sem expor a senha.') }
+        catch { alert(text) }
+    }
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '4rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -417,6 +443,38 @@ export default function Instrutores() {
                         <Plus size={16} /> Novo Instrutor (PR-127)
                     </button>
                 </div>
+            </div>
+
+            {/* VISÃO DE CONTAS COM ACESSO */}
+            <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid var(--border-color)', borderRadius: '16px', background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    <div>
+                        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '.5rem' }}><Users size={19} /> Acessos de professores e Secretaria</h3>
+                        <p style={{ margin: '.25rem 0 0', color: '#64748b', fontSize: '.82rem' }}>Contas, perfis e permissões. Senhas nunca são exibidas.</p>
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={15} style={{ position: 'absolute', left: '.65rem', top: '.7rem', color: '#94a3b8' }} />
+                        <input value={accessSearch} onChange={e => setAccessSearch(e.target.value)} placeholder="Buscar nome, e-mail ou perfil" style={{ padding: '.6rem .75rem .6rem 2rem', minWidth: '260px', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                    </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.84rem' }}>
+                        <thead><tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b' }}><th style={{ padding: '.75rem', textAlign: 'left' }}>Pessoa</th><th style={{ textAlign: 'left' }}>Perfil</th><th style={{ textAlign: 'left' }}>Status</th><th style={{ textAlign: 'left' }}>Permissões</th><th style={{ textAlign: 'right' }}>Acesso</th></tr></thead>
+                        <tbody>{visibleAccessUsers.map(user => {
+                            const permissions = user.permissions && typeof user.permissions === 'object' ? user.permissions : {}
+                            const enabled = Object.entries(permissions).filter(([, value]) => value === true).map(([key]) => permissionLabels[key] || key)
+                            return <tr key={user.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '.8rem' }}><strong>{user.full_name || 'Sem nome'}</strong><span style={{ display: 'block', color: '#64748b' }}>{user.email}</span></td>
+                                <td><span style={{ padding: '3px 8px', borderRadius: '999px', background: user.role === 'instrutor' ? '#ecfeff' : '#eef2ff', color: user.role === 'instrutor' ? '#0e7490' : '#4338ca', fontWeight: 700 }}>{roleLabels[user.role] || user.role}</span></td>
+                                <td><span style={{ color: user.is_active ? '#15803d' : '#b91c1c', fontWeight: 700 }}>{user.is_active ? 'Ativo' : 'Inativo'}</span>{user.must_change_password && <small style={{ display: 'block', color: '#b45309' }}>Troca de senha pendente</small>}</td>
+                                <td style={{ maxWidth: '380px', color: '#475569' }}>{user.role === 'admin' ? 'Acesso administrativo completo' : enabled.length ? enabled.join(', ') : 'Permissões padrão do perfil'}</td>
+                                <td style={{ textAlign: 'right' }}><button className="btn btn-secondary" onClick={() => copyAccess(user)} title="Copiar endereço e e-mail"><Copy size={14} /> Copiar acesso</button></td>
+                            </tr>
+                        })}</tbody>
+                    </table>
+                    {visibleAccessUsers.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Nenhuma conta encontrada.</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginTop: '1rem', padding: '.75rem', borderRadius: '8px', background: '#fffbeb', color: '#92400e', fontSize: '.8rem' }}><KeyRound size={16} /> Para recuperar o acesso, utilize “Esqueci minha senha” ou a redefinição administrativa. A senha atual não pode ser consultada.</div>
             </div>
 
             {/* FILTROS E CAPACIDADES */}
