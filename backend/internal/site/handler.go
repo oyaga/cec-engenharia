@@ -248,6 +248,17 @@ func (h *Handler) CreateTestimonialPublic(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	in.Course = strings.TrimSpace(in.Course)
+	content := ""
+	if in.Content != nil {
+		content = strings.TrimSpace(*in.Content)
+		in.Content = &content
+	}
+	if in.Name == "" || (in.Type != "screenshot" && content == "") {
+		httpx.Error(c, http.StatusBadRequest, "nome e depoimento são obrigatórios")
+		return
+	}
 	in.ID = [16]byte{}
 	in.Status = "pending" // envio público sempre entra pendente
 	if in.Rating == 0 {

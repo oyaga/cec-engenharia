@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { usersApi } from '../services/users'
 import { qualificationsApi } from '../services/staff'
+import { coursesApi, instructorAuthorizationsApi } from '../services/academic'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   GraduationCap, Award, Calendar, ShieldCheck, Search, Plus, 
@@ -53,6 +54,10 @@ export default function Instrutores() {
     const [selectedQualForApproval, setSelectedQualForApproval] = useState(null)
     const [rejectionReason, setRejectionReason] = useState('')
     const [approvalLoading, setApprovalLoading] = useState(false)
+    const [authorizationCourses, setAuthorizationCourses] = useState([])
+    const [authorizedCourseIds, setAuthorizedCourseIds] = useState([])
+    const [authorizedCategories, setAuthorizedCategories] = useState('')
+    const [savingAuthorizations, setSavingAuthorizations] = useState(false)
     
     const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
@@ -310,6 +315,27 @@ export default function Instrutores() {
         setSelectedQualForApproval(qual)
         setRejectionReason('')
         setShowApprovalModal(true)
+    }
+
+    useEffect(() => {
+        if (!showApprovalModal || !selectedQualForApproval?.user_id) return
+        Promise.all([coursesApi.list(), instructorAuthorizationsApi.get(selectedQualForApproval.user_id)])
+            .then(([courseResponse, authResponse]) => {
+                setAuthorizationCourses(courseResponse.courses || [])
+                setAuthorizedCourseIds((authResponse.courses || []).map(c => c.id))
+                setAuthorizedCategories((authResponse.categories || []).map(c => c.category).join(', '))
+            })
+            .catch(err => console.error('Erro ao carregar autorizações:', err))
+    }, [showApprovalModal, selectedQualForApproval?.user_id])
+
+    const saveAuthorizations = async () => {
+        setSavingAuthorizations(true)
+        try {
+            const categories = authorizedCategories.split(',').map(v => v.trim()).filter(Boolean)
+            await instructorAuthorizationsApi.update(selectedQualForApproval.user_id, categories, authorizedCourseIds)
+            alert('Categorias e cursos autorizados foram salvos.')
+        } catch (err) { alert('Erro ao salvar autorizações: ' + err.message) }
+        finally { setSavingAuthorizations(false) }
     }
 
     const handleViewDocument = (base64) => {
@@ -868,6 +894,17 @@ export default function Instrutores() {
                             <div><strong>Método:</strong> <span style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', fontSize: '10px' }}>{selectedQualForApproval.method}</span></div>
                             <div><strong>Comprovação:</strong> {selectedQualForApproval.qualification_type === 'snqc' ? 'Certificado SNQC' : 'Experiência (5 anos)'}</div>
                             <div><strong>Treinamento 4h:</strong> Habilitado com carga horária de {selectedQualForApproval.training_hours}h em {new Date(selectedQualForApproval.training_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+
+                            {isCoordenadorOrAdmin && <div style={{ padding: '1rem', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                <strong style={{ display:'block', marginBottom:'0.75rem' }}>Categorias e cursos autorizados</strong>
+                                <label className="form-label">Categorias (separadas por vírgula)</label>
+                                <input className="form-control" value={authorizedCategories} onChange={e => setAuthorizedCategories(e.target.value)} placeholder="Ex.: Caldeiraria, Mecânica, Topografia" />
+                                <label className="form-label" style={{ marginTop:'0.75rem' }}>Cursos que este professor pode ministrar</label>
+                                <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:'0.5rem', maxHeight:'180px', overflowY:'auto' }}>
+                                    {authorizationCourses.map(course => <label key={course.id} style={{ display:'flex', gap:'0.5rem', alignItems:'center', padding:'0.5rem', background:'#fff', borderRadius:'6px' }}><input type="checkbox" checked={authorizedCourseIds.includes(course.id)} onChange={e => setAuthorizedCourseIds(prev => e.target.checked ? [...prev, course.id] : prev.filter(id => id !== course.id))} /> {course.title}</label>)}
+                                </div>
+                                <button className="btn btn-primary" onClick={saveAuthorizations} disabled={savingAuthorizations} style={{ marginTop:'0.75rem', width:'100%' }}>{savingAuthorizations ? 'Salvando...' : 'Salvar autorizações'}</button>
+                            </div>}
 
                             {/* Pasta digital */}
                             <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px' }}>

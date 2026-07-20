@@ -42,6 +42,10 @@ export default function Professor() {
     // Data from Supabase
     const [classes, setClasses] = useState([])
     const [classStudents, setClassStudents] = useState([])
+    const [inPersonModules, setInPersonModules] = useState([])
+    const [selectedAttendanceModule, setSelectedAttendanceModule] = useState(null)
+    const [studentConfirmations, setStudentConfirmations] = useState({})
+    const [selectedClassProgress, setSelectedClassProgress] = useState(null)
     const [eadDoubts, setEadDoubts] = useState([])
     const [answeringId, setAnsweringId] = useState(null)
     const [answerText, setAnswerText] = useState('')
@@ -295,11 +299,29 @@ export default function Professor() {
                 email: s.email
             }))
 
+            let activeModule = null
+            if (selected.lms_course_id) {
+                const { modules: courseModules } = await lmsApi.structure(selected.lms_course_id)
+                const presencial = (courseModules || []).filter(m => m.is_in_person)
+                setInPersonModules(presencial)
+                activeModule = presencial[0] || null
+                setSelectedAttendanceModule(activeModule)
+            } else {
+                setInPersonModules([])
+                setSelectedAttendanceModule(null)
+            }
+
             // Chamadas já existentes
-            const { attendance: records } = await attendanceApi.list({ class_id: classId })
+            const response = activeModule
+                ? await attendanceApi.moduleList(classId, activeModule.id)
+                : await attendanceApi.list({ class_id: classId })
+            const records = activeModule
+                ? (response.attendance || []).map(row => ({ ...row, id: row.record_id, student_id: row.student_id }))
+                : response.attendance
             
             const initialAttendance = {}
             const initialJustifications = {}
+            const confirmations = {}
             
             studentsList.forEach(s => {
                 const rec = records?.find(r => r.student_id === s.id)
@@ -316,6 +338,7 @@ export default function Professor() {
                     type: rec?.justification_type || '',
                     note: rec?.justification_note || ''
                 }
+                confirmations[s.id] = !!rec?.confirmed_by_student
             })
 
             // Buscar se há diário de classe anterior
@@ -333,11 +356,32 @@ export default function Professor() {
             setClassStudents(studentsList)
             setAttendance(initialAttendance)
             setJustifications(initialJustifications)
+            setStudentConfirmations(confirmations)
         } catch (error) {
             console.error('Error fetching students:', error)
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleAttendanceModuleChange = async (moduleId) => {
+        const module = inPersonModules.find(m => m.id === moduleId) || null
+        setSelectedAttendanceModule(module)
+        if (!module || !selectedClass) return
+        setLoading(true)
+        try {
+            const { attendance: rows } = await attendanceApi.moduleList(selectedClass.id, module.id)
+            const statuses = {}, notes = {}, confirmations = {}
+            ;(rows || []).forEach(row => {
+                statuses[row.student_id] = row.status === 'ausente' ? 'falta' : row.status === 'justificado' ? 'falta_justificada' : 'presente'
+                notes[row.student_id] = { type: row.status === 'justificado' ? 'Outro' : '', note: row.justification_note || '' }
+                confirmations[row.student_id] = !!row.confirmed_by_student
+            })
+            classStudents.forEach(student => { if (!statuses[student.id]) statuses[student.id] = 'presente' })
+            setAttendance(statuses); setJustifications(notes); setStudentConfirmations(confirmations)
+            if (module.in_person_date) setRecordDate(module.in_person_date.slice(0, 10))
+        } catch (err) { alert('Erro ao carregar chamada do módulo: ' + err.message) }
+        finally { setLoading(false) }
     }
 
     // Estrutura de analytics vazia (sem dados fabricados): usada quando não há turmas/alunos reais
@@ -639,6 +683,10 @@ export default function Professor() {
         setSelectedClass(turma)
         setActiveTab('diario')
         fetchClassStudents(turma.id)
+        setSelectedClassProgress(null)
+        classesApi.progress(turma.id)
+            .then(setSelectedClassProgress)
+            .catch(error => console.error('Erro ao carregar progresso da turma:', error))
     }
 
     const handleAttendanceChange = (studentId, status) => {
@@ -762,6 +810,18 @@ export default function Professor() {
 
         setLoading(true)
         try {
+            if (selectedAttendanceModule) {
+                for (const studentId of Object.keys(attendance)) {
+                    const currentStatus = attendance[studentId]
+                    const j = justifications[studentId] || {}
+                    await attendanceApi.setModuleStatus(selectedClass.id, selectedAttendanceModule.id, studentId, {
+                        status: currentStatus === 'falta' ? 'ausente' : currentStatus === 'falta_justificada' ? 'justificado' : 'presente',
+                        justification_note: currentStatus === 'falta_justificada' ? `${j.type ? j.type + ': ' : ''}${j.note || ''}` : null
+                    })
+                }
+                alert('Chamada do módulo presencial salva e confirmada!')
+                setActiveTab('minhasTurmas'); setSelectedClass(null); setLoading(false); return
+            }
             const { attendance: existingRecords } = await attendanceApi.list({ class_id: selectedClass.id })
 
             for (const studentId of Object.keys(attendance)) {
@@ -1007,6 +1067,29 @@ export default function Professor() {
                     </div>
                 )}
 
+                {selectedClassProgress && (
+                    <div className="card" style={{ marginBottom: '2rem', padding: '1.25rem', borderRadius: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Progresso detalhado da turma</h3>
+                            <strong>{selectedClassProgress.days_remaining == null ? 'Sem prazo definido' : `${selectedClassProgress.days_remaining} dias restantes`}</strong>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+                                <thead><tr><th style={{ textAlign: 'left', padding: '.6rem' }}>Aluno</th><th style={{ textAlign: 'left', padding: '.6rem' }}>Módulo</th><th>Conclusão</th><th>Tempo</th><th>Prova</th><th>Presença</th></tr></thead>
+                                <tbody>{(selectedClassProgress.students || []).flatMap(student => (student.modules || []).map(module => (
+                                    <tr key={`${student.student_id}-${module.module_id}`} style={{ borderTop: '1px solid #e2e8f0' }}>
+                                        <td style={{ padding: '.6rem' }}>{student.full_name}</td><td style={{ padding: '.6rem' }}>{module.title}</td>
+                                        <td style={{ textAlign: 'center' }}>{module.lessons_completed}/{module.lessons_total}</td>
+                                        <td style={{ textAlign: 'center' }}>{Math.round((module.watched_seconds || 0) / 60)} min</td>
+                                        <td style={{ textAlign: 'center' }}>{module.score == null ? '—' : `${module.score}%`}</td>
+                                        <td style={{ textAlign: 'center' }}>{module.attendance_status || (module.is_in_person ? 'Pendente' : '—')}</td>
+                                    </tr>
+                                )))}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
                 <div className="prof-diario-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: '2rem', alignItems: 'start' }}>
                     {/* Fichário */}
                     <div className="card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
@@ -1079,6 +1162,7 @@ export default function Professor() {
                         <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <CheckSquare size={18} color="var(--primary)" /> Chamada Presencial
                         </h3>
+                        {inPersonModules.length > 0 && <div className="form-group" style={{ marginBottom:'1rem' }}><label className="form-label">Módulo presencial</label><select className="form-control" value={selectedAttendanceModule?.id || ''} onChange={e => handleAttendanceModuleChange(e.target.value)}>{inPersonModules.map(mod => <option key={mod.id} value={mod.id}>{mod.title} {mod.in_person_date ? `— ${new Date(`${mod.in_person_date.slice(0,10)}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}</option>)}</select></div>}
 
                         {loading ? <p>Carregando alunos da Turma...</p> : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -1090,6 +1174,7 @@ export default function Professor() {
                                         <div key={student.id} style={{ padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: idx % 2 === 0 ? '#FAFBFD' : '#FFFFFF' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem' }}>
                                                 <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-primary)' }}>{student.full_name}</span>
+                                                {selectedAttendanceModule && <span style={{ fontSize:'0.7rem', fontWeight:700, padding:'0.2rem 0.5rem', borderRadius:'999px', background:studentConfirmations[student.id] ? '#dcfce7' : '#fef3c7', color:studentConfirmations[student.id] ? '#166534' : '#92400e' }}>{studentConfirmations[student.id] ? 'Aluno confirmou' : 'Aguardando aluno'}</span>}
                                                 
                                                 {/* Seletor de Estados da Chamada */}
                                                 <div style={{ display: 'flex', gap: '0.25rem', backgroundColor: '#F1F5F9', padding: '2px', borderRadius: '6px', opacity: isReadOnly ? 0.7 : 1 }}>

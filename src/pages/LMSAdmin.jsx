@@ -115,7 +115,12 @@ export default function LMSAdmin() {
 
     // Estados para FORMULÁRIOS VISUAIS (Substituindo Prompts)
     const [showModuleForm, setShowModuleForm] = useState(false)
-    const [moduleForm, setModuleForm] = useState({ title: '', id: null }) // id para edição
+    const emptyModuleForm = {
+        title: '', id: null, is_in_person: false, in_person_date: '', start_time: '', end_time: '',
+        cep: '', street: '', address_number: '', address_complement: '', neighborhood: '', city: '', state: '',
+        whatsapp_url: '', attendance_open_at: '', attendance_close_at: ''
+    }
+    const [moduleForm, setModuleForm] = useState(emptyModuleForm)
 
     const [showLessonForm, setShowLessonForm] = useState(false)
     const [lessonForm, setLessonForm] = useState({
@@ -510,21 +515,41 @@ export default function LMSAdmin() {
 
     const handleOpenModuleForm = (mod = null) => {
         if (mod) {
-            setModuleForm({ title: mod.title, id: mod.id })
+            setModuleForm({ ...emptyModuleForm, ...mod,
+                in_person_date: mod.in_person_date?.slice(0, 10) || '', start_time: mod.start_time?.slice(0, 5) || '', end_time: mod.end_time?.slice(0, 5) || '',
+                attendance_open_at: mod.attendance_open_at?.slice(0, 16) || '', attendance_close_at: mod.attendance_close_at?.slice(0, 16) || '' })
         } else {
-            setModuleForm({ title: '', id: null })
+            setModuleForm(emptyModuleForm)
         }
         setShowModuleForm(true)
+    }
+
+    const lookupModuleCep = async () => {
+        const cep = moduleForm.cep.replace(/\D/g, '')
+        if (cep.length !== 8) return alert('Informe um CEP com 8 números.')
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+            const address = await response.json()
+            if (!response.ok || address.erro) throw new Error('CEP não encontrado')
+            setModuleForm(prev => ({ ...prev, cep, street: address.logradouro || '', neighborhood: address.bairro || '', city: address.localidade || '', state: address.uf || '', address_complement: prev.address_complement || address.complemento || '' }))
+        } catch (err) { alert('Não foi possível consultar o CEP: ' + err.message) }
     }
 
     const handleSaveModule = async () => {
         if (!moduleForm.title.trim()) return alert('Título obrigatório')
         
         try {
+            const payload = { ...moduleForm }
+            delete payload.id
+            if (!payload.is_in_person) {
+                ;['in_person_date','start_time','end_time','cep','street','address_number','address_complement','neighborhood','city','state','whatsapp_url','attendance_open_at','attendance_close_at'].forEach(key => { payload[key] = null })
+            } else if (!payload.in_person_date || !payload.start_time || !payload.end_time || !payload.cep || !payload.street || !payload.city || !payload.state) {
+                return alert('Preencha data, horários e endereço completo do módulo presencial.')
+            }
             if (moduleForm.id) {
-                await lmsApi.updateModule(moduleForm.id, { title: moduleForm.title })
+                await lmsApi.updateModule(moduleForm.id, payload)
             } else {
-                await lmsApi.createModule({ course_id: selectedCourse.id, title: moduleForm.title, order_index: modules.length })
+                await lmsApi.createModule({ ...payload, course_id: selectedCourse.id, order_index: modules.length })
             }
             setShowModuleForm(false)
             fetchCourseDetails(selectedCourse.id)
@@ -931,6 +956,7 @@ export default function LMSAdmin() {
                                     {idx + 1}
                                 </span>
                                 <h4 style={{ fontWeight: 600 }}>{mod.title}</h4>
+                                {mod.is_in_person && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '0.25rem 0.55rem', borderRadius: '999px' }}>PRESENCIAL · {mod.in_person_date ? new Date(`${mod.in_person_date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : 'Data pendente'}</span>}
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button className="btn btn-secondary" style={{ padding: '0.4rem' }} onClick={() => handleOpenModuleForm(mod)}><Edit size={14} /></button>
@@ -1428,12 +1454,29 @@ export default function LMSAdmin() {
             {/* MODAL DE MÓDULO */}
             {showModuleForm && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 }}>
-                    <div className="card animate-fade-in" style={{ width: '400px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
+                    <div className="card animate-fade-in" style={{ width: '720px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ marginBottom: '1.5rem' }}>{moduleForm.id ? 'Editar Módulo' : 'Novo Módulo'}</h3>
                         <div className="form-group">
                             <label className="form-label">Título do Módulo</label>
                             <input type="text" className="form-control" value={moduleForm.title} onChange={e => setModuleForm({...moduleForm, title: e.target.value})} placeholder="Ex: Introdução ao Curso" />
                         </div>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem', border: '1px solid #bae6fd', background: '#f0f9ff', borderRadius: '10px', cursor: 'pointer' }}>
+                            <span><strong>Módulo com aula presencial</strong><small style={{ display: 'block', color: '#64748b' }}>Ative para configurar chamada, data, horário e endereço.</small></span>
+                            <input type="checkbox" checked={moduleForm.is_in_person} onChange={e => setModuleForm({...moduleForm, is_in_person: e.target.checked})} style={{ width: '22px', height: '22px' }} />
+                        </label>
+                        {moduleForm.is_in_person && <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.85rem' }}>
+                            <div className="form-group"><label className="form-label">Data *</label><input type="date" className="form-control" value={moduleForm.in_person_date} onChange={e => setModuleForm({...moduleForm, in_person_date:e.target.value})} /></div>
+                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem' }}><div className="form-group"><label className="form-label">Início *</label><input type="time" className="form-control" value={moduleForm.start_time} onChange={e => setModuleForm({...moduleForm,start_time:e.target.value})} /></div><div className="form-group"><label className="form-label">Fim *</label><input type="time" className="form-control" value={moduleForm.end_time} onChange={e => setModuleForm({...moduleForm,end_time:e.target.value})} /></div></div>
+                            <div className="form-group"><label className="form-label">CEP *</label><div style={{display:'flex',gap:'0.5rem'}}><input className="form-control" value={moduleForm.cep} maxLength={9} onChange={e => setModuleForm({...moduleForm,cep:e.target.value})} /><button type="button" className="btn btn-secondary" onClick={lookupModuleCep}>Buscar</button></div></div>
+                            <div className="form-group"><label className="form-label">Rua *</label><input className="form-control" value={moduleForm.street} onChange={e => setModuleForm({...moduleForm,street:e.target.value})} /></div>
+                            <div className="form-group"><label className="form-label">Número</label><input className="form-control" value={moduleForm.address_number} onChange={e => setModuleForm({...moduleForm,address_number:e.target.value})} /></div>
+                            <div className="form-group"><label className="form-label">Complemento</label><input className="form-control" value={moduleForm.address_complement} onChange={e => setModuleForm({...moduleForm,address_complement:e.target.value})} /></div>
+                            <div className="form-group"><label className="form-label">Bairro</label><input className="form-control" value={moduleForm.neighborhood} onChange={e => setModuleForm({...moduleForm,neighborhood:e.target.value})} /></div>
+                            <div style={{display:'grid',gridTemplateColumns:'2fr 0.7fr',gap:'0.5rem'}}><div className="form-group"><label className="form-label">Cidade *</label><input className="form-control" value={moduleForm.city} onChange={e => setModuleForm({...moduleForm,city:e.target.value})} /></div><div className="form-group"><label className="form-label">UF *</label><input className="form-control" maxLength={2} value={moduleForm.state} onChange={e => setModuleForm({...moduleForm,state:e.target.value.toUpperCase()})} /></div></div>
+                            <div className="form-group" style={{gridColumn:'1 / -1'}}><label className="form-label">Comunidade WhatsApp</label><input type="url" className="form-control" value={moduleForm.whatsapp_url} onChange={e => setModuleForm({...moduleForm,whatsapp_url:e.target.value})} placeholder="https://chat.whatsapp.com/..." /></div>
+                            <div className="form-group"><label className="form-label">Abrir confirmação</label><input type="datetime-local" className="form-control" value={moduleForm.attendance_open_at} onChange={e => setModuleForm({...moduleForm,attendance_open_at:e.target.value})} /></div>
+                            <div className="form-group"><label className="form-label">Encerrar confirmação</label><input type="datetime-local" className="form-control" value={moduleForm.attendance_close_at} onChange={e => setModuleForm({...moduleForm,attendance_close_at:e.target.value})} /></div>
+                        </div>}
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                             <button className="btn btn-secondary" onClick={() => setShowModuleForm(false)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={handleSaveModule}>Salvar</button>

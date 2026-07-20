@@ -15,6 +15,7 @@ export const classesApi = {
   availableInstructors: (method) =>
     request(`/available-instructors${method ? `?method=${encodeURIComponent(method)}` : ''}`),
   classStudents: (classId) => request(`/classes/${classId}/students`),
+  progress: (classId) => request(`/classes/${classId}/progress`),
 };
 
 export const coursesApi = {
@@ -35,6 +36,19 @@ export const attendanceApi = {
   },
   create: (payload) => request('/attendance', { method: 'POST', body: payload }),
   update: (id, payload) => request(`/attendance/${id}`, { method: 'PUT', body: payload }),
+  moduleList: (classId, moduleId) => request(`/classes/${classId}/modules/${moduleId}/attendance`),
+  confirmAsStudent: (moduleId) => request(`/modules/${moduleId}/attendance/student-confirm`, { method: 'POST' }),
+  setModuleStatus: (classId, moduleId, studentId, payload) =>
+    request(`/classes/${classId}/modules/${moduleId}/attendance/${studentId}`, { method: 'PUT', body: payload }),
+};
+
+export const instructorAuthorizationsApi = {
+  get: (instructorId) => request(`/instructors/${instructorId}/authorizations`),
+  update: (instructorId, categories, courseIds) =>
+    request(`/instructors/${instructorId}/authorizations`, {
+      method: 'PUT',
+      body: { categories, course_ids: courseIds },
+    }),
 };
 
 export const studentsApi = {

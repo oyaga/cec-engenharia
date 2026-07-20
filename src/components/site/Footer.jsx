@@ -57,6 +57,7 @@ const Footer = () => {
 
   const links_rapidos = footer.links_rapidos || [];
   const links_institucional = footer.links_institucional || [];
+  const normalizeLink = (url = '/') => url === '/cursos' ? '/#cursos' : url;
 
   const handleAddLink = (key) => {
     const current = footer[key] || [];
@@ -150,12 +151,12 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={item.url}
+                    to={normalizeLink(item.url)}
                     onClick={(e) => {
                       if (item.url === '/' || item.url === '#') {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
-                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
-                        const targetId = item.url.split('#')[1];
+                      } else if (normalizeLink(item.url).startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = normalizeLink(item.url).split('#')[1];
                         const el = document.getElementById(targetId);
                         if (el) {
                           e.preventDefault();
@@ -215,12 +216,12 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={item.url}
+                    to={normalizeLink(item.url)}
                     onClick={(e) => {
                       if (item.url === '/' || item.url === '#') {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
-                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
-                        const targetId = item.url.split('#')[1];
+                      } else if (normalizeLink(item.url).startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = normalizeLink(item.url).split('#')[1];
                         const el = document.getElementById(targetId);
                         if (el) {
                           e.preventDefault();

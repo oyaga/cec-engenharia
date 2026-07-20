@@ -65,6 +65,8 @@ export default function AreaAluno() {
   const [technicalEvals, setTechnicalEvals] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
+  const [inPersonModules, setInPersonModules] = useState([]);
+  const [confirmingModuleId, setConfirmingModuleId] = useState(null);
   const [certificatesCount, setCertificatesCount] = useState(0);
   const [issuedCertificates, setIssuedCertificates] = useState([]);
   const [financialRecord, setFinancialRecord] = useState(null);
@@ -197,7 +199,25 @@ export default function AreaAluno() {
       const turma = (allClasses || []).find(c => c.id === activeTurmaId);
       try {
         const { courses } = await lmsApi.myCourses();
-        setMyCourses(courses || []);
+        const enrolledCourses = courses || [];
+        setMyCourses(enrolledCourses);
+        const structures = await Promise.all(enrolledCourses.map(async course => {
+          try {
+            const { modules } = await lmsApi.structure(course.id);
+            return (modules || []).filter(module => module.is_in_person).map(module => ({ ...module, course_title: course.title }));
+          } catch { return []; }
+        }));
+        const presencial = structures.flat();
+        if (activeTurmaId) {
+          await Promise.all(presencial.map(async module => {
+            try {
+              const { attendance } = await attendanceApi.moduleList(activeTurmaId, module.id);
+              const own = (attendance || []).find(row => row.student_id === activeStudentId);
+              module.attendance = own || null;
+            } catch { module.attendance = null; }
+          }));
+        }
+        setInPersonModules(presencial);
       } catch {
         // Fallback (backend antigo sem /my-courses): usa o curso da turma.
         const lmsCourseId = turma?.lms_course_id;
@@ -659,6 +679,21 @@ export default function AreaAluno() {
     } catch (err) {
       console.error('Erro ao confirmar presença na aula presencial:', err);
       alert('Erro ao confirmar presença: ' + err.message);
+    }
+  };
+
+  const handleConfirmModuleAttendance = async (moduleId) => {
+    setConfirmingModuleId(moduleId);
+    try {
+      const { attendance } = await attendanceApi.confirmAsStudent(moduleId);
+      setInPersonModules(current => current.map(module => module.id === moduleId
+        ? { ...module, attendance: { ...(module.attendance || {}), ...(attendance || {}), confirmed_by_student: true } }
+        : module));
+      alert('Participação na aula presencial confirmada. O professor fará a chamada definitiva.');
+    } catch (err) {
+      alert('Não foi possível confirmar: ' + err.message);
+    } finally {
+      setConfirmingModuleId(null);
     }
   };
 
@@ -1389,6 +1424,28 @@ export default function AreaAluno() {
         {/* CARD PRESENCIAL DO FINAL DE SEMANA */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Cronograma Presencial</h3>
+          {inPersonModules.map(module => {
+            const address = [module.street, module.address_number, module.address_complement, module.neighborhood, module.city, module.state, module.cep].filter(Boolean).join(', ');
+            const confirmed = module.attendance?.confirmed_by_student;
+            return (
+              <div key={module.id} className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid #0f766e' }}>
+                <strong style={{ display: 'block', marginBottom: '.25rem' }}>{module.title}</strong>
+                <span style={{ fontSize: '.8rem', color: '#64748b' }}>{module.course_title}</span>
+                <div style={{ display: 'grid', gap: '.45rem', marginTop: '.8rem', fontSize: '.84rem' }}>
+                  {module.in_person_date && <span><Calendar size={14} style={{ verticalAlign: 'middle' }} /> {new Date(module.in_person_date).toLocaleDateString('pt-BR')} · {module.start_time?.slice(0, 5)}–{module.end_time?.slice(0, 5)}</span>}
+                  {address && <span><MapPin size={14} style={{ verticalAlign: 'middle' }} /> {address}</span>}
+                  <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+                    {address && <a className="btn btn-secondary" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">Ver no Maps</a>}
+                    {module.whatsapp_url && <a className="btn btn-secondary" href={module.whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a>}
+                    <button className="btn" disabled={confirmed || confirmingModuleId === module.id} onClick={() => handleConfirmModuleAttendance(module.id)} style={{ background: confirmed ? '#dcfce7' : '#0f766e', color: confirmed ? '#166534' : 'white' }}>
+                      {confirmed ? 'Participação confirmada' : confirmingModuleId === module.id ? 'Confirmando...' : 'Confirmar participação'}
+                    </button>
+                  </div>
+                  {module.attendance?.status && <small>Chamada do professor: <strong>{module.attendance.status}</strong></small>}
+                </div>
+              </div>
+            );
+          })}
           {upcomingPractical ? (
             <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FCD34D', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '5px', background: '#F59E0B' }}></div>

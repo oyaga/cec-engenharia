@@ -129,8 +129,8 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Asaas (Fase 3 — server-side; chave nunca no browser) ───
 		asaasH := asaas.NewHandler(gdb, cfg, ml)
-		pub.POST("/checkout", asaasH.Checkout)         // matrícula pelo site
-		v1.POST("/webhooks/asaas", asaasH.Webhook)     // token-verified
+		pub.POST("/checkout", asaasH.Checkout)     // matrícula pelo site
+		v1.POST("/webhooks/asaas", asaasH.Webhook) // token-verified
 		payGroup := v1.Group("/payments")
 		payGroup.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "atendente"))
 		payGroup.GET("", asaasH.Search) // ?ref= | ?customer= | ?all=true
@@ -152,8 +152,6 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 
 		// ─── Gestão do site (auth) ───
 		staffRoles := []string{"admin", "coordenador", "atendente"}
-		mgmtRoles := []string{"admin", "coordenador"}
-
 		lg := v1.Group("/leads")
 		lg.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
 		lg.GET("", siteH.ListLeads)
@@ -167,7 +165,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		cg.DELETE("/:id", siteH.DeleteComplaint)
 
 		tg := v1.Group("/testimonials")
-		tg.Use(middleware.RequireAuth(tm), middleware.RequireRole(mgmtRoles...))
+		tg.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
 		tg.GET("", siteH.ListTestimonialsAdmin)
 		tg.POST("", cch.InvalidateOn(ckTestimonials), siteH.CreateTestimonialAdmin)
 		tg.PUT("/:id", cch.InvalidateOn(ckTestimonials), siteH.UpdateTestimonial)
@@ -215,11 +213,20 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		iq.PUT("/:id", acadH.UpdateQualification)
 		iq.DELETE("/:id", acadH.DeleteQualification)
 
+		ia := v1.Group("/instructors")
+		ia.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador"))
+		ia.GET("/:id/authorizations", acadH.GetInstructorAuthorizations)
+		ia.PUT("/:id/authorizations", acadH.PutInstructorAuthorizations)
+
 		att := v1.Group("/attendance")
 		att.Use(middleware.RequireAuth(tm))
 		att.GET("", acadH.ListAttendance)
 		att.POST("", acadH.CreateAttendance)
 		att.PUT("/:id", acadH.UpdateAttendance)
+		cl.GET("/:id/modules/:moduleId/attendance", acadH.ModuleAttendance)
+		cl.PUT("/:id/modules/:moduleId/attendance/:studentId", acadH.SetModuleAttendance)
+		cl.GET("/:id/progress", acadH.ClassProgress)
+		v1.POST("/modules/:moduleId/attendance/student-confirm", middleware.RequireAuth(tm), acadH.ConfirmModuleAttendance)
 
 		// ─── Chat interno em tempo real (WebSocket) ───
 		chatHub := chat.NewHub()

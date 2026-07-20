@@ -8,10 +8,26 @@ import (
 )
 
 type LMSModule struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	CourseID   *uuid.UUID `gorm:"type:uuid;column:course_id" json:"course_id,omitempty"`
-	Title      string     `gorm:"not null" json:"title"`
-	OrderIndex int        `gorm:"column:order_index" json:"order_index"`
+	ID                uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	CourseID          *uuid.UUID `gorm:"type:uuid;column:course_id" json:"course_id,omitempty"`
+	Title             string     `gorm:"not null" json:"title"`
+	OrderIndex        int        `gorm:"column:order_index" json:"order_index"`
+	IsInPerson        bool       `gorm:"column:is_in_person" json:"is_in_person"`
+	InPersonDate      *time.Time `gorm:"column:in_person_date" json:"in_person_date,omitempty"`
+	StartTime         *string    `gorm:"column:start_time" json:"start_time,omitempty"`
+	EndTime           *string    `gorm:"column:end_time" json:"end_time,omitempty"`
+	CEP               *string    `gorm:"column:cep" json:"cep,omitempty"`
+	Street            *string    `gorm:"column:street" json:"street,omitempty"`
+	AddressNumber     *string    `gorm:"column:address_number" json:"address_number,omitempty"`
+	AddressComplement *string    `gorm:"column:address_complement" json:"address_complement,omitempty"`
+	Neighborhood      *string    `gorm:"column:neighborhood" json:"neighborhood,omitempty"`
+	City              *string    `gorm:"column:city" json:"city,omitempty"`
+	State             *string    `gorm:"column:state" json:"state,omitempty"`
+	Latitude          *float64   `gorm:"column:latitude" json:"latitude,omitempty"`
+	Longitude         *float64   `gorm:"column:longitude" json:"longitude,omitempty"`
+	WhatsAppURL       *string    `gorm:"column:whatsapp_url" json:"whatsapp_url,omitempty"`
+	AttendanceOpenAt  *time.Time `gorm:"column:attendance_open_at" json:"attendance_open_at,omitempty"`
+	AttendanceCloseAt *time.Time `gorm:"column:attendance_close_at" json:"attendance_close_at,omitempty"`
 }
 
 func (LMSModule) TableName() string { return "lms_modules" }
