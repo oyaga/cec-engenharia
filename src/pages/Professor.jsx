@@ -9,7 +9,7 @@ import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
     ShieldAlert, Users, Plus, X, Loader2, Info, Check,
     AlertCircle, AlertTriangle, MessageCircle, Clock, Send,
-    BarChart3, TrendingUp, Award
+    BarChart3, TrendingUp, Award, PlayCircle
 } from 'lucide-react'
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -49,6 +49,7 @@ export default function Professor() {
     const [eadDoubts, setEadDoubts] = useState([])
     const [answeringId, setAnsweringId] = useState(null)
     const [answerText, setAnswerText] = useState('')
+    const [doubtStatusFilter, setDoubtStatusFilter] = useState('pending')
     const [analyticsSearchTerm, setAnalyticsSearchTerm] = useState('')
 
     // Estados do Bate-papo Direto (messages)
@@ -595,10 +596,7 @@ export default function Professor() {
         setLoading(true)
         try {
             const { doubts } = await lmsApi.doubts()
-            const unanswered = (doubts || [])
-                .filter(d => !d.answer_text)
-                .map(d => ({ ...d, student: { full_name: d.student_name }, lesson: { title: d.lesson_title } }))
-            setEadDoubts(unanswered)
+            setEadDoubts((doubts || []).map(d => ({ ...d, student: { full_name: d.student_name }, lesson: { title: d.lesson_title } })))
         } catch { setEadDoubts([]) }
         setLoading(false)
     }
@@ -627,6 +625,9 @@ export default function Professor() {
             alert('Erro ao salvar resposta: ' + err.message)
         }
     }
+
+    const visibleVideoComments = eadDoubts.filter(doubt => doubtStatusFilter === 'all' || (doubtStatusFilter === 'pending' ? !doubt.answer_text : !!doubt.answer_text))
+    const pendingVideoComments = eadDoubts.filter(doubt => !doubt.answer_text).length
 
     // Funções do novo Fórum de Dúvidas Colaborativo para o Instrutor (Prioridade 🟡 9)
     const fetchForumTopicsForInstructor = async () => {
@@ -1279,9 +1280,9 @@ export default function Professor() {
                         onClick={() => setDoubtSubTab('perguntas')}
                         style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                        📝 Perguntas de Lições
+                        💬 Comentários dos Vídeos
                         <span style={{ fontSize: '0.7rem', backgroundColor: doubtSubTab === 'perguntas' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.06)', color: doubtSubTab === 'perguntas' ? 'white' : 'var(--text-secondary)', padding: '2px 8px', borderRadius: '999px', fontWeight: 'bold' }}>
-                            {eadDoubts.length}
+                            {pendingVideoComments}
                         </span>
                     </button>
                     <button
@@ -1300,13 +1301,19 @@ export default function Professor() {
                 {doubtSubTab === 'perguntas' ? (
                     loading ? <p>Buscando dúvidas pendentes...</p> : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                            {eadDoubts.map(doubt => (
+                            <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <strong style={{ fontSize: '.82rem' }}>Mostrar:</strong>
+                                <button className={`btn ${doubtStatusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('pending')}>Pendentes ({pendingVideoComments})</button>
+                                <button className={`btn ${doubtStatusFilter === 'answered' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('answered')}>Respondidos ({eadDoubts.length - pendingVideoComments})</button>
+                                <button className={`btn ${doubtStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('all')}>Todos</button>
+                            </div>
+                            {visibleVideoComments.map(doubt => (
                                 <div key={doubt.id} className="card" style={{ borderLeft: '4px solid var(--primary)', borderRadius: '12px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                                         <div>
                                             <h4 style={{ fontSize: '1rem', fontWeight: 600 }}>{doubt.student?.full_name}</h4>
                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                                {doubt.lesson?.lms_modules?.lms_courses?.title} &rarr; {doubt.lesson?.title}
+                                                <strong>{doubt.course_title || 'Curso EAD'}</strong> &rarr; {doubt.module_title || 'Módulo'} &rarr; {doubt.lesson_title || doubt.lesson?.title}
                                             </p>
                                         </div>
                                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -1316,6 +1323,8 @@ export default function Professor() {
                                     <p style={{ fontSize: '0.9rem', marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
                                         "{doubt.question_text}"
                                     </p>
+                                    {doubt.answer_text && <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', color: '#065f46' }}><strong>Sua resposta:</strong><div style={{ marginTop: '.35rem', whiteSpace: 'pre-wrap' }}>{doubt.answer_text}</div></div>}
+                                    {doubt.video_url && <a href={doubt.video_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ marginBottom: '1rem', display: 'inline-flex' }}><PlayCircle size={15} /> Abrir vídeo da aula</a>}
                                     
                                     {answeringId === doubt.id ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1332,15 +1341,15 @@ export default function Professor() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={() => setAnsweringId(doubt.id)}>
-                                            Responder Aluno
+                                        <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={() => { setAnswerText(doubt.answer_text || ''); setAnsweringId(doubt.id) }}>
+                                            {doubt.answer_text ? 'Editar resposta' : 'Responder comentário'}
                                         </button>
                                     )}
                                 </div>
                             ))}
-                            {eadDoubts.length === 0 && (
+                            {visibleVideoComments.length === 0 && (
                                 <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-                                    <p className="text-secondary">🎉 Não há dúvidas pendentes de resposta no momento!</p>
+                                    <p className="text-secondary">Não há comentários nesta situação.</p>
                                 </div>
                             )}
                         </div>
@@ -1848,8 +1857,9 @@ export default function Professor() {
     }
 
     const renderMessagesTab = () => (
-        <div style={{ height: 'calc(100vh - 220px)', minHeight: 480, border: '1px solid #e8edf3', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 40px -20px rgba(15,23,42,0.2)' }}>
-            <ChatPanel />
+        <div>
+            <div style={{ marginBottom: '1rem', padding: '1rem 1.25rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12 }}><strong>Chat do Professor</strong><div style={{ marginTop: '.25rem', fontSize: '.82rem', color: '#475569' }}>Use as abas Alunos, Secretaria e Professores para escolher com quem conversar em tempo real.</div></div>
+            <div style={{ height: 'calc(100vh - 300px)', minHeight: 480, border: '1px solid #e8edf3', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 40px -20px rgba(15,23,42,0.2)' }}><ChatPanel /></div>
         </div>
     )
 

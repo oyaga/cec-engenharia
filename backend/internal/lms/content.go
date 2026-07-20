@@ -568,7 +568,7 @@ func (h *Handler) ClaimCertificate(c *gin.Context) {
 	}
 	if hasGrade {
 		// score é 0-100; nota exibida é 0-10 com 1 casa
-		meta["grade"] = math.Round(grade/float64(len(finals)))/10
+		meta["grade"] = math.Round(grade/float64(len(finals))) / 10
 	}
 	metaJSON, _ := json.Marshal(meta)
 
@@ -681,15 +681,26 @@ func (h *Handler) DeleteQuestionBank(c *gin.Context) {
 func (h *Handler) ListDoubts(c *gin.Context) {
 	type row struct {
 		models.LMSLessonQuestion
-		StudentName string `json:"student_name"`
-		LessonTitle string `json:"lesson_title"`
+		StudentName string     `json:"student_name"`
+		LessonTitle string     `json:"lesson_title"`
+		ModuleTitle string     `json:"module_title"`
+		CourseTitle string     `json:"course_title"`
+		CourseID    *uuid.UUID `json:"course_id,omitempty"`
+		VideoURL    *string    `json:"video_url,omitempty"`
 	}
 	rows := []row{}
-	h.db.Table("lms_lesson_questions q").
-		Select("q.*, u.full_name as student_name, l.title as lesson_title").
+	query := h.db.Table("lms_lesson_questions q").
+		Select("q.*, u.full_name as student_name, l.title as lesson_title, l.video_url, m.title as module_title, c.title as course_title, c.id as course_id").
 		Joins("LEFT JOIN users u ON u.id = q.student_id").
 		Joins("LEFT JOIN lms_lessons l ON l.id = q.lesson_id").
-		Order("q.created_at DESC").Scan(&rows)
+		Joins("LEFT JOIN lms_modules m ON m.id = l.module_id").
+		Joins("LEFT JOIN lms_courses c ON c.id = m.course_id")
+	if middleware.Role(c) == "instrutor" {
+		uid := middleware.UserID(c)
+		query = query.Where(`EXISTS (SELECT 1 FROM instructor_courses ic WHERE ic.course_id = c.id AND ic.instructor_id = ?)
+			OR EXISTS (SELECT 1 FROM classes cl JOIN class_instructors ci ON ci.class_id = cl.id WHERE cl.lms_course_id = c.id AND ci.user_id = ?)`, uid, uid)
+	}
+	query.Order("q.created_at DESC").Scan(&rows)
 	c.JSON(http.StatusOK, gin.H{"doubts": rows})
 }
 
@@ -725,6 +736,20 @@ func (h *Handler) AnswerDoubt(c *gin.Context) {
 	if err := h.db.First(&d, "id = ?", c.Param("id")).Error; err != nil {
 		httpx.Error(c, http.StatusNotFound, "dúvida não encontrada")
 		return
+	}
+	if middleware.Role(c) == "instrutor" {
+		var allowed int64
+		h.db.Table("lms_lessons l").
+			Joins("JOIN lms_modules m ON m.id = l.module_id").
+			Joins("JOIN lms_courses course ON course.id = m.course_id").
+			Where("l.id = ?", d.LessonID).
+			Where(`EXISTS (SELECT 1 FROM instructor_courses ic WHERE ic.course_id = course.id AND ic.instructor_id = ?)
+				OR EXISTS (SELECT 1 FROM classes cl JOIN class_instructors ci ON ci.class_id = cl.id WHERE cl.lms_course_id = course.id AND ci.user_id = ?)`, middleware.UserID(c), middleware.UserID(c)).
+			Count(&allowed)
+		if allowed == 0 {
+			httpx.Error(c, http.StatusForbidden, "sem acesso aos comentários desta aula")
+			return
+		}
 	}
 	var body struct {
 		AnswerText string `json:"answer_text" binding:"required"`
