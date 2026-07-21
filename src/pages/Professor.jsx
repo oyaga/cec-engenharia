@@ -877,7 +877,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const pendentesRevisao = classes.filter(c => c.status === 'aguardando_revisao')
 
     const renderCardTurma = (turma, type) => (
-        <div key={turma.id} className="card animate-slide-up" style={{ border: type === 'revisao' ? '1px solid #FCD34D' : '1px solid var(--border-color)', backgroundColor: type === 'revisao' ? '#FFFDF5' : 'var(--surface-color)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRadius: '12px' }}>
+        <div key={turma.id} className={`card animate-slide-up prof-class-card prof-class-card--${type}`} style={{ border: type === 'revisao' ? '1px solid #FCD34D' : '1px solid var(--border-color)', backgroundColor: type === 'revisao' ? '#FFFDF5' : 'var(--surface-color)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRadius: '12px' }}>
             <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1rem' }}>
                     <div>
@@ -963,15 +963,15 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     )
 
     const renderTurmas = () => (
-        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+        <div className="animate-fade-in prof-classes-content" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
             
             {/* Seção 1: Pendentes de Revisão */}
             {pendentesRevisao.length > 0 && (
                 <div>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#B45309', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h3 className="prof-section-title prof-section-title--warning" style={{ fontSize: '1.2rem', fontWeight: '700', color: '#B45309', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <AlertTriangle size={20} /> Aulas Pendentes de Revisão ({pendentesRevisao.length})
                     </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
+                    <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {pendentesRevisao.map(t => renderCardTurma(t, 'revisao'))}
                     </div>
                 </div>
@@ -979,11 +979,11 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 
             {/* Seção 2: Próximas Aulas */}
             <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 className="prof-section-title" style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <CalendarIcon size={20} color="var(--primary)" /> Próximas Aulas Práticas ({proximasAulas.length})
                 </h3>
                 {proximasAulas.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
+                    <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {proximasAulas.map(t => renderCardTurma(t, 'futura'))}
                     </div>
                 ) : (
@@ -996,11 +996,11 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 
             {/* Seção 3: Histórico de Aulas */}
             <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 className="prof-section-title" style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <CheckSquare size={20} color="#10B981" /> Histórico de Aulas Concluídas ({historicoAulas.length})
                 </h3>
                 {historicoAulas.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
+                    <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
                         {historicoAulas.map(t => renderCardTurma(t, 'passada'))}
                     </div>
                 ) : (
@@ -1886,11 +1886,24 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 .prof-info-banner { margin-bottom: 1rem; padding: 1rem 1.25rem; color: #172033; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; }
 .prof-info-banner div { margin-top: .25rem; font-size: .82rem; color: #526177; }
 .prof-chat-panel { height: calc(100vh - 300px); min-height: 480px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 12px 40px -24px rgba(15,23,42,.35); }
+.prof-classes-content { gap: 2.2rem !important; }
+.prof-section-title { position: relative; margin-bottom: 1rem !important; padding-left: .8rem; font-size: 1.08rem !important; letter-spacing: -.015em; }
+.prof-section-title::before { content: ''; position: absolute; left: 0; top: 12%; width: 4px; height: 76%; border-radius: 999px; background: #0ea5ad; }
+.prof-section-title--warning::before { background: #f59e0b; }
+.prof-section-grid { gap: 1.15rem !important; }
+.prof-class-card { position: relative; overflow: hidden; padding: 1.35rem !important; border: 1px solid #e1e7f0 !important; border-radius: 16px !important; background: #fff !important; box-shadow: 0 10px 30px -24px rgba(15,23,42,.55); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.prof-class-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #18213f, #0ea5ad); }
+.prof-class-card--revisao { background: #fffdf5 !important; border-color: #f7d880 !important; }
+.prof-class-card--revisao::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.prof-class-card--passada::before { background: linear-gradient(90deg, #047857, #34d399); }
+.prof-class-card:hover { transform: translateY(-2px); border-color: #cbd5e1 !important; box-shadow: 0 18px 36px -26px rgba(15,23,42,.65); }
 @media (max-width: 768px) {
   .prof-portal { padding-bottom: 1.5rem; }
   .prof-tabs { margin-left: -.25rem; margin-right: -.25rem; margin-bottom: 1.25rem; padding-left: .25rem; padding-right: .25rem; }
   .prof-tab { min-height: 40px; padding: .55rem .75rem; font-size: .8rem; }
   .prof-chat-panel { height: calc(100dvh - 245px); min-height: 430px; border-radius: 12px; }
+  .prof-class-card { padding: 1.1rem !important; border-radius: 13px !important; }
+  .prof-section-grid { gap: .9rem !important; }
   .prof-diario-grid { grid-template-columns: 1fr !important; }
   .prof-messages-body { flex-direction: column !important; gap: 1rem !important; }
   .prof-messages-list { width: 100% !important; max-height: 200px !important; border-right: none !important; border-bottom: 1px solid var(--border-color) !important; padding-right: 0 !important; padding-bottom: 0.5rem !important; }
