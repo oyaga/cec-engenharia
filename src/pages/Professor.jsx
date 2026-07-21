@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { classesApi, studentsApi, attendanceApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
@@ -25,6 +26,7 @@ const JUSTIFICATION_OPTIONS = [
 ]
 
 export default function Professor({ initialTab = 'minhasTurmas' }) {
+    const navigate = useNavigate()
     const { session, userProfile } = useAuth()
     const uid = session?.user?.id
     const [activeTab, setActiveTab] = useState(initialTab) // minhasTurmas | duvidasEad | messages | analytics | diario
@@ -1863,51 +1865,75 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     }
 
     const renderMessagesTab = () => (
-        <div>
-            <div style={{ marginBottom: '1rem', padding: '1rem 1.25rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12 }}><strong>Chat do Professor</strong><div style={{ marginTop: '.25rem', fontSize: '.82rem', color: '#475569' }}>Use as abas Alunos, Secretaria e Professores para escolher com quem conversar em tempo real.</div></div>
-            <div style={{ height: 'calc(100vh - 300px)', minHeight: 480, border: '1px solid #e8edf3', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 40px -20px rgba(15,23,42,0.2)' }}><ChatPanel /></div>
+        <div className="prof-chat-section">
+            <div className="prof-info-banner"><strong>Chat do Professor</strong><div>Use as abas Alunos, Secretaria e Professores para escolher com quem conversar em tempo real.</div></div>
+            <div className="prof-chat-panel"><ChatPanel /></div>
         </div>
     )
 
     return (
-        <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
+        <div className="animate-fade-in prof-portal">
             <style>{`
+.prof-portal { padding-bottom: 3rem; color: #172033; }
+.prof-page-header { margin-bottom: 1.35rem; }
+.prof-page-title { font-size: clamp(1.35rem, 2vw, 1.65rem); font-weight: 800; color: #172033; margin: 0 0 .3rem; letter-spacing: -.025em; }
+.prof-page-subtitle { margin: 0; color: #71809a; font-size: .91rem; }
+.prof-tabs { display: flex; gap: .5rem; padding-bottom: 1rem; margin-bottom: 2rem; border-bottom: 1px solid #e4e9f1; overflow-x: auto; scrollbar-width: thin; }
+.prof-tab { flex: 0 0 auto; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .62rem .9rem; border: 1px solid #dce3ed; border-radius: 9px; background: #fff; color: #344055; font-size: .86rem; font-weight: 650; cursor: pointer; transition: border-color .18s, background .18s, color .18s, transform .18s; }
+.prof-tab:hover { border-color: #aeb9ca; background: #f8fafc; transform: translateY(-1px); }
+.prof-tab.is-active { background: #18213f; border-color: #18213f; color: #fff; box-shadow: 0 7px 18px -12px rgba(24,33,63,.8); }
+.prof-tab:focus-visible { outline: 3px solid rgba(14,165,173,.24); outline-offset: 2px; }
+.prof-info-banner { margin-bottom: 1rem; padding: 1rem 1.25rem; color: #172033; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; }
+.prof-info-banner div { margin-top: .25rem; font-size: .82rem; color: #526177; }
+.prof-chat-panel { height: calc(100vh - 300px); min-height: 480px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 12px 40px -24px rgba(15,23,42,.35); }
 @media (max-width: 768px) {
+  .prof-portal { padding-bottom: 1.5rem; }
+  .prof-tabs { margin-left: -.25rem; margin-right: -.25rem; margin-bottom: 1.25rem; padding-left: .25rem; padding-right: .25rem; }
+  .prof-tab { min-height: 40px; padding: .55rem .75rem; font-size: .8rem; }
+  .prof-chat-panel { height: calc(100dvh - 245px); min-height: 430px; border-radius: 12px; }
   .prof-diario-grid { grid-template-columns: 1fr !important; }
   .prof-messages-body { flex-direction: column !important; gap: 1rem !important; }
   .prof-messages-list { width: 100% !important; max-height: 200px !important; border-right: none !important; border-bottom: 1px solid var(--border-color) !important; padding-right: 0 !important; padding-bottom: 0.5rem !important; }
   .prof-students-modal-row { grid-template-columns: 1fr !important; }
 }
 `}</style>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div className="prof-page-header">
                 <div>
-                    <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Portal do Instrutor / Professor</h2>
-                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>Gerencie suas aulas presenciais, faça chamadas e responda a dúvidas do EAD.</p>
+                    <h2 className="prof-page-title">Portal do Instrutor / Professor</h2>
+                    <p className="prof-page-subtitle">Gerencie suas aulas presenciais, faça chamadas e responda às dúvidas do EAD.</p>
                 </div>
             </div>
             
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '2rem' }}>
+            <div className="prof-tabs" role="tablist" aria-label="Áreas do portal do professor">
                 <button
-                    className={`btn ${activeTab === 'minhasTurmas' || activeTab === 'diario' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('minhasTurmas')}
+                    className={`prof-tab ${activeTab === 'minhasTurmas' || activeTab === 'diario' ? 'is-active' : ''}`}
+                    onClick={() => { setActiveTab('minhasTurmas'); navigate('/professor') }}
+                    role="tab"
+                    aria-selected={activeTab === 'minhasTurmas' || activeTab === 'diario'}
                 >
                     <List size={16} /> Fichário Eletrônico (Presencial)
                 </button>
                 <button
-                    className={`btn ${activeTab === 'duvidasEad' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('duvidasEad')}
+                    className={`prof-tab ${activeTab === 'duvidasEad' ? 'is-active' : ''}`}
+                    onClick={() => { setActiveTab('duvidasEad'); navigate('/professor/comentarios') }}
+                    role="tab"
+                    aria-selected={activeTab === 'duvidasEad'}
                 >
                     <BookOpen size={16} /> Dúvidas Pedagógicas (EAD)
                 </button>
                 <button
-                    className={`btn ${activeTab === 'messages' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('messages')}
+                    className={`prof-tab ${activeTab === 'messages' ? 'is-active' : ''}`}
+                    onClick={() => { setActiveTab('messages'); navigate('/professor/chat') }}
+                    role="tab"
+                    aria-selected={activeTab === 'messages'}
                 >
                     <MessageCircle size={16} /> Mensagens Diretas (Chats)
                 </button>
                 <button
-                    className={`btn ${activeTab === 'analytics' ? 'btn-primary' : 'btn-secondary'}`}
+                    className={`prof-tab ${activeTab === 'analytics' ? 'is-active' : ''}`}
                     onClick={() => setActiveTab('analytics')}
+                    role="tab"
+                    aria-selected={activeTab === 'analytics'}
                 >
                     <BarChart3 size={16} /> Aproveitamento &amp; Analytics
                 </button>
