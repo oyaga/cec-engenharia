@@ -9,7 +9,7 @@ import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
     ShieldAlert, Users, Plus, X, Loader2, Info, Check,
     AlertCircle, AlertTriangle, MessageCircle, Clock, Send,
-    BarChart3, TrendingUp, Award, PlayCircle
+    BarChart3, TrendingUp, Award, PlayCircle, RotateCw
 } from 'lucide-react'
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
