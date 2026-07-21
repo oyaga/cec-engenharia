@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
 import { classesApi, studentsApi, attendanceApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
@@ -28,7 +27,6 @@ const JUSTIFICATION_OPTIONS = [
 ]
 
 export default function Professor({ initialTab = 'minhasTurmas' }) {
-    const navigate = useNavigate()
     const { session, userProfile } = useAuth()
     const uid = session?.user?.id
     const [activeTab, setActiveTab] = useState(initialTab) // minhasTurmas | duvidasEad | messages | analytics | diario
@@ -619,7 +617,6 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         if (activeTab === 'minhasTurmas') fetchClasses()
         if (activeTab === 'duvidasEad') {
             fetchEadDoubts()
-            fetchForumTopicsForInstructor()
         }
     }, [activeTab])
 
@@ -1247,7 +1244,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         )
     }
 
-    const renderDoubtEad = () => {
+    const renderDoubtEadLegacy = () => {
         return (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '2rem' }}>
                 
@@ -1492,6 +1489,21 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             </div>
         )
     }
+
+    const renderDoubtEad = () => (
+        <ProfessorComments
+            comments={eadDoubts}
+            loading={loading}
+            status={doubtStatusFilter}
+            onStatusChange={setDoubtStatusFilter}
+            answeringId={answeringId}
+            answerText={answerText}
+            onAnswerTextChange={setAnswerText}
+            onStartAnswer={(comment) => { setAnswerText(comment.answer_text || ''); setAnsweringId(comment.id) }}
+            onCancelAnswer={() => setAnsweringId(null)}
+            onSendAnswer={handleSendAnswer}
+        />
+    )
 
     const renderAnalyticsTab = () => {
         const filteredStudents = analyticsData.studentsList.filter(student => 
@@ -1792,21 +1804,11 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     }
 
     const renderMessagesTab = () => (
-        <div className="prof-chat-section">
-            <div className="prof-info-banner"><strong>Chat do Professor</strong><div>Use as abas Alunos, Secretaria e Professores para escolher com quem conversar em tempo real.</div></div>
-            <div className="prof-chat-panel"><ChatPanel /></div>
-        </div>
+        <div className="prof-chat-panel"><ChatPanel /></div>
     )
 
-    const handlePortalTabChange = (tab) => {
-        setActiveTab(tab)
-        if (tab === 'minhasTurmas') navigate('/professor')
-        if (tab === 'duvidasEad') navigate('/professor/comentarios')
-        if (tab === 'messages') navigate('/professor/chat')
-    }
-
     return (
-        <ProfessorShell activeTab={activeTab} onTabChange={handlePortalTabChange}>
+        <ProfessorShell activeTab={activeTab}>
             <style>{`
 .prof-portal { padding-bottom: 3rem; color: #172033; }
 .prof-page-header { margin-bottom: 1.35rem; }
@@ -1819,7 +1821,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 .prof-tab:focus-visible { outline: 3px solid rgba(14,165,173,.24); outline-offset: 2px; }
 .prof-info-banner { margin-bottom: 1rem; padding: 1rem 1.25rem; color: #172033; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; }
 .prof-info-banner div { margin-top: .25rem; font-size: .82rem; color: #526177; }
-.prof-chat-panel { height: calc(100vh - 300px); min-height: 480px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 12px 40px -24px rgba(15,23,42,.35); }
+.prof-chat-panel { height: calc(100vh - 128px); min-height: 520px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
 .prof-classes-content { gap: 2.2rem !important; }
 .prof-section-title { position: relative; margin-bottom: 1rem !important; padding-left: .8rem; font-size: 1.08rem !important; letter-spacing: -.015em; }
 .prof-section-title::before { content: ''; position: absolute; left: 0; top: 12%; width: 4px; height: 76%; border-radius: 999px; background: #0ea5ad; }
@@ -1869,7 +1871,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
   .prof-portal { padding-bottom: 1.5rem; }
   .prof-tabs { margin-left: -.25rem; margin-right: -.25rem; margin-bottom: 1.25rem; padding-left: .25rem; padding-right: .25rem; }
   .prof-tab { min-height: 40px; padding: .55rem .75rem; font-size: .8rem; }
-  .prof-chat-panel { height: calc(100dvh - 245px); min-height: 430px; border-radius: 12px; }
+  .prof-chat-panel { height: calc(100dvh - 104px); min-height: 430px; border-radius: 8px; }
   .prof-class-card { padding: 1.1rem; border-radius: 13px; }
   .prof-section-grid { gap: .9rem !important; }
   .prof-class-heading { flex-direction: column; }
