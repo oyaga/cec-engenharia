@@ -12,9 +12,9 @@ const linkStyle = ({ isActive }) => ({
     fontWeight: isActive ? 600 : 500,
 })
 
-function NavItem({ to, icon: Icon, label, hint }) {
+function NavItem({ to, icon: Icon, label, hint, end = false }) {
     return (
-        <NavLink to={to} style={linkStyle}>
+        <NavLink to={to} end={end} style={linkStyle}>
             <Icon size={18} style={{ flexShrink: 0 }} />
             <span style={{ flex: 1 }}>{label}</span>
             {hint && <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400 }}>{hint}</span>}
@@ -191,7 +191,9 @@ export default function Sidebar() {
                         {can.ead && <NavItem to="/lms" icon={Video} label="Plataforma EAD" hint="Aulas & provas" />}
                         {can.certificados && <NavItem to="/secretaria/certificados" icon={Award} label="Certificados" />}
                         {can.instrutores && <NavItem to="/secretaria/instrutores" icon={UserCheck} label="Instrutores" />}
-                        {can.professor && <NavItem to="/professor" icon={Presentation} label="Portal do instrutor" hint="Notas & freq." />}
+                        {can.professor && <NavItem to="/professor" end icon={Presentation} label="Minhas turmas" hint="Notas & freq." />}
+                        {can.professor && <NavItem to="/professor/chat" icon={MessageSquare} label="Chat" hint="Alunos & secretaria" />}
+                        {can.professor && <NavItem to="/professor/comentarios" icon={Video} label="Comentários dos vídeos" />}
                     </>}
 
                     {/* ── Financeiro ── */}

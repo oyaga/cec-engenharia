@@ -24,10 +24,10 @@ const JUSTIFICATION_OPTIONS = [
     'Outro'
 ]
 
-export default function Professor() {
+export default function Professor({ initialTab = 'minhasTurmas' }) {
     const { session, userProfile } = useAuth()
     const uid = session?.user?.id
-    const [activeTab, setActiveTab] = useState('minhasTurmas') // minhasTurmas | duvidasEad | diario
+    const [activeTab, setActiveTab] = useState(initialTab) // minhasTurmas | duvidasEad | messages | analytics | diario
     const [selectedClass, setSelectedClass] = useState(null)
     const [loading, setLoading] = useState(true)
     const [userRole, setUserRole] = useState('instrutor')

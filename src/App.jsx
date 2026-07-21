@@ -191,6 +191,8 @@ function App() {
               <Route path="/financeiro" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_financeiro"><Financeiro /></RoleGuard>} />
               <Route path="/relatorios" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_relatorios"><Relatorios /></RoleGuard>} />
               <Route path="/professor" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
+              <Route path="/professor/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor initialTab="messages" /></RoleGuard>} />
+              <Route path="/professor/comentarios" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor initialTab="duvidasEad" /></RoleGuard>} />
               <Route path="/auditoria" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_auditoria"><Auditoria /></RoleGuard>} />
               <Route path="/ouvidoria-admin" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_ouvidoria"><OuvidoriaAdmin /></RoleGuard>} />
               <Route path="/admin/testimonials" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']} requiredPermission="access_dashboard"><TestimonialsAdmin /></RoleGuard>} />
