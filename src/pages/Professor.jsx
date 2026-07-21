@@ -32,6 +32,12 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const [loading, setLoading] = useState(true)
     const [userRole, setUserRole] = useState('instrutor')
 
+    // O React Router reutiliza esta tela entre as rotas do professor. Mantém o
+    // conteúdo exibido sincronizado com o item selecionado no menu lateral.
+    useEffect(() => {
+        setActiveTab(initialTab)
+    }, [initialTab])
+
     // "Minhas turmas": admin/coord veem todas; instrutor vê onde é vinculado.
     const filterMyClasses = (all) => {
         const role = userProfile?.role
