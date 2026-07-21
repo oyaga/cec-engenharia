@@ -231,7 +231,7 @@ export default function Sidebar() {
 
                 <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500, letterSpacing: '0.05em' }}>
-                        CEC Portal v2.2.0
+                        CEC Portal v2.2.3
                     </div>
                     <button
                         onClick={handleLogout}
