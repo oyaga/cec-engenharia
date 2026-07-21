@@ -989,12 +989,12 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         const isReadOnly = selectedClass.status === 'completed' && userRole !== 'admin' && userRole !== 'coordenador'
 
         return (
-            <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
-                <button className="btn btn-secondary" style={{ marginBottom: '1.5rem' }} onClick={() => { setActiveTab('minhasTurmas'); setSelectedClass(null) }}>
+            <div className="animate-fade-in prof-diary" style={{ paddingBottom: '3rem' }}>
+                <button className="prof-back-button" onClick={() => { setActiveTab('minhasTurmas'); setSelectedClass(null) }}>
                     &larr; Voltar às Minhas Turmas
                 </button>
 
-                <div className="card" style={{ marginBottom: '2rem', borderLeft: '4px solid var(--primary)', borderRadius: '12px' }}>
+                <div className="prof-diary-header" style={{ marginBottom: '2rem', borderLeft: '4px solid var(--primary)', borderRadius: '12px' }}>
                     <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>
                         Fichário Eletrônico &amp; Diário de Presença
                     </h2>
@@ -1070,8 +1070,8 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 
                 <div className="prof-diario-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: '2rem', alignItems: 'start' }}>
                     {/* Fichário */}
-                    <div className="card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="prof-diary-card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                        <h3 className="prof-diary-card-title" style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <Edit3 size={18} color="var(--primary)" /> Conteúdo Ministrado (Ficha)
                         </h3>
                         
@@ -1136,8 +1136,8 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                     </div>
 
                     {/* Frequência */}
-                    <div className="card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="prof-diary-card prof-attendance-card" style={{ padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                        <h3 className="prof-diary-card-title" style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <CheckSquare size={18} color="var(--primary)" /> Chamada Presencial
                         </h3>
                         {inPersonModules.length > 0 && <div className="form-group" style={{ marginBottom:'1rem' }}><label className="form-label">Módulo presencial</label><select className="form-control" value={selectedAttendanceModule?.id || ''} onChange={e => handleAttendanceModuleChange(e.target.value)}>{inPersonModules.map(mod => <option key={mod.id} value={mod.id}>{mod.title} {mod.in_person_date ? `— ${new Date(`${mod.in_person_date.slice(0,10)}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}</option>)}</select></div>}
@@ -1149,13 +1149,13 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                                     const j = justifications[student.id] || { type: '', note: '' }
 
                                     return (
-                                        <div key={student.id} style={{ padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: idx % 2 === 0 ? '#FAFBFD' : '#FFFFFF' }}>
+                                        <div key={student.id} className="prof-attendance-row" style={{ padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: idx % 2 === 0 ? '#FAFBFD' : '#FFFFFF' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem' }}>
                                                 <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-primary)' }}>{student.full_name}</span>
                                                 {selectedAttendanceModule && <span style={{ fontSize:'0.7rem', fontWeight:700, padding:'0.2rem 0.5rem', borderRadius:'999px', background:studentConfirmations[student.id] ? '#dcfce7' : '#fef3c7', color:studentConfirmations[student.id] ? '#166534' : '#92400e' }}>{studentConfirmations[student.id] ? 'Aluno confirmou' : 'Aguardando aluno'}</span>}
                                                 
                                                 {/* Seletor de Estados da Chamada */}
-                                                <div style={{ display: 'flex', gap: '0.25rem', backgroundColor: '#F1F5F9', padding: '2px', borderRadius: '6px', opacity: isReadOnly ? 0.7 : 1 }}>
+                                                <div className="prof-attendance-options" style={{ display: 'flex', gap: '0.25rem', backgroundColor: '#F1F5F9', padding: '2px', borderRadius: '6px', opacity: isReadOnly ? 0.7 : 1 }}>
                                                     <button 
                                                         type="button"
                                                         onClick={() => !isReadOnly && handleAttendanceChange(student.id, 'presente')}
@@ -1886,6 +1886,20 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 .prof-action-button--primary:hover { color: #fff; background: #243252; border-color: #243252; }
 .prof-action-button--success { color: #087443; background: #ecfdf5; border-color: #a7f3d0; }
 .prof-action-button--success:hover { color: #065f46; background: #d1fae5; border-color: #6ee7b7; }
+.prof-back-button { display: inline-flex; align-items: center; min-height: 38px; margin-bottom: 1.1rem; padding: .5rem .8rem; border: 1px solid #dce3ed; border-radius: 8px; background: #fff; color: #4c596c; font-size: .78rem; font-weight: 650; cursor: pointer; }
+.prof-back-button:hover { background: #f8fafc; border-color: #b9c4d3; }
+.prof-diary-header { position: relative; overflow: hidden; padding: 1.4rem 1.5rem; border: 1px solid #e1e7f0; border-left: 0 !important; border-radius: 14px !important; background: linear-gradient(135deg, #fff, #f7f9fc); box-shadow: 0 10px 30px -26px rgba(15,23,42,.6); }
+.prof-diary-header::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: linear-gradient(#18213f, #0ea5ad); }
+.prof-diary-header h2 { margin: 0 0 .35rem !important; color: #172033 !important; font-size: 1.35rem !important; letter-spacing: -.02em; }
+.prof-diary-card { padding: 1.35rem !important; border: 1px solid #e1e7f0 !important; border-radius: 15px !important; background: #fff; box-shadow: 0 12px 34px -28px rgba(15,23,42,.65); }
+.prof-diary-card-title { margin-bottom: 1.15rem !important; padding-bottom: .8rem !important; color: #172033; border-bottom-color: #e6ebf2 !important; font-size: 1rem !important; }
+.prof-diary-card .form-label { color: #526177; font-size: .76rem !important; letter-spacing: .01em; }
+.prof-diary-card .form-control { min-height: 42px; border-color: #dce3ed; border-radius: 8px; box-shadow: none; }
+.prof-attendance-card { min-width: 0; }
+.prof-attendance-row { padding: 1rem !important; border-color: #e5eaf1 !important; border-radius: 10px !important; background: #fff !important; box-shadow: 0 4px 14px -14px rgba(15,23,42,.6); }
+.prof-attendance-options { padding: 3px !important; border: 1px solid #e1e7ef; border-radius: 8px !important; background: #f1f5f9 !important; }
+.prof-attendance-options button { min-height: 32px; transition: transform .15s, box-shadow .15s; }
+.prof-attendance-options button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 9px -7px rgba(15,23,42,.7); }
 @media (max-width: 768px) {
   .prof-portal { padding-bottom: 1.5rem; }
   .prof-tabs { margin-left: -.25rem; margin-right: -.25rem; margin-bottom: 1.25rem; padding-left: .25rem; padding-right: .25rem; }
@@ -1897,6 +1911,11 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
   .prof-class-meta { grid-template-columns: 1fr; }
   .prof-class-actions { grid-template-columns: 1fr; }
   .prof-action-button--primary, .prof-action-button--success { grid-column: auto; }
+  .prof-diary-header { padding: 1.1rem 1.15rem; }
+  .prof-diary-card { padding: 1rem !important; }
+  .prof-attendance-row > div:first-child { align-items: flex-start !important; }
+  .prof-attendance-options { width: 100%; overflow-x: auto; }
+  .prof-attendance-options button { flex: 1 0 auto; }
   .prof-diario-grid { grid-template-columns: 1fr !important; }
   .prof-messages-body { flex-direction: column !important; gap: 1rem !important; }
   .prof-messages-list { width: 100% !important; max-height: 200px !important; border-right: none !important; border-bottom: 1px solid var(--border-color) !important; padding-right: 0 !important; padding-bottom: 0.5rem !important; }
