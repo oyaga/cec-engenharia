@@ -10,7 +10,7 @@ import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
     ShieldAlert, Users, Plus, X, Loader2, Info, Check,
     AlertCircle, AlertTriangle, MessageCircle, Clock, Send,
-    BarChart3, TrendingUp, Award, PlayCircle, RotateCw
+    BarChart3, TrendingUp, Award, PlayCircle, RotateCw, MapPin
 } from 'lucide-react'
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -876,91 +876,60 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const historicoAulas = classes.filter(c => c.status === 'completed')
     const pendentesRevisao = classes.filter(c => c.status === 'aguardando_revisao')
 
-    const renderCardTurma = (turma, type) => (
-        <div key={turma.id} className={`card animate-slide-up prof-class-card prof-class-card--${type}`} style={{ border: type === 'revisao' ? '1px solid #FCD34D' : '1px solid var(--border-color)', backgroundColor: type === 'revisao' ? '#FFFDF5' : 'var(--surface-color)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRadius: '12px' }}>
-            <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+    const renderCardTurma = (turma, type) => {
+        const courseTitle = turma.lms_courses?.title || turma.course_name || 'Curso não informado'
+        const classDate = turma.start_date
+            ? new Date(`${turma.start_date}T12:00:00`).toLocaleDateString('pt-BR')
+            : 'A agendar'
+
+        return (
+            <article key={turma.id} className={`prof-class-card prof-class-card--${type}`}>
+                <div className="prof-class-heading">
                     <div>
-                        <h3 style={{ fontSize: '1.15rem', fontWeight: '700', marginBottom: '0.4rem', color: 'var(--text-primary)' }}>
-                            Aula Prática — {turma.lms_courses?.title || turma.course_name || 'Sem Nome'} {turma.lms_courses?.code ? `(${turma.lms_courses.code})` : ''}
-                        </h3>
-                        <span style={{ fontSize: '0.75rem', fontWeight: '600', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px' }}>
-                            Turma: {turma.name}
-                        </span>
+                        <span className="prof-class-eyebrow">{type === 'passada' ? 'Aula concluída' : type === 'revisao' ? 'Revisão necessária' : 'Próxima aula presencial'}</span>
+                        <h3>Aula Prática — {courseTitle} {turma.lms_courses?.code ? `(${turma.lms_courses.code})` : ''}</h3>
+                        <span className="prof-class-badge">Turma: {turma.name}</span>
                     </div>
+                    <span className={`prof-status-badge prof-status-badge--${type}`}>
+                        {type === 'passada' ? 'Concluída' : type === 'revisao' ? 'Pendente' : 'Programada'}
+                    </span>
                 </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    <span><strong>📅 Data Prevista:</strong> {turma.start_date ? new Date(turma.start_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'A agendar'}</span>
-                    <span><strong>⏰ Horário:</strong> {turma.schedule || 'Não definido'}</span>
-                    <span><strong>📍 Local:</strong> {turma.address || 'Sede C&C Engenharia'}</span>
+
+                <div className="prof-class-meta">
+                    <div><CalendarIcon size={17} /><span><small>Data prevista</small><strong>{classDate}</strong></span></div>
+                    <div><Clock size={17} /><span><small>Horário</small><strong>{turma.schedule || 'Não definido'}</strong></span></div>
+                    <div><MapPin size={17} /><span><small>Local</small><strong>{turma.address || 'Sede C&C Engenharia'}</strong></span></div>
                 </div>
 
                 {type === 'revisao' && (
-                    <div style={{ 
-                        marginTop: '1rem', 
-                        padding: '0.5rem 0.75rem', 
-                        backgroundColor: '#FEF3C7', 
-                        border: '1px solid #FCD34D', 
-                        borderRadius: '6px', 
-                        color: '#92400E', 
-                        fontSize: '0.78rem', 
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem'
-                    }}>
-                        <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-                        <span>Revisar data/horário com a secretaria</span>
-                    </div>
+                    <div className="prof-review-alert"><AlertTriangle size={16} /><span>Revise a data e o horário com a secretaria antes de liberar a chamada.</span></div>
                 )}
-            </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
-                {type !== 'revisao' && (
-                    <>
-                        <button 
-                            className="btn btn-secondary" 
-                            style={{ flex: 1, minWidth: '100px', fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-                            onClick={() => handleOpenStudentsModal(turma)}
-                        >
-                            <Users size={14} /> Alunos
+                <div className="prof-class-actions">
+                    {type !== 'revisao' && (
+                        <button className="prof-action-button" onClick={() => handleOpenStudentsModal(turma)}>
+                            <Users size={16} /> Alunos
                         </button>
-                        
-                        {type === 'futura' && (
-                            <button 
-                                className="btn btn-secondary" 
-                                style={{ flex: 1, minWidth: '100px', fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-                                onClick={() => handleOpenEditClassModal(turma)}
-                            >
-                                <Edit3 size={14} /> Editar Aula
-                            </button>
-                        )}
-                    </>
-                )}
-
-                {type !== 'passada' && type !== 'revisao' && (
-                    <button 
-                        className="btn btn-primary" 
-                        style={{ width: '100%', fontSize: '0.85rem', padding: '0.5rem 1rem', marginTop: '0.5rem' }}
-                        onClick={() => handleOpenDiario(turma)}
-                    >
-                        <CheckSquare size={15} /> Abrir Diário / Fazer Chamada
-                    </button>
-                )}
-
-                {type === 'passada' && (
-                    <button 
-                        className="btn btn-secondary" 
-                        style={{ width: '100%', fontSize: '0.85rem', padding: '0.5rem 1rem', backgroundColor: '#F0FDF4', color: '#166534', borderColor: '#BBF7D0' }}
-                        onClick={() => handleOpenDiario(turma)}
-                    >
-                        <Check size={15} /> Ver Diário Salvo / Chamada
-                    </button>
-                )}
-            </div>
-        </div>
-    )
+                    )}
+                    {type === 'futura' && (
+                        <button className="prof-action-button" onClick={() => handleOpenEditClassModal(turma)}>
+                            <Edit3 size={16} /> Editar aula
+                        </button>
+                    )}
+                    {type === 'futura' && (
+                        <button className="prof-action-button prof-action-button--primary" onClick={() => handleOpenDiario(turma)}>
+                            <CheckSquare size={17} /> Abrir Diário / Fazer Chamada
+                        </button>
+                    )}
+                    {type === 'passada' && (
+                        <button className="prof-action-button prof-action-button--success" onClick={() => handleOpenDiario(turma)}>
+                            <Check size={17} /> Ver Diário Salvo / Chamada
+                        </button>
+                    )}
+                </div>
+            </article>
+        )
+    }
 
     const renderTurmas = () => (
         <div className="animate-fade-in prof-classes-content" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
@@ -1890,20 +1859,44 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 .prof-section-title { position: relative; margin-bottom: 1rem !important; padding-left: .8rem; font-size: 1.08rem !important; letter-spacing: -.015em; }
 .prof-section-title::before { content: ''; position: absolute; left: 0; top: 12%; width: 4px; height: 76%; border-radius: 999px; background: #0ea5ad; }
 .prof-section-title--warning::before { background: #f59e0b; }
-.prof-section-grid { gap: 1.15rem !important; }
-.prof-class-card { position: relative; overflow: hidden; padding: 1.35rem !important; border: 1px solid #e1e7f0 !important; border-radius: 16px !important; background: #fff !important; box-shadow: 0 10px 30px -24px rgba(15,23,42,.55); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.prof-section-grid { grid-template-columns: 1fr !important; gap: 1rem !important; }
+.prof-class-card { position: relative; overflow: hidden; padding: 1.45rem; border: 1px solid #e1e7f0; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px -24px rgba(15,23,42,.55); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
 .prof-class-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #18213f, #0ea5ad); }
-.prof-class-card--revisao { background: #fffdf5 !important; border-color: #f7d880 !important; }
+.prof-class-card--revisao { background: #fffdf5; border-color: #f7d880; }
 .prof-class-card--revisao::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
 .prof-class-card--passada::before { background: linear-gradient(90deg, #047857, #34d399); }
-.prof-class-card:hover { transform: translateY(-2px); border-color: #cbd5e1 !important; box-shadow: 0 18px 36px -26px rgba(15,23,42,.65); }
+.prof-class-card:hover { transform: translateY(-2px); border-color: #cbd5e1; box-shadow: 0 18px 36px -26px rgba(15,23,42,.65); }
+.prof-class-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e6ebf2; }
+.prof-class-heading h3 { margin: .2rem 0 .55rem; color: #172033; font-size: 1.08rem; line-height: 1.4; letter-spacing: -.015em; }
+.prof-class-eyebrow { color: #7b8799; font-size: .68rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.prof-class-badge { display: inline-flex; padding: .24rem .55rem; border-radius: 5px; background: #eef2fb; color: #243252; font-size: .72rem; font-weight: 700; }
+.prof-status-badge { flex: 0 0 auto; padding: .28rem .58rem; border-radius: 999px; background: #eaf8fa; color: #087c84; font-size: .7rem; font-weight: 750; }
+.prof-status-badge--passada { background: #ecfdf5; color: #047857; }
+.prof-status-badge--revisao { background: #fef3c7; color: #92400e; }
+.prof-class-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; padding: 1rem 0; }
+.prof-class-meta > div { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .75rem; border: 1px solid #e7ebf1; border-radius: 10px; background: #f8fafc; color: #536177; }
+.prof-class-meta span { display: flex; flex-direction: column; min-width: 0; }
+.prof-class-meta small { color: #8995a7; font-size: .65rem; text-transform: uppercase; letter-spacing: .04em; }
+.prof-class-meta strong { overflow: hidden; color: #344055; font-size: .78rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.prof-review-alert { display: flex; align-items: center; gap: .55rem; margin-bottom: 1rem; padding: .7rem .8rem; border: 1px solid #f6d365; border-radius: 9px; background: #fef3c7; color: #8a4b08; font-size: .78rem; font-weight: 600; }
+.prof-class-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; padding-top: 1rem; border-top: 1px solid #e6ebf2; }
+.prof-action-button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .55rem .75rem; border: 1px solid #dce3ed; border-radius: 8px; background: #fff; color: #3f4b5f; font-size: .78rem; font-weight: 650; cursor: pointer; transition: background .18s, border-color .18s, transform .18s; }
+.prof-action-button:hover { background: #f8fafc; border-color: #b9c4d3; transform: translateY(-1px); }
+.prof-action-button--primary, .prof-action-button--success { grid-column: 1 / -1; color: #fff; background: #18213f; border-color: #18213f; }
+.prof-action-button--primary:hover { color: #fff; background: #243252; border-color: #243252; }
+.prof-action-button--success { color: #087443; background: #ecfdf5; border-color: #a7f3d0; }
+.prof-action-button--success:hover { color: #065f46; background: #d1fae5; border-color: #6ee7b7; }
 @media (max-width: 768px) {
   .prof-portal { padding-bottom: 1.5rem; }
   .prof-tabs { margin-left: -.25rem; margin-right: -.25rem; margin-bottom: 1.25rem; padding-left: .25rem; padding-right: .25rem; }
   .prof-tab { min-height: 40px; padding: .55rem .75rem; font-size: .8rem; }
   .prof-chat-panel { height: calc(100dvh - 245px); min-height: 430px; border-radius: 12px; }
-  .prof-class-card { padding: 1.1rem !important; border-radius: 13px !important; }
+  .prof-class-card { padding: 1.1rem; border-radius: 13px; }
   .prof-section-grid { gap: .9rem !important; }
+  .prof-class-heading { flex-direction: column; }
+  .prof-class-meta { grid-template-columns: 1fr; }
+  .prof-class-actions { grid-template-columns: 1fr; }
+  .prof-action-button--primary, .prof-action-button--success { grid-column: auto; }
   .prof-diario-grid { grid-template-columns: 1fr !important; }
   .prof-messages-body { flex-direction: column !important; gap: 1rem !important; }
   .prof-messages-list { width: 100% !important; max-height: 200px !important; border-right: none !important; border-bottom: 1px solid var(--border-color) !important; padding-right: 0 !important; padding-bottom: 0.5rem !important; }
