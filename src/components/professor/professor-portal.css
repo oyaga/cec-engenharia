@@ -1,0 +1,100 @@
+.professor-portal {
+  padding-bottom: 3rem;
+  color: #172033;
+}
+
+.professor-portal__heading {
+  margin-bottom: 1.35rem;
+}
+
+.professor-portal__heading h1 {
+  margin: 0 0 0.25rem;
+  color: #172033;
+  font-size: clamp(1.4rem, 2vw, 1.65rem);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+}
+
+.professor-portal__heading p {
+  margin: 0;
+  color: #8a99b0;
+  font-size: 0.9rem;
+}
+
+.professor-portal__tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e1e7ef;
+}
+
+.professor-portal__tab {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #344055;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.professor-portal__tab:hover {
+  border-color: #b8c2d1;
+  background: #f8fafc;
+}
+
+.professor-portal__tab.is-active {
+  border-color: #1b2a4a;
+  background: #1b2a4a;
+  color: #fff;
+}
+
+.professor-portal__tab:focus-visible {
+  outline: 3px solid rgba(15, 181, 186, 0.24);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1050px) {
+  .professor-portal__tabs {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .professor-portal__tab {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .professor-portal {
+    padding-bottom: 1.5rem;
+  }
+
+  .professor-portal__heading h1 {
+    font-size: 1.3rem;
+  }
+
+  .professor-portal__tabs {
+    margin-right: -0.25rem;
+    margin-bottom: 1.25rem;
+    margin-left: -0.25rem;
+    padding-right: 0.25rem;
+    padding-left: 0.25rem;
+  }
+
+  .professor-portal__tab {
+    min-height: 38px;
+    font-size: 0.78rem;
+  }
+}

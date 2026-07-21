@@ -5,6 +5,7 @@ import { classesApi, studentsApi, attendanceApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
 import ChatPanel from '../components/ChatPanel'
+import ProfessorShell from '../components/professor/ProfessorShell'
 import { useAuth } from '../contexts/AuthContext'
 import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
@@ -1840,8 +1841,15 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         </div>
     )
 
+    const handlePortalTabChange = (tab) => {
+        setActiveTab(tab)
+        if (tab === 'minhasTurmas') navigate('/professor')
+        if (tab === 'duvidasEad') navigate('/professor/comentarios')
+        if (tab === 'messages') navigate('/professor/chat')
+    }
+
     return (
-        <div className="animate-fade-in prof-portal">
+        <ProfessorShell activeTab={activeTab} onTabChange={handlePortalTabChange}>
             <style>{`
 .prof-portal { padding-bottom: 3rem; color: #172033; }
 .prof-page-header { margin-bottom: 1.35rem; }
@@ -1922,48 +1930,6 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
   .prof-students-modal-row { grid-template-columns: 1fr !important; }
 }
 `}</style>
-            <div className="prof-page-header">
-                <div>
-                    <h2 className="prof-page-title">Portal do Instrutor / Professor</h2>
-                    <p className="prof-page-subtitle">Gerencie suas aulas presenciais, faça chamadas e responda às dúvidas do EAD.</p>
-                </div>
-            </div>
-            
-            <div className="prof-tabs" role="tablist" aria-label="Áreas do portal do professor">
-                <button
-                    className={`prof-tab ${activeTab === 'minhasTurmas' || activeTab === 'diario' ? 'is-active' : ''}`}
-                    onClick={() => { setActiveTab('minhasTurmas'); navigate('/professor') }}
-                    role="tab"
-                    aria-selected={activeTab === 'minhasTurmas' || activeTab === 'diario'}
-                >
-                    <List size={16} /> Fichário Eletrônico (Presencial)
-                </button>
-                <button
-                    className={`prof-tab ${activeTab === 'duvidasEad' ? 'is-active' : ''}`}
-                    onClick={() => { setActiveTab('duvidasEad'); navigate('/professor/comentarios') }}
-                    role="tab"
-                    aria-selected={activeTab === 'duvidasEad'}
-                >
-                    <BookOpen size={16} /> Dúvidas Pedagógicas (EAD)
-                </button>
-                <button
-                    className={`prof-tab ${activeTab === 'messages' ? 'is-active' : ''}`}
-                    onClick={() => { setActiveTab('messages'); navigate('/professor/chat') }}
-                    role="tab"
-                    aria-selected={activeTab === 'messages'}
-                >
-                    <MessageCircle size={16} /> Mensagens Diretas (Chats)
-                </button>
-                <button
-                    className={`prof-tab ${activeTab === 'analytics' ? 'is-active' : ''}`}
-                    onClick={() => setActiveTab('analytics')}
-                    role="tab"
-                    aria-selected={activeTab === 'analytics'}
-                >
-                    <BarChart3 size={16} /> Aproveitamento &amp; Analytics
-                </button>
-            </div>
-            
             {activeTab === 'minhasTurmas' && renderTurmas()}
             {activeTab === 'diario' && renderDiario()}
             {activeTab === 'duvidasEad' && renderDoubtEad()}
@@ -2124,6 +2090,6 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                     </form>
                 </div>
             ), document.body)}
-        </div>
+        </ProfessorShell>
     )
 }
