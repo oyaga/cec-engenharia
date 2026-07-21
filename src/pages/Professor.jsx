@@ -6,12 +6,13 @@ import { lmsApi } from '../services/lms'
 import { messagesApi } from '../services/misc'
 import ChatPanel from '../components/ChatPanel'
 import ProfessorShell from '../components/professor/ProfessorShell'
+import ProfessorComments from '../components/professor/ProfessorComments'
 import { useAuth } from '../contexts/AuthContext'
 import {
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3,
     ShieldAlert, Users, Plus, X, Loader2, Info, Check,
     AlertCircle, AlertTriangle, MessageCircle, Clock, Send,
-    BarChart3, TrendingUp, Award, PlayCircle, RotateCw, MapPin
+    BarChart3, TrendingUp, Award, RotateCw, MapPin
 } from 'lucide-react'
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -635,7 +636,6 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         }
     }
 
-    const visibleVideoComments = eadDoubts.filter(doubt => doubtStatusFilter === 'all' || (doubtStatusFilter === 'pending' ? !doubt.answer_text : !!doubt.answer_text))
     const pendingVideoComments = eadDoubts.filter(doubt => !doubt.answer_text).length
 
     // Funções do novo Fórum de Dúvidas Colaborativo para o Instrutor (Prioridade 🟡 9)
@@ -1277,61 +1277,18 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 
                 {/* 2. CONTEÚDO CONDICIONAL DA SUB-ABA */}
                 {doubtSubTab === 'perguntas' ? (
-                    loading ? <p>Buscando dúvidas pendentes...</p> : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                            <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <strong style={{ fontSize: '.82rem' }}>Mostrar:</strong>
-                                <button className={`btn ${doubtStatusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('pending')}>Pendentes ({pendingVideoComments})</button>
-                                <button className={`btn ${doubtStatusFilter === 'answered' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('answered')}>Respondidos ({eadDoubts.length - pendingVideoComments})</button>
-                                <button className={`btn ${doubtStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDoubtStatusFilter('all')}>Todos</button>
-                            </div>
-                            {visibleVideoComments.map(doubt => (
-                                <div key={doubt.id} className="card" style={{ borderLeft: '4px solid var(--primary)', borderRadius: '12px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                        <div>
-                                            <h4 style={{ fontSize: '1rem', fontWeight: 600 }}>{doubt.student?.full_name}</h4>
-                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                                <strong>{doubt.course_title || 'Curso EAD'}</strong> &rarr; {doubt.module_title || 'Módulo'} &rarr; {doubt.lesson_title || doubt.lesson?.title}
-                                            </p>
-                                        </div>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                            {new Date(doubt.created_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                    <p style={{ fontSize: '0.9rem', marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
-                                        "{doubt.question_text}"
-                                    </p>
-                                    {doubt.answer_text && <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', color: '#065f46' }}><strong>Sua resposta:</strong><div style={{ marginTop: '.35rem', whiteSpace: 'pre-wrap' }}>{doubt.answer_text}</div></div>}
-                                    {doubt.video_url && <a href={doubt.video_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ marginBottom: '1rem', display: 'inline-flex' }}><PlayCircle size={15} /> Abrir vídeo da aula</a>}
-                                    
-                                    {answeringId === doubt.id ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                            <textarea 
-                                                className="form-control" 
-                                                rows="3" 
-                                                placeholder="Digite sua resposta técnica aqui..."
-                                                value={answerText}
-                                                onChange={(e) => setAnswerText(e.target.value)}
-                                            ></textarea>
-                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                <button className="btn btn-secondary" onClick={() => setAnsweringId(null)}>Cancelar</button>
-                                                <button className="btn btn-primary" onClick={() => handleSendAnswer(doubt.id)}>Enviar Resposta</button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={() => { setAnswerText(doubt.answer_text || ''); setAnsweringId(doubt.id) }}>
-                                            {doubt.answer_text ? 'Editar resposta' : 'Responder comentário'}
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                            {visibleVideoComments.length === 0 && (
-                                <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-                                    <p className="text-secondary">Não há comentários nesta situação.</p>
-                                </div>
-                            )}
-                        </div>
-                    )
+                    <ProfessorComments
+                        comments={eadDoubts}
+                        loading={loading}
+                        status={doubtStatusFilter}
+                        onStatusChange={setDoubtStatusFilter}
+                        answeringId={answeringId}
+                        answerText={answerText}
+                        onAnswerTextChange={setAnswerText}
+                        onStartAnswer={(comment) => { setAnswerText(comment.answer_text || ''); setAnsweringId(comment.id) }}
+                        onCancelAnswer={() => setAnsweringId(null)}
+                        onSendAnswer={handleSendAnswer}
+                    />
                 ) : (
                     /* SUB-ABA: FÓRUM COLABORATIVO (INTRUTOR) */
                     forumLoading ? <p>Carregando tópicos do fórum...</p> : (
