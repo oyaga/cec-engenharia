@@ -108,6 +108,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		u.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador"))
 		u.GET("", usersH.List)
 		u.POST("", usersH.Create)
+		u.POST("/link-student/:studentId", usersH.LinkStudentAccount)
 		u.GET("/:id", usersH.Get)
 		u.PUT("/:id", usersH.Update)
 		u.POST("/:id/reset-password", usersH.ResetPassword)

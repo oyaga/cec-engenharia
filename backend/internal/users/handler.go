@@ -293,6 +293,57 @@ func (h *Handler) SendPasswordReset(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Link enviado para o e-mail do aluno.", "expires_in_hours": 12})
 }
 
+// LinkStudentAccount recupera matrículas sem user_id: vincula uma conta aluno
+// existente pelo e-mail ou cria uma nova identidade quando necessário.
+func (h *Handler) LinkStudentAccount(c *gin.Context) {
+	var student models.Student
+	if err := h.db.First(&student, "id = ?", c.Param("studentId")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "aluno não encontrado")
+		return
+	}
+	if student.UserID != nil {
+		var linked models.User
+		if h.db.First(&linked, "id = ?", *student.UserID).Error == nil {
+			c.JSON(http.StatusOK, gin.H{"user": linked, "linked": true, "created": false})
+			return
+		}
+	}
+	if student.Email == nil || strings.TrimSpace(*student.Email) == "" {
+		httpx.Error(c, http.StatusUnprocessableEntity, "cadastre o e-mail do aluno antes de vincular a conta")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(*student.Email))
+	var user models.User
+	created := false
+	if err := h.db.Where("LOWER(email) = ?", email).First(&user).Error; err != nil {
+		hash, hashErr := auth.HashPassword(uuid.NewString() + uuid.NewString())
+		if hashErr != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao preparar a conta")
+			return
+		}
+		user = models.User{Email: email, PasswordHash: hash, FullName: student.FullName, Role: "aluno", CPF: &student.CPF, Phone: student.Phone, IsActive: true, MustChangePassword: true}
+		if err := h.db.Create(&user).Error; err != nil {
+			httpx.Error(c, http.StatusConflict, "não foi possível criar a conta do aluno")
+			return
+		}
+		created = true
+	} else if user.Role != "aluno" {
+		httpx.Error(c, http.StatusConflict, "o e-mail está vinculado a uma conta que não é de aluno")
+		return
+	}
+	if err := h.db.Model(&student).Update("user_id", user.ID).Error; err != nil {
+		if created {
+			h.db.Delete(&user)
+		}
+		httpx.Error(c, http.StatusInternalServerError, "falha ao vincular a conta ao aluno")
+		return
+	}
+	if created {
+		h.sendWelcome(&user)
+	}
+	c.JSON(http.StatusOK, gin.H{"user": user, "linked": true, "created": created})
+}
+
 // Delete: DELETE /users/:id
 func (h *Handler) Delete(c *gin.Context) {
 	targetID, err := uuid.Parse(c.Param("id"))

@@ -712,7 +712,13 @@ export default function Alunos() {
                         setCredentials({ name: formData.full_name, email: formData.email, password: generatedPassword, phone: formData.phone })
                         setShowCredentialsModal(true)
                     } catch (err) {
-                        alert("O aluno foi matriculado, mas houve um erro ao criar a conta de login: " + err.message)
+                        try {
+                            const linked = await usersApi.linkStudentAccount(savedStudent.id)
+                            if (!linked.user?.id) throw new Error('conta não vinculada')
+                            alert('Matrícula criada e vinculada à conta de acesso existente.')
+                        } catch (linkErr) {
+                            alert("O aluno foi matriculado, mas houve um erro ao criar ou vincular a conta: " + linkErr.message)
+                        }
                         resetForm(); setView('list'); fetchStudents()
                     }
                 } else {
@@ -843,11 +849,14 @@ export default function Alunos() {
         const confirmReset = window.confirm(`Enviar um link para ${student.name} criar uma nova senha?\n\nDestino: ${email || 'e-mail cadastrado na conta'}\nValidade: 12 horas. O link poderá ser usado uma única vez.`)
         if (!confirmReset) return
 
-        const userId = student.originalData.user_id
-
-        if (!userId) return alert('Este aluno ainda não possui uma conta vinculada.')
+        let userId = student.originalData.user_id
 
         try {
+            if (!userId) {
+                const linked = await usersApi.linkStudentAccount(student.originalData.id || student.id)
+                userId = linked.user?.id
+                if (!userId) throw new Error('não foi possível criar ou vincular a conta do aluno')
+            }
             await usersApi.sendPasswordReset(userId)
             alert('Link de redefinição enviado por e-mail. Ele expira em 12 horas.')
             fetchStudents()
@@ -1014,7 +1023,7 @@ export default function Alunos() {
                                     </td>
                                     <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Excluir Aluno" onClick={() => handleDeleteStudent(s)}><Trash2 size={16} color="#ef4444" /></button>
-                                        <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Enviar link para criar nova senha (12h)" onClick={() => handleResetPassword(s)}><Key size={16} color="#2563eb" /></button>
+                                        <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title={s.originalData?.user_id ? 'Enviar link para criar nova senha (12h)' : 'Criar/vincular conta e enviar link de senha'} onClick={() => handleResetPassword(s)}><Key size={16} color={s.originalData?.user_id ? '#2563eb' : '#d97706'} /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Auditoria de Horas (LMS)" onClick={() => { setView(s); fetchStudentTimeLogs(s.originalData.id); }}><Activity size={16} color="#0EA5E9" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Certificado" onClick={() => handleDownloadCertificate(s)}><Award size={16} color="#eab308" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Editar Dados" onClick={() => handleEdit(s)}><FileText size={16} /></button>
