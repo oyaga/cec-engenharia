@@ -71,6 +71,7 @@ export default function LMSAdmin() {
     const [selectedQuiz, setSelectedQuiz] = useState(null)
     const [quizQuestions, setQuizQuestions] = useState([])
     const [isEditingQuiz, setIsEditingQuiz] = useState(false)
+    const [savingQuizSettings, setSavingQuizSettings] = useState(false)
     const [eadDoubts, setEadDoubts] = useState([])
     const [answeringDoubtId, setAnsweringDoubtId] = useState(null)
     const [doubtAnswerText, setDoubtAnswerText] = useState('')
@@ -708,6 +709,29 @@ export default function LMSAdmin() {
         } catch { setQuizQuestions([]) }
     }
 
+    const handleSaveQuizSettings = async () => {
+        if (!selectedQuiz) return
+        setSavingQuizSettings(true)
+        try {
+            const payload = {
+                passing_grade: Math.max(0, Math.min(100, parseInt(selectedQuiz.passing_grade) || 0)),
+                max_attempts: Math.max(1, parseInt(selectedQuiz.max_attempts) || 1),
+                time_limit_minutes: Math.max(0, parseInt(selectedQuiz.time_limit_minutes) || 0),
+                questions_per_attempt: Math.max(0, parseInt(selectedQuiz.questions_per_attempt) || 0),
+                randomize_questions: !!selectedQuiz.randomize_questions,
+                reveal_answers: selectedQuiz.quiz_type === 'exercise' ? true : !!selectedQuiz.reveal_answers
+            }
+            await lmsApi.updateQuiz(selectedQuiz.id, payload)
+            setSelectedQuiz(prev => ({ ...prev, ...payload }))
+            await fetchCourseDetails(selectedCourse.id)
+            alert('Configuração do exercício salva.')
+        } catch (err) {
+            alert('Erro ao salvar configuração: ' + err.message)
+        } finally {
+            setSavingQuizSettings(false)
+        }
+    }
+
 
     const handleDeleteQuestion = async (qId) => {
         if (!window.confirm("Excluir esta questão?")) return
@@ -1320,6 +1344,44 @@ export default function LMSAdmin() {
                                 </div>
                             </div>
                             <button className="btn" onClick={() => setIsEditingQuiz(false)}>Fechar</button>
+                        </div>
+
+                        <div style={{ padding: '1rem', marginBottom: '1.25rem', border: '1px solid #bae6fd', borderRadius: '10px', background: '#f0f9ff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                                <div>
+                                    <strong style={{ color: '#075985' }}>Configuração das perguntas</strong>
+                                    <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.8rem' }}>{quizQuestions.length} questão(ões) cadastrada(s) no banco.</p>
+                                </div>
+                                {!showQuestionBuilder && (
+                                    <button className="btn btn-primary" onClick={handleOpenQuestionBuilder}>
+                                        <Plus size={16} /> Adicionar questão e respostas
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }}>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label">Perguntas exibidas</label>
+                                    <input type="number" min="0" className="form-control" value={selectedQuiz?.questions_per_attempt ?? 0} onChange={e => setSelectedQuiz(prev => ({...prev, questions_per_attempt: e.target.value}))} />
+                                    <small style={{ color: '#64748b' }}>0 = mostrar todas</small>
+                                </div>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label">Tentativas</label>
+                                    <input type="number" min="1" className="form-control" value={selectedQuiz?.max_attempts ?? 3} onChange={e => setSelectedQuiz(prev => ({...prev, max_attempts: e.target.value}))} />
+                                </div>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label">Média mínima (%)</label>
+                                    <input type="number" min="0" max="100" className="form-control" value={selectedQuiz?.passing_grade ?? 70} onChange={e => setSelectedQuiz(prev => ({...prev, passing_grade: e.target.value}))} />
+                                </div>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '1rem', color: '#075985', fontWeight: 700, cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!selectedQuiz?.randomize_questions} onChange={e => setSelectedQuiz(prev => ({...prev, randomize_questions: e.target.checked}))} />
+                                Apresentar perguntas em ordem aleatória para cada tentativa
+                            </label>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                                <button className="btn btn-secondary" onClick={handleSaveQuizSettings} disabled={savingQuizSettings}>
+                                    <Save size={15} /> {savingQuizSettings ? 'Salvando...' : 'Salvar configuração'}
+                                </button>
+                            </div>
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
