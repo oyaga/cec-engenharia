@@ -155,7 +155,14 @@ export default function LessonPlayer() {
                 // Resultados dos quizzes do aluno
                 const { results: qres } = await lmsApi.results({})
                 const qMap = {}
-                qres?.forEach(r => qMap[r.quiz_id] = { is_approved: r.is_approved, score: r.score, attempts_count: r.attempts_count })
+                qres?.forEach(r => {
+                    const current = qMap[r.quiz_id] || { is_approved: false, score: 0, attempts_count: 0 }
+                    qMap[r.quiz_id] = {
+                        is_approved: current.is_approved || r.is_approved,
+                        score: Math.max(current.score, r.score || 0),
+                        attempts_count: Math.max(current.attempts_count, r.attempts_count || 0)
+                    }
+                })
                 setQuizStatus(qMap)
 
                 // Progresso do aluno
@@ -172,9 +179,15 @@ export default function LessonPlayer() {
                 // se a aula pedida está bloqueada porque a anterior não foi
                 // concluída, redireciona para a próxima aula liberada.
                 const reqIdx = (lessons || []).findIndex(l => l.id === lessonId)
-                if (reqIdx > 0 && !statusMap[lessons[reqIdx - 1].id]?.is_completed) {
+                const previousLesson = reqIdx > 0 ? lessons[reqIdx - 1] : null
+                const previousExercise = previousLesson ? (qzs || []).find(q => q.quiz_type === 'exercise' && q.lesson_id === previousLesson.id) : null
+                const previousReady = !previousLesson || (statusMap[previousLesson.id]?.is_completed && (!previousExercise || qMap[previousExercise.id]?.attempts_count > 0))
+                if (reqIdx > 0 && !previousReady) {
                     let allowedIdx = 0
-                    while (allowedIdx < lessons.length - 1 && statusMap[lessons[allowedIdx].id]?.is_completed) {
+                    while (allowedIdx < lessons.length - 1) {
+                        const allowedLesson = lessons[allowedIdx]
+                        const exercise = (qzs || []).find(q => q.quiz_type === 'exercise' && q.lesson_id === allowedLesson.id)
+                        if (!statusMap[allowedLesson.id]?.is_completed || (exercise && !qMap[exercise.id]?.attempts_count)) break
                         allowedIdx++
                     }
                     const target = lessons[allowedIdx]
@@ -1257,11 +1270,18 @@ export default function LessonPlayer() {
                     <button 
                         onClick={() => {
                             if (!isCompleted) return
+                            const lessonExercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === lessonId)
+                            if (lessonExercise && !quizStatus[lessonExercise.id]?.attempts_count) {
+                                navigate(`/exame/${lessonExercise.id}`)
+                                return
+                            }
                             const currentIndex = allLessons.findIndex(l => l.id === lessonId)
                             if (currentIndex < allLessons.length - 1) {
                                 navigate(`/curso/${courseId}/aula/${allLessons[currentIndex+1].id}`)
                             } else {
-                                setShowCompletionModal(true)
+                                const finalExam = courseQuizzes.find(q => q.quiz_type === 'final_exam')
+                                if (finalExam && !quizStatus[finalExam.id]?.is_approved) navigate(`/exame/${finalExam.id}`)
+                                else setShowCompletionModal(true)
                             }
                         }}
                         className="btn btn-primary"
@@ -1270,7 +1290,9 @@ export default function LessonPlayer() {
                         style={{ padding: '0.75rem 2rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: isCompleted ? 1 : 0.55, cursor: isCompleted ? 'pointer' : 'not-allowed' }}
                     >
                         {isCompleted
-                            ? 'Próxima Aula'
+                            ? (courseQuizzes.some(q => q.quiz_type === 'exercise' && q.lesson_id === lessonId && !quizStatus[q.id]?.attempts_count)
+                                ? 'Fazer exercício da aula'
+                                : (allLessons.findIndex(l => l.id === lessonId) === allLessons.length - 1 && courseQuizzes.some(q => q.quiz_type === 'final_exam' && !quizStatus[q.id]?.is_approved) ? 'Fazer prova final' : 'Próxima Aula'))
                             : `Aguarde ${Math.max(0, (lesson.min_watch_time_sec || 0) - secondsWatched)}s`}
                         <ChevronRight size={18} />
                     </button>
@@ -1541,22 +1563,11 @@ export default function LessonPlayer() {
                         const isDone = lessonStatus[l.id]?.is_completed
                         
                         const lessonModule = l.module_id
-                        const previousModules = [...new Set(allLessons.slice(0, idx).map(al => al.module_id))]
-                            .filter(m => m !== lessonModule)
-                        
-                        let isBlockedByQuiz = false
-                        for (const modId of previousModules) {
-                            const modQuiz = courseQuizzes.find(q => q.module_id === modId)
-                            if (modQuiz) {
-                                const qStat = quizStatus[modQuiz.id]
-                                if (modQuiz.quiz_type === 'final_exam') {
-                                    if (!qStat?.is_approved) { isBlockedByQuiz = true; break; }
-                                } else {
-                                    // Exercício: LIBERA se tiver pelo menos 1 tentativa (realizado)
-                                    if (!qStat || qStat.attempts_count === 0) { isBlockedByQuiz = true; break; }
-                                }
-                            }
-                        }
+                        const previousLessons = allLessons.slice(0, idx)
+                        const isBlockedByQuiz = previousLessons.some(previousLesson => {
+                            const exercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === previousLesson.id)
+                            return exercise && !quizStatus[exercise.id]?.attempts_count
+                        })
 
                         // TRAVA SEQUENCIAL: a aula só abre se a IMEDIATAMENTE
                         // anterior estiver concluída (a 1ª sempre abre). Some-se a
@@ -1566,8 +1577,12 @@ export default function LessonPlayer() {
                         const isLocked = !isCurrent && (isBlockedByQuiz || isBlockedByPrev)
                         
                         // Verificar se existe quiz para este módulo logo após esta aula (se for a última do módulo)
-                        const isLastInModule = idx === allLessons.length - 1 || allLessons[idx+1].module_id !== lessonModule
-                        const moduleQuiz = courseQuizzes.find(q => q.module_id === lessonModule)
+                        const lessonExercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === l.id)
+                        const finalExam = idx === allLessons.length - 1 ? courseQuizzes.find(q => q.quiz_type === 'final_exam') : null
+                        const moduleQuiz = lessonExercise || finalExam
+                        const assessmentLocked = moduleQuiz?.quiz_type === 'final_exam'
+                            ? allLessons.some(item => !lessonStatus[item.id]?.is_completed)
+                            : !!moduleQuiz && !isDone
 
                         return (
                             <div key={l.id}>
@@ -1591,16 +1606,17 @@ export default function LessonPlayer() {
                                     {isLocked && <Lock size={14} style={{ color: '#64748b' }} />}
                                 </div>
                                 
-                                {isLastInModule && moduleQuiz && (
+                                {moduleQuiz && (
                                     <div 
-                                        onClick={() => navigate(`/exame/${moduleQuiz.id}`)}
+                                        onClick={() => !assessmentLocked && navigate(`/exame/${moduleQuiz.id}`)}
                                         style={{ 
                                             padding: '0.75rem 1.5rem', 
                                             backgroundColor: (moduleQuiz.quiz_type === 'final_exam' ? quizStatus[moduleQuiz.id]?.is_approved : quizStatus[moduleQuiz.id]?.attempts_count > 0)
                                                 ? (moduleQuiz.quiz_type === 'final_exam' ? '#4c1d95' : '#064e3b') 
                                                 : '#1e293b',
                                             borderBottom: '1px solid #334155',
-                                            cursor: 'pointer',
+                                            cursor: assessmentLocked ? 'not-allowed' : 'pointer',
+                                            opacity: assessmentLocked ? 0.55 : 1,
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '0.75rem',

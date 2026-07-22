@@ -32,6 +32,7 @@ export const lmsApi = {
   // Quizzes
   courseQuizzes: (courseId) => request(`/courses/${courseId}/quizzes`),
   quiz: (id) => request(`/lms/quizzes/${id}`),
+  startQuiz: (id) => request(`/lms/quizzes/${id}/start`, { method: 'POST' }),
   createQuiz: (payload) => request('/lms/quizzes', { method: 'POST', body: payload }),
   updateQuiz: (id, payload) => request(`/lms/quizzes/${id}`, { method: 'PUT', body: payload }),
   removeQuiz: (id) => request(`/lms/quizzes/${id}`, { method: 'DELETE' }),

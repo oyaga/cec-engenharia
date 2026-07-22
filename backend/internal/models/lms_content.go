@@ -59,15 +59,19 @@ type LMSStudentProgress struct {
 func (LMSStudentProgress) TableName() string { return "lms_student_progress" }
 
 type LMSQuiz struct {
-	ID               uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	CourseID         *uuid.UUID `gorm:"type:uuid;column:course_id" json:"course_id,omitempty"`
-	ModuleID         *uuid.UUID `gorm:"type:uuid;column:module_id" json:"module_id,omitempty"`
-	Title            string     `gorm:"not null" json:"title"`
-	PassingGrade     int        `gorm:"column:passing_grade" json:"passing_grade"`
-	MaxAttempts      int        `gorm:"column:max_attempts" json:"max_attempts"`
-	QuizType         *string    `gorm:"column:quiz_type" json:"quiz_type,omitempty"`
-	TimeLimitMinutes int        `gorm:"column:time_limit_minutes" json:"time_limit_minutes"`
-	CreatedAt        time.Time  `json:"created_at"`
+	ID                  uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	CourseID            *uuid.UUID `gorm:"type:uuid;column:course_id" json:"course_id,omitempty"`
+	ModuleID            *uuid.UUID `gorm:"type:uuid;column:module_id" json:"module_id,omitempty"`
+	LessonID            *uuid.UUID `gorm:"type:uuid;column:lesson_id" json:"lesson_id,omitempty"`
+	Title               string     `gorm:"not null" json:"title"`
+	PassingGrade        int        `gorm:"column:passing_grade" json:"passing_grade"`
+	MaxAttempts         int        `gorm:"column:max_attempts" json:"max_attempts"`
+	QuizType            *string    `gorm:"column:quiz_type" json:"quiz_type,omitempty"`
+	TimeLimitMinutes    int        `gorm:"column:time_limit_minutes" json:"time_limit_minutes"`
+	QuestionsPerAttempt int        `gorm:"column:questions_per_attempt" json:"questions_per_attempt"`
+	RandomizeQuestions  bool       `gorm:"column:randomize_questions" json:"randomize_questions"`
+	RevealAnswers       bool       `gorm:"column:reveal_answers" json:"reveal_answers"`
+	CreatedAt           time.Time  `json:"created_at"`
 }
 
 func (LMSQuiz) TableName() string { return "lms_quizzes" }
@@ -79,6 +83,7 @@ type LMSQuestion struct {
 	ImageURL           *string        `gorm:"column:image_url" json:"image_url,omitempty"`
 	Options            datatypes.JSON `gorm:"not null" json:"options"`
 	CorrectOptionIndex int            `gorm:"column:correct_option_index" json:"correct_option_index"`
+	Explanation        *string        `json:"explanation,omitempty"`
 }
 
 func (LMSQuestion) TableName() string { return "lms_questions" }
@@ -159,6 +164,17 @@ type LMSQuizResult struct {
 }
 
 func (LMSQuizResult) TableName() string { return "lms_quiz_results" }
+
+type LMSQuizAttempt struct {
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	StudentID   uuid.UUID      `gorm:"type:uuid;column:student_id" json:"student_id"`
+	QuizID      uuid.UUID      `gorm:"type:uuid;column:quiz_id" json:"quiz_id"`
+	QuestionIDs datatypes.JSON `gorm:"column:question_ids;not null" json:"question_ids"`
+	StartedAt   time.Time      `gorm:"column:started_at" json:"started_at"`
+	CompletedAt *time.Time     `gorm:"column:completed_at" json:"completed_at,omitempty"`
+}
+
+func (LMSQuizAttempt) TableName() string { return "lms_quiz_attempts" }
 
 type LMSForumTopic struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`

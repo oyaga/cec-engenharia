@@ -11,6 +11,7 @@ export default function ExamView() {
     
     const [quiz, setQuiz] = useState(null)
     const [questions, setQuestions] = useState([])
+    const [attemptId, setAttemptId] = useState(null)
     const [answers, setAnswers] = useState({}) // { questionId: optionIndex }
     const [status, setStatus] = useState('intro') // intro | active | result | blocked
     const [score, setScore] = useState(0)
@@ -67,18 +68,22 @@ export default function ExamView() {
         }
     }
 
-    const handleStartExam = () => {
+    const handleStartExam = async () => {
         if (attemptsCount >= (quiz?.max_attempts || 3)) {
             setStatus('blocked')
             return
         }
         
-        if (quiz?.time_limit_minutes > 0) {
-            setTimeLeft(quiz.time_limit_minutes * 60)
+        try {
+            const data = await lmsApi.startQuiz(quizId)
+            setAttemptId(data.attempt_id)
+            setQuestions(data.questions || [])
+            if (quiz?.time_limit_minutes > 0) setTimeLeft(quiz.time_limit_minutes * 60)
+            setStatus('active')
+            setAnswers({})
+        } catch (error) {
+            alert(error.message)
         }
-        
-        setStatus('active')
-        setAnswers({})
     }
 
     const handleSubmit = async () => {
@@ -90,10 +95,11 @@ export default function ExamView() {
             // saem apenas as alternativas escolhidas.
             const { result, feedback: gabarito } = await lmsApi.submitResult({
                 quiz_id: quizId,
+                attempt_id: attemptId,
                 answers
             })
 
-            setFeedback(gabarito || {})
+            setFeedback((quiz.quiz_type === 'exercise' || quiz.reveal_answers) ? (gabarito || {}) : null)
             setScore(result.score)
             setApproved(result.is_approved)
             setAttemptsCount(result.attempts_count)
@@ -176,13 +182,13 @@ export default function ExamView() {
                     </h2>
                     <p className="text-secondary" style={{ marginTop: '1rem' }}>
                         {quiz.quiz_type === 'final_exam' 
-                            ? 'Esta é a avaliação final do curso. ' 
-                            : 'Este exercício ajudará a fixar o conteúdo do módulo. '}
+                            ? 'Esta é a avaliação final do curso e define sua aprovação. '
+                            : 'Este exercício aparece após a aula, serve para fixação e mostra o gabarito ao terminar. '}
                         Para aprovação, você precisa de no mínimo <strong>{quiz.passing_grade}%</strong> de acerto.
                         <br />Você tem <strong>{quiz.max_attempts - attemptsCount}</strong> tentativas restantes.
                     </p>
                     <button className="btn btn-primary" style={{ marginTop: '2rem' }} onClick={handleStartExam}>
-                        Iniciar Prova
+                        {quiz.quiz_type === 'final_exam' ? 'Iniciar Prova Final' : 'Iniciar Exercício'}
                     </button>
                 </div>
             )}
@@ -348,6 +354,7 @@ export default function ExamView() {
                                                 )
                                             })}
                                         </div>
+                                        {fb.explanation && <p style={{ marginTop: '1rem', padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', color: '#1e3a8a' }}><strong>Explicação:</strong> {fb.explanation}</p>}
                                     </div>
                                 )
                             })}

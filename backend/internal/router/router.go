@@ -364,6 +364,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		lmsAuth := v1.Group("/lms")
 		lmsAuth.Use(middleware.RequireAuth(tm))
 		lmsAuth.GET("/quizzes/:id", lmsH.GetQuiz)
+		lmsAuth.POST("/quizzes/:id/start", lmsH.StartQuizAttempt)
 		lmsAuth.GET("/lessons/:id", lmsH.LessonDetail)
 		lmsAuth.GET("/courses/:id/lessons", lmsH.CourseLessons)
 		lmsAuth.GET("/courses/:id/quizzes", lmsH.ListQuizzes)

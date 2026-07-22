@@ -281,17 +281,103 @@ func (h *Handler) GetQuiz(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": questions})
 		return
 	}
-	out := make([]gin.H, 0, len(questions))
-	for _, q := range questions {
-		out = append(out, gin.H{
-			"id":            q.ID,
-			"quiz_id":       q.QuizID,
-			"question_text": q.QuestionText,
-			"image_url":     q.ImageURL,
-			"options":       q.Options,
-		})
+	// O aluno recebe as perguntas somente ao iniciar uma tentativa. Assim o
+	// sorteio fica persistido no servidor e nao muda ao atualizar a pagina.
+	c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": []any{}, "question_bank_size": len(questions)})
+}
+
+func studentQuestion(q models.LMSQuestion) gin.H {
+	return gin.H{"id": q.ID, "quiz_id": q.QuizID, "question_text": q.QuestionText, "image_url": q.ImageURL, "options": q.Options}
+}
+
+// StartQuizAttempt sorteia e persiste o conjunto de perguntas da tentativa.
+func (h *Handler) StartQuizAttempt(c *gin.Context) {
+	var quiz models.LMSQuiz
+	if err := h.db.First(&quiz, "id = ?", c.Param("id")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "avaliacao nao encontrada")
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": out})
+	sid := middleware.UserID(c)
+	var attempts int64
+	h.db.Model(&models.LMSQuizResult{}).Where("student_id = ? AND quiz_id = ?", sid, quiz.ID).Count(&attempts)
+	if quiz.MaxAttempts > 0 && attempts >= int64(quiz.MaxAttempts) {
+		httpx.Error(c, http.StatusUnprocessableEntity, "numero maximo de tentativas atingido")
+		return
+	}
+
+	// Exercicios so abrem depois da aula; a prova final, depois de todas as aulas.
+	if quiz.QuizType != nil && *quiz.QuizType == "exercise" && quiz.LessonID != nil {
+		var done int64
+		h.db.Model(&models.LMSStudentProgress{}).Where("student_id = ? AND lesson_id = ? AND is_completed = true", sid, *quiz.LessonID).Count(&done)
+		if done == 0 {
+			httpx.Error(c, http.StatusUnprocessableEntity, "conclua a aula antes de iniciar o exercicio")
+			return
+		}
+	}
+	if quiz.QuizType != nil && *quiz.QuizType == "final_exam" && quiz.CourseID != nil {
+		var total, done int64
+		h.db.Table("lms_lessons l").Joins("JOIN lms_modules m ON m.id = l.module_id").Where("m.course_id = ?", *quiz.CourseID).Count(&total)
+		h.db.Table("lms_student_progress p").Joins("JOIN lms_lessons l ON l.id = p.lesson_id").Joins("JOIN lms_modules m ON m.id = l.module_id").Where("m.course_id = ? AND p.student_id = ? AND p.is_completed = true", *quiz.CourseID, sid).Count(&done)
+		if total == 0 || done < total {
+			httpx.Error(c, http.StatusUnprocessableEntity, "conclua todas as aulas antes da prova final")
+			return
+		}
+		var exerciseTotal, exerciseDone int64
+		h.db.Model(&models.LMSQuiz{}).Where("course_id = ? AND quiz_type = ?", *quiz.CourseID, "exercise").Count(&exerciseTotal)
+		h.db.Table("lms_quiz_results r").Joins("JOIN lms_quizzes q ON q.id = r.quiz_id").Where("q.course_id = ? AND q.quiz_type = ? AND r.student_id = ?", *quiz.CourseID, "exercise").Distinct("r.quiz_id").Count(&exerciseDone)
+		if exerciseDone < exerciseTotal {
+			httpx.Error(c, http.StatusUnprocessableEntity, "realize todos os exercicios antes da prova final")
+			return
+		}
+	}
+
+	var active models.LMSQuizAttempt
+	if h.db.Where("student_id = ? AND quiz_id = ? AND completed_at IS NULL", sid, quiz.ID).Order("started_at DESC").First(&active).Error == nil {
+		var ids []uuid.UUID
+		_ = json.Unmarshal(active.QuestionIDs, &ids)
+		var questions []models.LMSQuestion
+		h.db.Where("id IN ?", ids).Find(&questions)
+		byID := map[uuid.UUID]models.LMSQuestion{}
+		for _, q := range questions {
+			byID[q.ID] = q
+		}
+		out := make([]gin.H, 0, len(ids))
+		for _, id := range ids {
+			if q, ok := byID[id]; ok {
+				out = append(out, studentQuestion(q))
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"attempt_id": active.ID, "quiz": quiz, "questions": out})
+		return
+	}
+
+	q := h.db.Where("quiz_id = ?", quiz.ID)
+	if quiz.RandomizeQuestions {
+		q = q.Order("RANDOM()")
+	} else {
+		q = q.Order("id")
+	}
+	if quiz.QuestionsPerAttempt > 0 {
+		q = q.Limit(quiz.QuestionsPerAttempt)
+	}
+	var questions []models.LMSQuestion
+	if err := q.Find(&questions).Error; err != nil || len(questions) == 0 {
+		httpx.Error(c, http.StatusUnprocessableEntity, "avaliacao sem perguntas cadastradas")
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(questions))
+	out := make([]gin.H, 0, len(questions))
+	for _, question := range questions {
+		ids = append(ids, question.ID)
+		out = append(out, studentQuestion(question))
+	}
+	idsJSON, _ := json.Marshal(ids)
+	active = models.LMSQuizAttempt{StudentID: sid, QuizID: quiz.ID, QuestionIDs: datatypes.JSON(idsJSON), StartedAt: time.Now()}
+	if err := h.db.Create(&active).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao iniciar tentativa")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"attempt_id": active.ID, "quiz": quiz, "questions": out})
 }
 
 func (h *Handler) CreateQuiz(c *gin.Context) {
@@ -303,6 +389,18 @@ func (h *Handler) CreateQuiz(c *gin.Context) {
 	if quiz.CourseID == nil || quiz.ModuleID == nil || quiz.Title == "" {
 		httpx.Error(c, http.StatusBadRequest, "curso, módulo e título são obrigatórios")
 		return
+	}
+	if quiz.QuizType != nil && *quiz.QuizType == "exercise" && quiz.LessonID == nil {
+		httpx.Error(c, http.StatusBadRequest, "selecione a aula deste exercicio")
+		return
+	}
+	if quiz.LessonID != nil {
+		var count int64
+		h.db.Model(&models.LMSLesson{}).Where("id = ? AND module_id = ?", *quiz.LessonID, *quiz.ModuleID).Count(&count)
+		if count == 0 {
+			httpx.Error(c, http.StatusBadRequest, "a aula nao pertence ao modulo informado")
+			return
+		}
 	}
 	if quiz.QuizType != nil && *quiz.QuizType == "final_exam" {
 		var count int64
@@ -341,8 +439,9 @@ func (h *Handler) DeleteQuestion(c *gin.Context) {
 // do corpo permitia forjar aprovação e, com ela, o certificado de conclusão.
 func (h *Handler) SubmitQuizResult(c *gin.Context) {
 	var body struct {
-		QuizID  uuid.UUID      `json:"quiz_id" binding:"required"`
-		Answers map[string]int `json:"answers"`
+		QuizID    uuid.UUID      `json:"quiz_id" binding:"required"`
+		AttemptID uuid.UUID      `json:"attempt_id" binding:"required"`
+		Answers   map[string]int `json:"answers"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		httpx.Error(c, http.StatusBadRequest, "quiz_id é obrigatório")
@@ -355,7 +454,18 @@ func (h *Handler) SubmitQuizResult(c *gin.Context) {
 		return
 	}
 	questions := []models.LMSQuestion{}
-	if err := h.db.Where("quiz_id = ?", quiz.ID).Find(&questions).Error; err != nil {
+	sid := middleware.UserID(c)
+	var attempt models.LMSQuizAttempt
+	if err := h.db.First(&attempt, "id = ? AND student_id = ? AND quiz_id = ? AND completed_at IS NULL", body.AttemptID, sid, quiz.ID).Error; err != nil {
+		httpx.Error(c, http.StatusUnprocessableEntity, "tentativa invalida ou ja finalizada")
+		return
+	}
+	var selectedIDs []uuid.UUID
+	if err := json.Unmarshal(attempt.QuestionIDs, &selectedIDs); err != nil || len(selectedIDs) == 0 {
+		httpx.Error(c, http.StatusInternalServerError, "conjunto de perguntas invalido")
+		return
+	}
+	if err := h.db.Where("quiz_id = ? AND id IN ?", quiz.ID, selectedIDs).Find(&questions).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar as questões")
 		return
 	}
@@ -364,7 +474,6 @@ func (h *Handler) SubmitQuizResult(c *gin.Context) {
 		return
 	}
 
-	sid := middleware.UserID(c)
 	var attempts int64
 	if err := h.db.Model(&models.LMSQuizResult{}).
 		Where("student_id = ? AND quiz_id = ?", sid, quiz.ID).Count(&attempts).Error; err != nil {
@@ -388,11 +497,15 @@ func (h *Handler) SubmitQuizResult(c *gin.Context) {
 		if answered {
 			userAnswer = chosen
 		}
-		feedback[q.ID.String()] = gin.H{
-			"is_correct":     hit,
-			"user_answer":    userAnswer,
-			"correct_answer": q.CorrectOptionIndex,
+		item := gin.H{
+			"is_correct":  hit,
+			"user_answer": userAnswer,
 		}
+		if quiz.RevealAnswers || (quiz.QuizType != nil && *quiz.QuizType == "exercise") {
+			item["correct_answer"] = q.CorrectOptionIndex
+			item["explanation"] = q.Explanation
+		}
+		feedback[q.ID.String()] = item
 	}
 	score := int(math.Round(float64(correct) / float64(len(questions)) * 100))
 	passing := quiz.PassingGrade
@@ -415,6 +528,8 @@ func (h *Handler) SubmitQuizResult(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao salvar resultado")
 		return
 	}
+	now := time.Now()
+	h.db.Model(&attempt).Update("completed_at", now)
 	c.JSON(http.StatusCreated, gin.H{"result": result, "feedback": feedback})
 }
 

@@ -86,6 +86,7 @@ export default function LMSAdmin() {
     const [showQuestionBuilder, setShowQuestionBuilder] = useState(false)
     const [questionForm, setQuestionForm] = useState({
         text: '',
+        explanation: '',
         image_url: null,
         options: [
             { text: '', image_url: null },
@@ -142,7 +143,12 @@ export default function LMSAdmin() {
         title: '',
         type: 'exercise', // exercise | final_exam
         time_limit: 60,
-        passing_grade: 70
+        passing_grade: 70,
+        lessonId: null,
+        questions_per_attempt: 5,
+        max_attempts: 3,
+        randomize_questions: true,
+        reveal_answers: true
     })
 
     const fetchCourses = async () => {
@@ -177,7 +183,12 @@ export default function LMSAdmin() {
 
             const { quizzes: qzs } = await lmsApi.courseQuizzes(courseId)
             const quizzesData = {}
-            ;(qzs || []).forEach(qz => { quizzesData[`${qz.module_id}_${qz.quiz_type}`] = qz })
+            ;(qzs || []).forEach(qz => {
+                const key = qz.quiz_type === 'exercise' && qz.lesson_id
+                    ? `lesson_${qz.lesson_id}_exercise`
+                    : `${qz.module_id}_${qz.quiz_type}`
+                quizzesData[key] = qz
+            })
             setQuizzes(quizzesData)
         } catch (err) {
             console.error('Erro ao carregar detalhes do curso:', err)
@@ -646,14 +657,19 @@ export default function LMSAdmin() {
         catch (err) { alert('Erro ao excluir aula: ' + err.message) }
     }
 
-    const handleOpenQuizForm = (moduleId, type = 'exercise') => {
+    const handleOpenQuizForm = (moduleId, type = 'exercise', lessonId = null) => {
         setQuizForm({
             id: null,
             moduleId,
             title: type === 'exercise' ? 'Exercício de Fixação' : 'Prova Final',
             type,
             time_limit: 60,
-            passing_grade: 70
+            passing_grade: 70,
+            lessonId,
+            questions_per_attempt: type === 'exercise' ? 3 : 10,
+            max_attempts: 3,
+            randomize_questions: true,
+            reveal_answers: type === 'exercise'
         })
         setShowQuizForm(true)
     }
@@ -665,11 +681,15 @@ export default function LMSAdmin() {
             const { quiz } = await lmsApi.createQuiz({
                 course_id: selectedCourse.id,
                 module_id: quizForm.moduleId,
+                lesson_id: quizForm.type === 'exercise' ? quizForm.lessonId : null,
                 title: quizForm.title,
                 quiz_type: quizForm.type,
                 passing_grade: quizForm.passing_grade,
-                max_attempts: 3,
-                time_limit_minutes: parseInt(quizForm.time_limit) || 0
+                max_attempts: parseInt(quizForm.max_attempts) || 1,
+                time_limit_minutes: parseInt(quizForm.time_limit) || 0,
+                questions_per_attempt: parseInt(quizForm.questions_per_attempt) || 0,
+                randomize_questions: quizForm.randomize_questions,
+                reveal_answers: quizForm.type === 'exercise' ? true : quizForm.reveal_answers
             })
             setShowQuizForm(false)
             fetchCourseDetails(selectedCourse.id)
@@ -710,6 +730,7 @@ export default function LMSAdmin() {
         setEditingQuestionId(null)
         setQuestionForm({
             text: '',
+            explanation: '',
             image_url: null,
             options: [
                 { text: '', image_url: null },
@@ -726,6 +747,7 @@ export default function LMSAdmin() {
         setEditingQuestionId(q.id)
         setQuestionForm({
             text: q.question_text || '',
+            explanation: q.explanation || '',
             image_url: q.image_url || null,
             options: Array.isArray(q.options) 
                 ? q.options.map(opt => typeof opt === 'object' ? { text: opt.text || '', image_url: opt.image_url || null } : { text: opt, image_url: null })
@@ -759,7 +781,8 @@ export default function LMSAdmin() {
             question_text: questionForm.text,
             image_url: questionForm.image_url,
             options: questionForm.options.filter(o => o.text.trim() || o.image_url),
-            correct_option_index: questionForm.correctIndex
+            correct_option_index: questionForm.correctIndex,
+            explanation: questionForm.explanation || null
         }
 
         let error = null
@@ -1017,6 +1040,15 @@ export default function LMSAdmin() {
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        {quizzes[`lesson_${lesson.id}_exercise`] ? (
+                                            <button className="btn" style={{ fontSize: '0.7rem', padding: '0.3rem 0.55rem', background: '#e0f2fe', color: '#0369a1' }} onClick={() => handleManageQuiz(quizzes[`lesson_${lesson.id}_exercise`])}>
+                                                <CheckSquare size={13} /> Exercício configurado
+                                            </button>
+                                        ) : (
+                                            <button className="btn" style={{ fontSize: '0.7rem', padding: '0.3rem 0.55rem', border: '1px dashed #38bdf8', color: '#0369a1' }} onClick={() => handleOpenQuizForm(mod.id, 'exercise', lesson.id)}>
+                                                <Plus size={13} /> Exercício após aula
+                                            </button>
+                                        )}
                                         <Edit 
                                             size={14} 
                                             className="text-muted" 
@@ -1058,10 +1090,10 @@ export default function LMSAdmin() {
                                     </div>
                                 ) : (
                                     <button 
-                                        onClick={() => handleOpenQuizForm(mod.id, 'exercise')}
+                                        disabled
                                         style={{ width: '100%', padding: '0.75rem', border: '1px dashed #BAE6FD', borderRadius: '6px', color: '#0369A1', fontSize: '0.875rem', backgroundColor: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                                     >
-                                        <Plus size={16} /> Adicionar Exercício de Fixação
+                                        <CheckSquare size={16} /> Configure o exercício em cada aula acima
                                     </button>
                                 )}
 
@@ -1467,6 +1499,10 @@ export default function LMSAdmin() {
                                             </div>
                                         ))}
                                     </div>
+                                    <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                                        <label className="form-label" style={{ fontWeight: 600 }}>Explicação do gabarito</label>
+                                        <textarea className="form-control" rows="2" value={questionForm.explanation} onChange={e => setQuestionForm(prev => ({...prev, explanation: e.target.value}))} placeholder="Explique por que a alternativa correta é a resposta." />
+                                    </div>
                                     <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
                                         <button className="btn btn-secondary" onClick={() => { setShowQuestionBuilder(false); setEditingQuestionId(null); }}>Cancelar</button>
                                         <button className="btn btn-primary" onClick={handleSaveFullQuestion} disabled={isSavingQuestion}>
@@ -1669,7 +1705,26 @@ export default function LMSAdmin() {
                                 <label className="form-label">Média Mínima (%)</label>
                                 <input type="number" className="form-control" value={quizForm.passing_grade} onChange={e => setQuizForm({...quizForm, passing_grade: e.target.value})} />
                             </div>
+                            <div className="form-group">
+                                <label className="form-label">Perguntas por tentativa</label>
+                                <input type="number" min="0" className="form-control" value={quizForm.questions_per_attempt} onChange={e => setQuizForm({...quizForm, questions_per_attempt: e.target.value})} />
+                                <small style={{ color: '#64748b' }}>Use 0 para apresentar todas.</small>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Máximo de tentativas</label>
+                                <input type="number" min="1" className="form-control" value={quizForm.max_attempts} onChange={e => setQuizForm({...quizForm, max_attempts: e.target.value})} />
+                            </div>
                         </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+                            <input type="checkbox" checked={quizForm.randomize_questions} onChange={e => setQuizForm({...quizForm, randomize_questions: e.target.checked})} />
+                            Sortear perguntas diferentes em cada tentativa
+                        </label>
+                        {quizForm.type === 'final_exam' && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+                                <input type="checkbox" checked={quizForm.reveal_answers} onChange={e => setQuizForm({...quizForm, reveal_answers: e.target.checked})} />
+                                Mostrar gabarito da prova final após a entrega
+                            </label>
+                        )}
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                             <button className="btn btn-secondary" onClick={() => setShowQuizForm(false)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={handleSaveQuiz}>Criar e Adicionar Questões</button>
