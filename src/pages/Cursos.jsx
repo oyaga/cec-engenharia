@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { BookOpen, Plus, Search, Edit2, Loader2, Save, X, DollarSign, Clock, Award, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
 import { coursesApi } from '../services/academic'
 
@@ -32,6 +33,7 @@ const maskCurrencyBRL = (value) => {
 }
 
 export default function Cursos() {
+    const navigate = useNavigate()
     const [courses, setCourses] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -194,6 +196,7 @@ export default function Cursos() {
 
     const handleSave = async (e) => {
         e.preventDefault()
+        const shouldContinue = e.nativeEvent?.submitter?.value === 'continue'
         if (!form.title || !form.code) {
             setErrorMsg('Nome do curso e Código são obrigatórios.')
             return
@@ -219,6 +222,7 @@ export default function Cursos() {
                                      null
 
         try {
+            let createdCourseId = null
             const payload = {
                 title: form.title,
                 description: form.description,
@@ -248,11 +252,14 @@ export default function Cursos() {
             if (selectedCourse && !selectedCourse.id.toString().startsWith('mock-')) {
                 await coursesApi.update(selectedCourse.id, payload)
             } else {
-                await coursesApi.create(payload)
+                const { course } = await coursesApi.create(payload)
+                createdCourseId = course?.id || null
             }
 
-            fetchCourses()
+            await fetchCourses()
             setShowModal(false)
+            const contentCourseId = createdCourseId || selectedCourse?.id
+            if (shouldContinue && contentCourseId) navigate(`/secretaria/cursos/${contentCourseId}/conteudo`)
         } catch (err) {
             console.error('Erro ao salvar curso:', err)
             setErrorMsg(err.message || 'Ocorreu um erro ao salvar o curso.')
@@ -459,6 +466,17 @@ export default function Cursos() {
                                             )}
                                         </div>
                                         
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                        <button
+                                            onClick={() => navigate(`/secretaria/cursos/${course.id}/conteudo`)}
+                                            style={{
+                                                padding: '0.5rem 0.75rem', backgroundColor: 'var(--primary)', color: 'white', border: 'none',
+                                                borderRadius: '8px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                            }}
+                                        >
+                                            <BookOpen size={13} /> Montar conteúdo
+                                        </button>
                                         <button
                                             onClick={() => handleOpenEdit(course)}
                                             style={{
@@ -486,6 +504,7 @@ export default function Cursos() {
                                         >
                                             <Edit2 size={12} /> Editar
                                         </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -533,6 +552,10 @@ export default function Cursos() {
 
                         {/* CORPO DO FORMULÁRIO */}
                         <form onSubmit={handleSave} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                <div style={{ padding: '0.65rem', borderRadius: '8px', background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>1. Dados, regras e valores</div>
+                                <div style={{ padding: '0.65rem', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>2. Módulos, aulas e provas</div>
+                            </div>
                             {errorMsg && (
                                 <div style={{ padding: '0.75rem 1rem', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991B1B', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <AlertTriangle size={16} /> {errorMsg}
@@ -870,7 +893,7 @@ export default function Cursos() {
                             </div>
 
                             {/* BOTOES MODAL */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', paddingBottom: '0.25rem', position: 'sticky', bottom: '-1.5rem', background: 'white', marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', paddingLeft: '1.5rem', paddingRight: '1.5rem', boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.08)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', paddingBottom: '0.25rem', position: 'sticky', bottom: '-1.5rem', background: 'white', marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', paddingLeft: '1.5rem', paddingRight: '1.5rem', boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.08)' }}>
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
@@ -889,6 +912,17 @@ export default function Cursos() {
                                 </button>
                                 <button
                                     type="submit"
+                                    name="save_action"
+                                    value="save"
+                                    disabled={saving}
+                                    style={{ padding: '0.6rem 1rem', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer' }}
+                                >
+                                    {selectedCourse ? 'Salvar alterações' : 'Salvar rascunho'}
+                                </button>
+                                <button
+                                    type="submit"
+                                    name="save_action"
+                                    value="continue"
                                     disabled={saving}
                                     style={{
                                         padding: '0.6rem 1.5rem',
@@ -905,7 +939,7 @@ export default function Cursos() {
                                     }}
                                 >
                                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    {selectedCourse ? 'Salvar Alterações' : 'Cadastrar Curso'}
+                                    Próximo: Módulos e Aulas →
                                 </button>
                             </div>
                         </form>

@@ -522,12 +522,27 @@ export default function LessonPlayer() {
         timerRef.current = setInterval(() => {
             setSecondsWatched(prev => {
                 const next = prev + 1
-                const completed = lesson.min_watch_time_sec > 0 && next >= lesson.min_watch_time_sec
+                const completed = !lesson.min_watch_time_sec || next >= lesson.min_watch_time_sec
                 
                 if (completed && !isCompleted) {
                     setIsCompleted(true)
+                    setLessonStatus(current => ({
+                        ...current,
+                        [lessonId]: {
+                            ...(current[lessonId] || {}),
+                            is_completed: true,
+                            watched_seconds: next,
+                        },
+                    }))
                     saveProgress(next, true)
                 } else if (next % 10 === 0) { // Salvar progresso da aula a cada 10 segundos
+                    setLessonStatus(current => ({
+                        ...current,
+                        [lessonId]: {
+                            ...(current[lessonId] || {}),
+                            watched_seconds: next,
+                        },
+                    }))
                     saveProgress(next, isCompleted)
                 }
 
@@ -1241,6 +1256,7 @@ export default function LessonPlayer() {
                 <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
                     <button 
                         onClick={() => {
+                            if (!isCompleted) return
                             const currentIndex = allLessons.findIndex(l => l.id === lessonId)
                             if (currentIndex < allLessons.length - 1) {
                                 navigate(`/curso/${courseId}/aula/${allLessons[currentIndex+1].id}`)
@@ -1249,9 +1265,14 @@ export default function LessonPlayer() {
                             }
                         }}
                         className="btn btn-primary"
-                        style={{ padding: '0.75rem 2rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        disabled={!isCompleted}
+                        title={!isCompleted ? 'Conclua o tempo mínimo desta aula para continuar.' : 'Abrir a próxima aula'}
+                        style={{ padding: '0.75rem 2rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: isCompleted ? 1 : 0.55, cursor: isCompleted ? 'pointer' : 'not-allowed' }}
                     >
-                        Próxima Aula <ChevronRight size={18} />
+                        {isCompleted
+                            ? 'Próxima Aula'
+                            : `Aguarde ${Math.max(0, (lesson.min_watch_time_sec || 0) - secondsWatched)}s`}
+                        <ChevronRight size={18} />
                     </button>
                 </div>
 

@@ -188,7 +188,7 @@ export default function Sidebar() {
                         {can.alunos && <NavItem to="/alunos" icon={UsersIcon} label="Alunos" />}
                         {can.turmas && <NavItem to="/turmas" icon={GraduationCap} label="Turmas" />}
                         {can.cursos && <NavItem to="/secretaria/cursos" icon={BookOpen} label="Cursos" hint="Catálogo" />}
-                        {can.ead && <NavItem to="/lms" icon={Video} label="Plataforma EAD" hint="Aulas & provas" />}
+                        {can.ead && !can.cursos && <NavItem to="/lms" icon={Video} label="Plataforma EAD" hint="Aulas & provas" />}
                         {can.certificados && <NavItem to="/secretaria/certificados" icon={Award} label="Certificados" />}
                         {can.instrutores && <NavItem to="/secretaria/instrutores" icon={UserCheck} label="Instrutores" />}
                         {can.professor && <NavItem to="/professor" end icon={Presentation} label="Minhas turmas" hint="Notas & freq." />}

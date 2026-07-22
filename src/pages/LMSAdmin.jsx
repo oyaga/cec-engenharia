@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { coursesApi, classesApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
@@ -60,6 +60,7 @@ const MATH_SYMBOLS = [
 
 export default function LMSAdmin() {
     const navigate = useNavigate()
+    const { courseId } = useParams()
     const [courses, setCourses] = useState([])
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState('list') // list | add_course | manage_course | doubts | certificate_models | announcements
@@ -148,7 +149,19 @@ export default function LMSAdmin() {
         setLoading(true)
         try {
             const { courses } = await coursesApi.list()
-            setCourses(courses || [])
+            const courseList = courses || []
+            setCourses(courseList)
+            if (courseId) {
+                const requestedCourse = courseList.find(course => course.id === courseId)
+                if (requestedCourse) {
+                    setSelectedCourse(requestedCourse)
+                    await fetchCourseDetails(requestedCourse.id)
+                    setView('manage_course')
+                } else {
+                    alert('Curso não encontrado.')
+                    navigate('/secretaria/cursos', { replace: true })
+                }
+            }
         } catch { /* mantém lista */ }
         setLoading(false)
     }
@@ -257,7 +270,7 @@ export default function LMSAdmin() {
     useEffect(() => {
         fetchCourses()
         fetchCertConfigs()
-    }, [])
+    }, [courseId])
 
     useEffect(() => {
         const contentArea = document.querySelector('.content-area')
@@ -522,6 +535,11 @@ export default function LMSAdmin() {
             setModuleForm(emptyModuleForm)
         }
         setShowModuleForm(true)
+    }
+
+    const handleBackToCourses = () => {
+        if (courseId) navigate('/secretaria/cursos')
+        else setView('list')
     }
 
     const lookupModuleCep = async () => {
@@ -870,11 +888,13 @@ export default function LMSAdmin() {
         }
     }
 
+    const courseFinalExam = Object.values(quizzes).find(quiz => quiz.quiz_type === 'final_exam')
+
     const renderManageCourse = () => (
         <div className="animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                    <button className="btn btn-secondary" onClick={() => setView('list')}>&larr; Voltar</button>
+                    <button className="btn btn-secondary" onClick={handleBackToCourses}>&larr; Voltar para Cursos</button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>{selectedCourse?.title}</h2>
                         <button 
@@ -896,6 +916,19 @@ export default function LMSAdmin() {
                     <button className="btn btn-secondary" onClick={handlePreviewCourse}><ChevronRight size={16} /> Ver como Aluno</button>
                     <button className="btn btn-primary" onClick={() => handleOpenModuleForm()}><Plus size={16} /> Novo Módulo</button>
                 </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.5rem', marginBottom: '2rem' }}>
+                {[
+                    ['1', 'Dados e valores', true],
+                    ['2', 'Módulos e aulas', true],
+                    ['3', 'Avaliações', modules.length > 0],
+                    ['4', 'Revisar e publicar', selectedCourse?.is_published],
+                ].map(([number, label, done]) => (
+                    <div key={number} style={{ padding: '0.75rem', borderRadius: '10px', border: `1px solid ${done ? '#99f6e4' : '#e2e8f0'}`, background: done ? '#f0fdfa' : '#f8fafc', color: done ? '#0f766e' : '#64748b', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>
+                        {number}. {label}
+                    </div>
+                ))}
             </div>
 
             {/* RESUMO DE CARGA HORÁRIA */}
@@ -1037,7 +1070,7 @@ export default function LMSAdmin() {
                                     <div style={{ padding: '0.75rem', backgroundColor: '#F5F3FF', borderRadius: '6px', border: '1px solid #DDD6FE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#6D28D9' }}>
                                             <Trophy size={16} />
-                                            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>🏆 PROVA FINAL: {quizzes[`${mod.id}_final_exam`].title}</span>
+                                            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>🏆 PROVA FINAL DO CURSO: {quizzes[`${mod.id}_final_exam`].title}</span>
                                         </div>
                                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                                             <button className="btn" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', backgroundColor: '#fff' }} onClick={() => handleManageQuiz(quizzes[`${mod.id}_final_exam`])}>Gerenciar Questões</button>
@@ -1049,14 +1082,14 @@ export default function LMSAdmin() {
                                             }}>Excluir</button>
                                         </div>
                                     </div>
-                                ) : (
+                                ) : !courseFinalExam && idx === modules.length - 1 ? (
                                     <button 
                                         onClick={() => handleOpenQuizForm(mod.id, 'final_exam')}
                                         style={{ width: '100%', padding: '0.75rem', border: '1px dashed #DDD6FE', borderRadius: '6px', color: '#6D28D9', fontSize: '0.875rem', backgroundColor: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                                     >
-                                        <Trophy size={16} /> Adicionar Prova Final deste Módulo
+                                        <Trophy size={16} /> Adicionar Prova Final do Curso
                                     </button>
-                                )}
+                                ) : null}
                             </div>
                         </div>
                     </div>

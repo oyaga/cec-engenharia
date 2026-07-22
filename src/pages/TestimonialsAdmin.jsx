@@ -6,6 +6,7 @@ export default function TestimonialsAdmin() {
   const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
+  const [loadError, setLoadError] = useState('')
 
   // Estados para depoimento manual (Zap / E-mail)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -28,7 +29,7 @@ export default function TestimonialsAdmin() {
         content: formContent,
         status: 'approved', // Depoimentos manuais já entram aprovados
         type: 'text',
-        evaluation_date: new Date().toISOString().split('T')[0],
+        evaluation_date: new Date().toISOString(),
       })
 
       setFormName('')
@@ -48,11 +49,14 @@ export default function TestimonialsAdmin() {
 
   const fetchAll = async () => {
     setLoading(true)
+    setLoadError('')
     try {
       const { testimonials } = await testimonialsApi.list(filter === 'all' ? undefined : filter)
       setTestimonials(testimonials || [])
     } catch (err) {
       console.error('Erro ao buscar depoimentos:', err)
+      setTestimonials([])
+      setLoadError(err.message || 'Não foi possível carregar os depoimentos.')
     } finally {
       setLoading(false)
     }
@@ -256,7 +260,12 @@ export default function TestimonialsAdmin() {
         ))}
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <div role="alert" className="card" style={{ textAlign: 'center', padding: '2rem', color: '#dc2626' }}>
+          <p style={{ margin: '0 0 1rem', fontWeight: 700 }}>{loadError}</p>
+          <button type="button" onClick={fetchAll} className="btn btn-secondary">Tentar novamente</button>
+        </div>
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Carregando...</div>
       ) : testimonials.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>

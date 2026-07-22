@@ -7,6 +7,7 @@ import EditableText from '../../components/site/EditableText';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
+import { formatBrazilianPhone } from '../../utils/phone';
 
 const Contact = () => {
   const { content } = useEdit();
@@ -158,7 +159,9 @@ const Contact = () => {
                         required 
                         placeholder="(00) 00000-0000"
                         value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        onChange={(e) => setFormData({...formData, phone: formatBrazilianPhone(e.target.value)})}
+                        inputMode="numeric"
+                        maxLength={15}
                       />
                     </div>
                   </div>

@@ -3,6 +3,7 @@
 !.env.example
 /bin/
 /tmp/
+/.gocache/
 cec-api
 cec-api.exe
 *.log

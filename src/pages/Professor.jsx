@@ -78,14 +78,6 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const [repliesLoading, setRepliesLoading] = useState(false)
 
     // Fórum do instrutor: sem dados fabricados (retorna vazio quando não há dados reais)
-    const getMockForumDataForInstructor = () => {
-        return []
-    }
-
-    const getMockRepliesForInstructor = () => {
-        return []
-    }
-
     // Estados do Analytics (Aproveitamento & Progresso)
     const [analyticsLoading, setAnalyticsLoading] = useState(false)
     const [analyticsData, setAnalyticsData] = useState({
@@ -454,15 +446,25 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             }
 
             let completions = []
+            let timeLogs = []
             const { attendance: presences } = await attendanceApi.list({})
-            const timeLogs = []
-            try {
-                // progresso: uma chamada por aluno seria caro; usa progresso agregado onde possível.
-                for (const e of enrolls) {
-                    const { progress } = await lmsApi.progress(e.student_id)
-                    ;(progress || []).filter(p => p.is_completed).forEach(p => completions.push({ student_id: e.student_id, lesson_id: p.lesson_id }))
+            const studentMetrics = await Promise.all(enrolls.map(async (enrollment) => {
+                const [progressResult, timeResult] = await Promise.allSettled([
+                    lmsApi.progress(enrollment.student_id),
+                    lmsApi.timeLogs(enrollment.student_id),
+                ])
+                return {
+                    studentId: enrollment.student_id,
+                    progress: progressResult.status === 'fulfilled' ? (progressResult.value.progress || []) : [],
+                    logs: timeResult.status === 'fulfilled' ? (timeResult.value.logs || []) : [],
                 }
-            } catch { /* ignora */ }
+            }))
+            studentMetrics.forEach(metric => {
+                metric.progress
+                    .filter(p => p.is_completed)
+                    .forEach(p => completions.push({ student_id: metric.studentId, lesson_id: p.lesson_id }))
+                metric.logs.forEach(log => timeLogs.push({ ...log, student_id: metric.studentId }))
+            })
 
             // Processar dados individuais por aluno
             let totalProgressSum = 0
@@ -475,7 +477,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                 if (!studentUser) return null
 
                 // Achar a turma desse aluno
-                const studentClass = myClasses.find(c => c.course_id === e.course_id)
+                const studentClass = myClasses.find(c => c.id === e.turma_id)
                 const cId = studentClass?.id
 
                 // Progresso EAD
@@ -563,20 +565,15 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                 studyTrendMap[d] = { name: d, 'Horas de Estudo': 0 }
             })
 
-            if (timeLogs && timeLogs.length > 0) {
-                timeLogs.forEach(t => {
-                    const dayName = daysOfWeek[new Date(t.created_at).getDay()]
-                    studyTrendMap[dayName]['Horas de Estudo'] += (t.duration_seconds || 0) / 3600
-                })
-            } else {
-                studyTrendMap['Dom']['Horas de Estudo'] = 12
-                studyTrendMap['Seg']['Horas de Estudo'] = 18
-                studyTrendMap['Ter']['Horas de Estudo'] = 28
-                studyTrendMap['Qua']['Horas de Estudo'] = 26
-                studyTrendMap['Qui']['Horas de Estudo'] = 32
-                studyTrendMap['Sex']['Horas de Estudo'] = 15
-                studyTrendMap['Sáb']['Horas de Estudo'] = 22
-            }
+            timeLogs.forEach(t => {
+                const createdAt = new Date(t.created_at)
+                if (Number.isNaN(createdAt.getTime())) return
+                const dayName = daysOfWeek[createdAt.getDay()]
+                studyTrendMap[dayName]['Horas de Estudo'] += (t.duration_seconds || 0) / 3600
+            })
+            Object.values(studyTrendMap).forEach(day => {
+                day['Horas de Estudo'] = Math.round(day['Horas de Estudo'] * 10) / 10
+            })
 
             const studyTrend = Object.values(studyTrendMap)
 
@@ -584,7 +581,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                 kpis: {
                     avgProgress,
                     avgAttendance,
-                    hoursStudied: hoursStudied || 120,
+                    hoursStudied,
                     studentsAtRisk: riskCount
                 },
                 classProgress,
@@ -647,8 +644,8 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             }))
             setForumTopicsList(topicsWithCount)
         } catch (err) {
-            console.warn("Erro ao buscar tópicos do fórum para o instrutor, usando mocks:", err.message)
-            setForumTopicsList(getMockForumDataForInstructor())
+            console.warn("Erro ao buscar tópicos do fórum para o instrutor:", err.message)
+            setForumTopicsList([])
         } finally {
             setForumLoading(false)
         }
@@ -661,8 +658,8 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             const { replies } = await lmsApi.topicReplies(topicId)
             setTopicReplies(replies || [])
         } catch (err) {
-            console.warn("Erro ao buscar respostas do fórum para o instrutor, usando mocks:", err.message)
-            setTopicReplies(getMockRepliesForInstructor(topicId))
+            console.warn("Erro ao buscar respostas do fórum para o instrutor:", err.message)
+            setTopicReplies([])
         } finally {
             setRepliesLoading(false)
         }

@@ -27,6 +27,13 @@ type Class struct {
 	InstructorPaymentType  *string    `gorm:"column:instructor_payment_type" json:"instructor_payment_type,omitempty"`
 	InstructorPaymentValue float64    `gorm:"column:instructor_payment_value" json:"instructor_payment_value"`
 	Address                *string    `json:"address,omitempty"`
+	HasInPerson            bool       `gorm:"column:has_in_person" json:"has_in_person"`
+	InPersonSessions       int        `gorm:"column:in_person_sessions" json:"in_person_sessions"`
+	CEP                    *string    `gorm:"column:cep" json:"cep,omitempty"`
+	AddressNumber          *string    `gorm:"column:address_number" json:"address_number,omitempty"`
+	AddressComplement      *string    `gorm:"column:address_complement" json:"address_complement,omitempty"`
+	CardInstallments       int        `gorm:"column:card_installments;default:10" json:"card_installments"`
+	BoletoInstallments     int        `gorm:"column:boleto_installments;default:1" json:"boleto_installments"`
 	MaxCapacity            int        `gorm:"column:max_capacity;default:10" json:"max_capacity"`
 	CourseValue            *float64   `gorm:"column:course_value" json:"course_value,omitempty"`
 	Status                 *string    `json:"status,omitempty"`

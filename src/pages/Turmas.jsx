@@ -50,12 +50,20 @@ export default function Turmas() {
         instructor_payment_value: 0,
         create_lms_integration: false,
         address: '',
+        has_in_person: false,
+        in_person_sessions: 0,
+        cep: '',
+        address_number: '',
+        address_complement: '',
+        card_installments: 10,
+        boleto_installments: 1,
         max_capacity: 10,
         is_past_class: false,
         actual_start_date: '',
         actual_end_date: ''
     })
     const [lmsCourses, setLmsCourses] = useState([])
+    const [cepLoading, setCepLoading] = useState(false)
 
     // Modal de Data Universal
     const [showDateModal, setShowDateModal] = useState(false)
@@ -64,8 +72,8 @@ export default function Turmas() {
 
     const fetchLmsCourses = async () => {
         try {
-            const { courses } = await coursesApi.list(true)
-            setLmsCourses((courses || []).map(c => ({ id: c.id, title: c.title })))
+            const { courses } = await coursesApi.list()
+            setLmsCourses(courses || [])
         } catch {
             setLmsCourses([])
         }
@@ -224,6 +232,13 @@ export default function Turmas() {
                 instructor_payment_type: c.instructor_payment_type,
                 instructor_payment_value: c.instructor_payment_value,
                 address: c.address,
+                hasInPerson: c.has_in_person,
+                inPersonSessions: c.in_person_sessions || 0,
+                cep: c.cep || '',
+                addressNumber: c.address_number || '',
+                addressComplement: c.address_complement || '',
+                cardInstallments: c.card_installments || 10,
+                boletoInstallments: c.boleto_installments || 1,
                 maxCapacity: c.max_capacity || 10,
                 practicalStudentsCount: c.practical_confirmed || 0,
                 practicalPendingCount: c.practical_pending || 0,
@@ -296,12 +311,58 @@ export default function Turmas() {
             }
         }
 
+        if (name === 'lms_course_id') {
+            const selectedCourse = lmsCourses.find(course => course.id === value)
+            if (selectedCourse) {
+                updated.course_name = selectedCourse.title
+                const totalHours = (Number(selectedCourse.min_theoretical_hours) || 0) + (Number(selectedCourse.practical_hours) || 0)
+                if (totalHours > 0) updated.duration = String(totalHours)
+                if (selectedCourse.price_pix) updated.price_cash = String(selectedCourse.price_pix)
+                if (selectedCourse.price_card) updated.price_card_10x = String(selectedCourse.price_card)
+                if (selectedCourse.price_boleto) updated.price_installments_3x = String(selectedCourse.price_boleto)
+                if (selectedCourse.max_installments) updated.card_installments = selectedCourse.max_installments
+                if ((Number(selectedCourse.practical_hours) || 0) > 0) updated.has_in_person = true
+            } else {
+                updated.course_name = ''
+            }
+        }
+
         setFormData(updated)
     }
 
+    const handleCepLookup = async () => {
+        const cep = String(formData.cep || '').replace(/\D/g, '')
+        if (cep.length !== 8) {
+            alert('Informe um CEP com 8 números.')
+            return
+        }
+        setCepLoading(true)
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+            const data = await response.json()
+            if (!response.ok || data.erro) throw new Error('CEP não encontrado')
+            const address = [data.logradouro, data.bairro, data.localidade, data.uf].filter(Boolean).join(', ')
+            setFormData(prev => ({ ...prev, cep, address }))
+        } catch (error) {
+            alert('Não foi possível localizar o CEP. Você pode preencher o endereço manualmente.')
+        } finally {
+            setCepLoading(false)
+        }
+    }
+
     const handleSubmit = async () => {
-        if (!formData.name || !formData.course_name) {
-            alert('Por favor, preencha o Nome e Curso.')
+        if (!formData.name || !formData.course_name || !formData.lms_course_id) {
+            alert('Preencha o nome da turma e selecione um curso cadastrado.')
+            return
+        }
+
+        if (!formData.is_immediate_start && (!formData.start_date || !formData.predicted_end_date)) {
+            alert('Informe as datas de início e término ou marque Início imediato.')
+            return
+        }
+
+        if (formData.has_in_person && (!formData.in_person_sessions || !formData.address)) {
+            alert('Informe a quantidade de encontros e o endereço das aulas presenciais.')
             return
         }
 
@@ -362,11 +423,12 @@ export default function Turmas() {
         // domínio LMS for migrado para a API Go. Por ora, apenas vincula um
         // curso existente (se selecionado) e ignora a criação automática.
 
+        const toApiDate = value => value ? `${value}T12:00:00Z` : null
         const newClass = {
             name: formData.name,
             course_name: formData.course_name,
-            start_date: (formData.is_immediate_start || !formData.start_date) ? null : formData.start_date,
-            predicted_end_date: (formData.is_immediate_start || !formData.predicted_end_date) ? null : formData.predicted_end_date,
+            start_date: formData.is_immediate_start ? null : toApiDate(formData.start_date),
+            predicted_end_date: formData.is_immediate_start ? null : toApiDate(formData.predicted_end_date),
             schedule: formData.schedule,
             duration: formData.duration,
             lms_course_id: finalLmsId,
@@ -377,9 +439,16 @@ export default function Turmas() {
             instructor_payment_type: formData.instructor_payment_type,
             instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0,
             address: formData.address || null,
+            has_in_person: !!formData.has_in_person,
+            in_person_sessions: formData.has_in_person ? (parseInt(formData.in_person_sessions) || 0) : 0,
+            cep: formData.has_in_person ? String(formData.cep || '').replace(/\D/g, '') || null : null,
+            address_number: formData.has_in_person ? formData.address_number || null : null,
+            address_complement: formData.has_in_person ? formData.address_complement || null : null,
+            card_installments: parseInt(formData.card_installments) || 1,
+            boleto_installments: parseInt(formData.boleto_installments) || 1,
             max_capacity: formData.max_capacity ? parseInt(formData.max_capacity) : 10,
-            actual_start_date: (formData.is_past_class && formData.actual_start_date) ? formData.actual_start_date : null,
-            actual_end_date: (formData.is_past_class && formData.actual_end_date) ? formData.actual_end_date : null
+            actual_start_date: (formData.is_past_class && formData.actual_start_date) ? toApiDate(formData.actual_start_date) : null,
+            actual_end_date: (formData.is_past_class && formData.actual_end_date) ? toApiDate(formData.actual_end_date) : null
         }
 
         if (isEditing && editingId) {
@@ -404,6 +473,9 @@ export default function Turmas() {
                     instructor_payment_value: 0,
                     create_lms_integration: false,
                     address: '',
+                    has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+                    card_installments: 10, boleto_installments: 1,
+                    max_capacity: 10,
                     is_past_class: false,
                     actual_start_date: '',
                     actual_end_date: ''
@@ -432,6 +504,13 @@ export default function Turmas() {
             instructor_payment_value: turma.instructor_payment_value || 0,
             create_lms_integration: !!turma.lms_course_id,
             address: turma.address || '',
+            has_in_person: turma.hasInPerson || false,
+            in_person_sessions: turma.inPersonSessions || 0,
+            cep: turma.cep || '',
+            address_number: turma.addressNumber || '',
+            address_complement: turma.addressComplement || '',
+            card_installments: turma.cardInstallments || 10,
+            boleto_installments: turma.boletoInstallments || 1,
             max_capacity: turma.maxCapacity || 10,
             is_past_class: !!(turma.actualStartDate && turma.actualEndDate),
             actual_start_date: turma.actualStartDate || '',
@@ -445,8 +524,8 @@ export default function Turmas() {
     const handleNewClass = () => {
         setFormData({
             name: generateNextClassName(classes),
-            course_name: 'Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)',
-            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '136',
+            course_name: '',
+            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '',
             lms_course_id: '',
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
@@ -454,6 +533,8 @@ export default function Turmas() {
             instructor_payment_value: 0,
             create_lms_integration: false,
             address: '',
+            has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+            card_installments: 10, boleto_installments: 1,
             max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
@@ -489,6 +570,8 @@ export default function Turmas() {
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
             address: '',
+            has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+            card_installments: 10, boleto_installments: 1,
             max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
@@ -1047,7 +1130,7 @@ export default function Turmas() {
             </div>
 
             <div className="card">
-                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Dados Básicos</h3>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>1. Identificação e Curso</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group">
                         <label className="form-label">Nome da Turma (Ex: T01/26)</label>
@@ -1055,30 +1138,20 @@ export default function Turmas() {
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gerado automaticamente pelo sistema, mas pode ser alterado se necessário.</span>
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Nome do Curso / Treinamento</label>
-                        <input
-                            list="course-options"
-                            className="form-control"
-                            name="course_name"
-                            value={formData.course_name}
-                            onChange={handleFormChange}
-                            placeholder="Digite ou selecione o curso"
-                        />
-                        <datalist id="course-options">
-                            {/* Sugestões dinâmicas baseadas em turmas já criadas */}
-                            {[...new Set(classes.map(c => c.course))].filter(Boolean).map((course, idx) => (
-                                <option key={idx} value={course} />
+                        <label className="form-label">Vincular curso cadastrado *</label>
+                        <select className="form-control" name="lms_course_id" value={formData.lms_course_id} onChange={handleFormChange} required>
+                            <option value="">Selecione o curso...</option>
+                            {lmsCourses.map(course => (
+                                <option key={course.id} value={course.id}>
+                                    {course.code ? `${course.code} — ` : ''}{course.title}
+                                </option>
                             ))}
-                            {/* Padrões fixos caso o banco esteja vazio */}
-                            {classes.length === 0 && (
-                                <>
-                                    <option value="Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)" />
-                                    <option value="Controle Dimensional – Topografia (CD-TO)" />
-                                    <option value="Controle Dimensional - Mecânica- (CD-CM)" />
-                                </>
-                            )}
-                        </datalist>
+                        </select>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            A carga horária e os valores serão preenchidos a partir do curso e poderão ser ajustados para esta turma.
+                        </span>
                     </div>
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>2. Período da Turma</h3>
                     <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '1.5rem' }}>
                         <label className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                             <input
@@ -1104,29 +1177,6 @@ export default function Turmas() {
                             />
                             Esta turma já aconteceu (Histórica/Passada)?
                         </label>
-                    </div>
-                    <div style={{ gridColumn: 'span 2' }}>
-                        <label className="form-label">Vincular Conteúdo Online (LMS)</label>
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <select className="form-control" name="lms_course_id" value={formData.lms_course_id} onChange={handleFormChange} style={{ flex: 1 }}>
-                                <option value="">Nenhum curso vinculado</option>
-                                {lmsCourses.map(c => (
-                                    <option key={c.id} value={c.id}>{c.title}</option>
-                                ))}
-                            </select>
-                            {!formData.lms_course_id && (
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap', backgroundColor: '#F0F9FF', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-                                    <input
-                                        type="checkbox"
-                                        name="create_lms_integration"
-                                        checked={formData.create_lms_integration}
-                                        onChange={handleFormChange}
-                                    />
-                                    Criar Curso EAD Automático?
-                                </label>
-                            )}
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Selecione um curso existente ou marque para criar um novo curso EAD com o nome desta turma.</span>
                     </div>
                     <div className="form-group">
                         <label className="form-label">
@@ -1180,18 +1230,41 @@ export default function Turmas() {
                             min="1"
                         />
                     </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                        <label className="form-label">Endereço da Aula Prática (Sede ou Local Externo)</label>
-                        <input
-                            type="text"
-                            className="form-control"
-                            name="address"
-                            value={formData.address}
-                            onChange={handleFormChange}
-                            placeholder="Ex: Sede C&C - Rio de Janeiro/RJ ou local externo"
-                        />
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Deixe em branco para usar o endereço padrão (Sede C&C - Rio de Janeiro/RJ).</span>
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>3. Aulas Presenciais</h3>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
+                            <input type="checkbox" name="has_in_person" checked={formData.has_in_person} onChange={handleFormChange} />
+                            Esta turma possui aula presencial ou prática
+                        </label>
                     </div>
+                    {formData.has_in_person && (
+                        <>
+                            <div className="form-group">
+                                <label className="form-label">Quantidade de encontros presenciais *</label>
+                                <input type="number" min="1" className="form-control" name="in_person_sessions" value={formData.in_person_sessions || ''} onChange={handleFormChange} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">CEP *</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input type="text" inputMode="numeric" maxLength="9" className="form-control" name="cep" value={formData.cep} onChange={handleFormChange} placeholder="00000-000" />
+                                    <button type="button" className="btn btn-secondary" onClick={handleCepLookup} disabled={cepLoading}>{cepLoading ? 'Buscando...' : 'Buscar'}</button>
+                                </div>
+                            </div>
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <label className="form-label">Endereço *</label>
+                                <input type="text" className="form-control" name="address" value={formData.address} onChange={handleFormChange} placeholder="Logradouro, bairro, cidade e UF" />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Número</label>
+                                <input type="text" className="form-control" name="address_number" value={formData.address_number} onChange={handleFormChange} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Complemento</label>
+                                <input type="text" className="form-control" name="address_complement" value={formData.address_complement} onChange={handleFormChange} placeholder="Sala, bloco ou referência" />
+                            </div>
+                        </>
+                    )}
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>4. Pagamento do Aluno</h3>
                     <div className="form-group">
                         <label className="form-label">Preço À Vista (R$)</label>
                         <input
@@ -1207,7 +1280,7 @@ export default function Turmas() {
                         />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Preço Cartão (10x s/ juros)</label>
+                        <label className="form-label">Valor total no Cartão (R$)</label>
                         <input
                             type="text"
                             className="form-control"
@@ -1221,7 +1294,16 @@ export default function Turmas() {
                         />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Preço Boleto (3x)</label>
+                        <label className="form-label">Parcelas no Cartão</label>
+                        <input type="number" min="1" max="24" className="form-control" name="card_installments" value={formData.card_installments} onChange={handleFormChange} />
+                        {Number(formData.price_card_10x) > 0 && Number(formData.card_installments) > 0 && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {formData.card_installments}x de R$ {(Number(formData.price_card_10x) / Number(formData.card_installments)).toFixed(2).replace('.', ',')}
+                            </span>
+                        )}
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Valor total no Boleto (R$)</label>
                         <input
                             type="text"
                             className="form-control"
@@ -1234,9 +1316,13 @@ export default function Turmas() {
                             }}
                         />
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">Parcelas no Boleto</label>
+                        <input type="number" min="1" max="24" className="form-control" name="boleto_installments" value={formData.boleto_installments} onChange={handleFormChange} />
+                    </div>
                 </div>
 
-                <h3 style={{ fontSize: '1.125rem', marginTop: '2rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Configuração de Pagamento (Instrutor)</h3>
+                <h3 style={{ fontSize: '1.125rem', marginTop: '2rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>5. Pagamento do Instrutor</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group">
                         <label className="form-label">Tipo de Pagamento</label>

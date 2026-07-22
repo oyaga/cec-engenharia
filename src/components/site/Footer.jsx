@@ -5,6 +5,7 @@ import { useEdit } from '../../context/EditContext';
 import { leadsApi } from '../../services/site';
 import EditableText from './EditableText';
 import MapWidget from './MapWidget';
+import { formatBrazilianPhone } from '../../utils/phone';
 
 const Footer = () => {
   const { content, isEditing, updateContent } = useEdit();
@@ -21,7 +22,7 @@ const Footer = () => {
   };
 
   const handlePhoneChange = (val) => {
-    setNewsletterPhone(val);
+    setNewsletterPhone(formatBrazilianPhone(val));
     if (val.trim() || newsletterEmail.trim()) setValidationError('');
   };
 
@@ -272,6 +273,8 @@ const Footer = () => {
                 value={newsletterPhone}
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 placeholder="WhatsApp (ou preencha o e-mail)" 
+                inputMode="numeric"
+                maxLength={15}
                 disabled={newsletterStatus === 'sending'}
                 style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
               />

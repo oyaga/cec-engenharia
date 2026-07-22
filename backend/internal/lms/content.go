@@ -294,7 +294,33 @@ func (h *Handler) GetQuiz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"quiz": quiz, "questions": out})
 }
 
-func (h *Handler) CreateQuiz(c *gin.Context) { h.create(c, &models.LMSQuiz{}, "quiz") }
+func (h *Handler) CreateQuiz(c *gin.Context) {
+	var quiz models.LMSQuiz
+	if err := c.ShouldBindJSON(&quiz); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
+		return
+	}
+	if quiz.CourseID == nil || quiz.ModuleID == nil || quiz.Title == "" {
+		httpx.Error(c, http.StatusBadRequest, "curso, módulo e título são obrigatórios")
+		return
+	}
+	if quiz.QuizType != nil && *quiz.QuizType == "final_exam" {
+		var count int64
+		h.db.Model(&models.LMSQuiz{}).
+			Where("course_id = ? AND quiz_type = ?", *quiz.CourseID, "final_exam").
+			Count(&count)
+		if count > 0 {
+			httpx.Error(c, http.StatusConflict, "o curso já possui uma prova final")
+			return
+		}
+	}
+	quiz.ID = uuid.Nil
+	if err := h.db.Create(&quiz).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao criar quiz")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"quiz": quiz})
+}
 func (h *Handler) UpdateQuiz(c *gin.Context) { h.update(c, &models.LMSQuiz{}, "quiz") }
 func (h *Handler) DeleteQuiz(c *gin.Context) {
 	h.db.Delete(&models.LMSQuiz{}, "id = ?", c.Param("id"))

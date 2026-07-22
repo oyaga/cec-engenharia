@@ -132,9 +132,29 @@ func (h *Handler) CreateClass(c *gin.Context) {
 		return
 	}
 	cl.ID = uuid.Nil
-	if cl.Name == "" || cl.CourseName == "" {
-		httpx.Error(c, http.StatusBadRequest, "nome e curso são obrigatórios")
+	if cl.Name == "" || cl.LMSCourseID == nil {
+		httpx.Error(c, http.StatusBadRequest, "nome da turma e curso vinculado são obrigatórios")
 		return
+	}
+	var linkedCourse models.LMSCourse
+	if err := h.db.First(&linkedCourse, "id = ?", *cl.LMSCourseID).Error; err != nil {
+		httpx.Error(c, http.StatusBadRequest, "curso vinculado não encontrado")
+		return
+	}
+	cl.CourseName = linkedCourse.Title
+	if !cl.IsImmediateStart && (cl.StartDate == nil || cl.PredictedEndDate == nil) {
+		httpx.Error(c, http.StatusBadRequest, "informe início e término ou marque início imediato")
+		return
+	}
+	if cl.HasInPerson && (cl.InPersonSessions < 1 || cl.Address == nil || *cl.Address == "") {
+		httpx.Error(c, http.StatusBadRequest, "aulas presenciais exigem quantidade de encontros e endereço")
+		return
+	}
+	if cl.CardInstallments < 1 {
+		cl.CardInstallments = 1
+	}
+	if cl.BoletoInstallments < 1 {
+		cl.BoletoInstallments = 1
 	}
 	if err := h.db.Create(&cl).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao criar turma")
@@ -161,6 +181,9 @@ func (h *Handler) UpdateClass(c *gin.Context) {
 		"lms_course_id": true, "evaluation_pdf_url": true, "price_cash": true, "price_card_10x": true,
 		"price_installments_3x": true, "is_immediate_start": true, "instructor_payment_type": true,
 		"instructor_payment_value": true, "address": true, "max_capacity": true,
+		"has_in_person": true, "in_person_sessions": true, "cep": true,
+		"address_number": true, "address_complement": true,
+		"card_installments": true, "boleto_installments": true,
 		"course_value": true, "status": true, "notes": true,
 	}
 	updates := map[string]any{}
@@ -199,6 +222,12 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 // ListAttendance: GET /attendance?student_id=&class_id=
 func (h *Handler) ListAttendance(c *gin.Context) {
 	q := h.db.Model(&models.AttendanceRecord{}).Order("created_at DESC")
+	role := middleware.Role(c)
+	if role == "aluno" {
+		q = q.Where("student_id IN (SELECT id FROM students WHERE user_id = ?)", middleware.UserID(c))
+	} else if role == "instrutor" {
+		q = q.Where("class_id IN (SELECT class_id FROM class_instructors WHERE user_id = ?)", middleware.UserID(c))
+	}
 	if sid := c.Query("student_id"); sid != "" {
 		q = q.Where("student_id = ?", sid)
 	}
@@ -221,6 +250,10 @@ func (h *Handler) CreateAttendance(c *gin.Context) {
 	if a.Status == "" {
 		a.Status = "presente"
 	}
+	if a.ClassID == nil || !h.canManageClass(c, *a.ClassID) {
+		httpx.Error(c, http.StatusForbidden, "sem acesso a esta turma")
+		return
+	}
 	if err := h.db.Create(&a).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar presença")
 		return
@@ -233,6 +266,10 @@ func (h *Handler) UpdateAttendance(c *gin.Context) {
 	var a models.AttendanceRecord
 	if err := h.db.First(&a, "id = ?", c.Param("id")).Error; err != nil {
 		httpx.Error(c, http.StatusNotFound, "registro não encontrado")
+		return
+	}
+	if a.ClassID == nil || !h.canManageClass(c, *a.ClassID) {
+		httpx.Error(c, http.StatusForbidden, "sem acesso a esta turma")
 		return
 	}
 	var body map[string]any

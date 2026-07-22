@@ -51,7 +51,15 @@ const Testimonials = () => {
     e.preventDefault();
     setSubmitStatus('sending');
     try {
-      await testimonialsApi.submitPublic({ ...formData, type: 'text' });
+      const evaluationDate = formData.evaluation_date
+        ? new Date(`${formData.evaluation_date}T12:00:00`).toISOString()
+        : new Date().toISOString();
+
+      await testimonialsApi.submitPublic({
+        ...formData,
+        evaluation_date: evaluationDate,
+        type: 'text',
+      });
       setSubmitStatus('success');
       setTimeout(() => {
         setShowModal(false);
@@ -59,6 +67,7 @@ const Testimonials = () => {
         setFormData({ name: '', course: '', content: '', evaluation_date: new Date().toISOString().split('T')[0] });
       }, 3000);
     } catch (err) {
+      console.error('Erro ao enviar avaliação:', err);
       setSubmitStatus('error');
     }
   };
@@ -192,6 +201,11 @@ const Testimonials = () => {
                       {submitStatus === 'sending' ? 'Enviando...' : 'Enviar Avaliação'}
                     </button>
                   </div>
+                  {submitStatus === 'error' && (
+                    <p role="alert" style={{ color: '#dc2626', marginTop: '1rem', fontWeight: 600 }}>
+                      Não foi possível enviar sua avaliação. Confira os campos e tente novamente.
+                    </p>
+                  )}
                 </form>
               )}
             </motion.div>

@@ -6,6 +6,7 @@ import {
   CreditCard, MapPin, Hash, X, ShieldCheck, Info,
   Smartphone, FileText, Calendar, Clock
 } from 'lucide-react';
+import { formatBrazilianPhone } from '../../utils/phone';
 import { useEdit } from '../../context/EditContext';
 import { coursesApi } from '../../services/academic';
 import { enrollmentsApi } from '../../services/site';
@@ -336,7 +337,15 @@ const Enrollment = () => {
                   </div>
                   <div className="input-group">
                     <label><Phone size={16} /> WhatsApp</label>
-                    <input type="tel" required placeholder="(00) 00000-0000" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+                    <input
+                      type="tel"
+                      required
+                      placeholder="(00) 00000-0000"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({...formData, phone: formatBrazilianPhone(e.target.value)})}
+                      inputMode="numeric"
+                      maxLength={15}
+                    />
                   </div>
                 </div>
 
