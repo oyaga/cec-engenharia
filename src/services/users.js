@@ -11,4 +11,5 @@ export const usersApi = {
   update: (id, payload) => request(`/users/${id}`, { method: 'PUT', body: payload }),
   remove: (id) => request(`/users/${id}`, { method: 'DELETE' }),
   resetPassword: (id, password) => request(`/users/${id}/reset-password`, { method: 'POST', body: { password } }),
+  sendPasswordReset: (id) => request(`/users/${id}/send-password-reset`, { method: 'POST' }),
 };

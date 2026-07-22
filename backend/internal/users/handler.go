@@ -21,6 +21,7 @@ import (
 
 // Validade do link de primeiro acesso enviado no e-mail de boas-vindas.
 const welcomeTokenTTL = 72 * time.Hour
+const studentPasswordResetTTL = 12 * time.Hour
 
 type Handler struct {
 	db        *gorm.DB
@@ -244,6 +245,52 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	}
 	h.db.Model(&user).Updates(map[string]any{"password_hash": hash, "must_change_password": true})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// SendPasswordReset: POST /users/:id/send-password-reset — envia ao usuário
+// um link de uso único para ele próprio escolher a nova senha. A senha atual
+// permanece válida até a conclusão do fluxo.
+func (h *Handler) SendPasswordReset(c *gin.Context) {
+	var user models.User
+	if err := h.db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "usuário não encontrado")
+		return
+	}
+	if strings.TrimSpace(user.Email) == "" {
+		httpx.Error(c, http.StatusUnprocessableEntity, "o aluno não possui e-mail cadastrado")
+		return
+	}
+	if !user.IsActive {
+		httpx.Error(c, http.StatusUnprocessableEntity, "a conta do aluno está inativa")
+		return
+	}
+	if !h.ml.Enabled() {
+		httpx.Error(c, http.StatusServiceUnavailable, "envio de e-mail não configurado")
+		return
+	}
+
+	token, err := auth.IssueResetToken(h.db, user.ID, studentPasswordResetTTL)
+	if err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao gerar link de redefinição")
+		return
+	}
+	link := h.publicURL + "/redefinir-senha?token=" + token
+	name := html.EscapeString(strings.TrimSpace(user.FullName))
+	if name == "" {
+		name = "aluno(a)"
+	}
+	body := `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1f2937">` +
+		`<h2 style="color:#0f172a;margin:0 0 16px">CEC Engenharia</h2>` +
+		`<p>Olá, ` + name + `.</p>` +
+		`<p>A Secretaria solicitou a redefinição da senha do seu acesso ao Portal do Aluno. Clique no botão abaixo para criar uma nova senha.</p>` +
+		`<p><strong>Este link é de uso único e expira em 12 horas.</strong></p>` +
+		`<p style="text-align:center;margin:28px 0"><a href="` + link + `" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;display:inline-block">Criar nova senha</a></p>` +
+		`<p style="font-size:13px;color:#6b7280">Se você não reconhece esta solicitação, ignore este e-mail e entre em contato com a Secretaria.</p>` +
+		`<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">` +
+		`<p style="font-size:12px;color:#9ca3af">Este é um e-mail automático — não responda.</p></div>`
+	h.ml.SendAsync([]string{user.Email}, "Crie uma nova senha — Portal do Aluno CEC", body)
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Link enviado para o e-mail do aluno.", "expires_in_hours": 12})
 }
 
 // Delete: DELETE /users/:id

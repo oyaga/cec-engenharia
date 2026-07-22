@@ -111,6 +111,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		u.GET("/:id", usersH.Get)
 		u.PUT("/:id", usersH.Update)
 		u.POST("/:id/reset-password", usersH.ResetPassword)
+		u.POST("/:id/send-password-reset", usersH.SendPasswordReset)
 		u.DELETE("/:id", usersH.Delete)
 
 		// ─── Site público (sem auth) ───

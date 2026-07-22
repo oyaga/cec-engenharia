@@ -839,20 +839,20 @@ export default function Alunos() {
     }
 
     const handleResetPassword = async (student) => {
-        const confirmReset = window.confirm(`Deseja resetar a senha de ${student.name} para o CPF original? \n\nO aluno será obrigado a trocar a senha no próximo login.`)
+        const email = student.originalData?.users?.email || student.email || student.originalData?.email || ''
+        const confirmReset = window.confirm(`Enviar um link para ${student.name} criar uma nova senha?\n\nDestino: ${email || 'e-mail cadastrado na conta'}\nValidade: 12 horas. O link poderá ser usado uma única vez.`)
         if (!confirmReset) return
 
-        const cleanCPF = student.cpf.replace(/\D/g, '')
         const userId = student.originalData.user_id
 
         if (!userId) return alert('Este aluno ainda não possui uma conta vinculada.')
 
         try {
-            await usersApi.resetPassword(userId, cleanCPF)
-            alert('Senha resetada com sucesso para o CPF do aluno!')
+            await usersApi.sendPasswordReset(userId)
+            alert('Link de redefinição enviado por e-mail. Ele expira em 12 horas.')
             fetchStudents()
         } catch (err) {
-            alert('Erro ao resetar senha: ' + err.message)
+            alert('Erro ao enviar o link: ' + err.message)
         }
     }
 
@@ -1014,7 +1014,7 @@ export default function Alunos() {
                                     </td>
                                     <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Excluir Aluno" onClick={() => handleDeleteStudent(s)}><Trash2 size={16} color="#ef4444" /></button>
-                                        <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Resetar Senha (CPF)" onClick={() => handleResetPassword(s)}><Key size={16} color="#ef4444" /></button>
+                                        <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Enviar link para criar nova senha (12h)" onClick={() => handleResetPassword(s)}><Key size={16} color="#2563eb" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Auditoria de Horas (LMS)" onClick={() => { setView(s); fetchStudentTimeLogs(s.originalData.id); }}><Activity size={16} color="#0EA5E9" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Certificado" onClick={() => handleDownloadCertificate(s)}><Award size={16} color="#eab308" /></button>
                                         <button className="btn btn-secondary" style={{ padding: '0.4rem' }} title="Editar Dados" onClick={() => handleEdit(s)}><FileText size={16} /></button>
