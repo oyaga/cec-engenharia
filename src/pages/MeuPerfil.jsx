@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { 
     User, Mail, Phone, Calendar, Shield, Save, Key, Loader2, BookOpen, 
     GraduationCap, CheckCircle, AlertCircle, Eye, EyeOff, Plus, Trash, 
-    Award, FileText, CreditCard, Camera, MapPin, Building, Activity, Sparkles 
+    Award, FileText, CreditCard, Camera, MapPin, Building, Activity, Sparkles, Upload 
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -490,6 +490,28 @@ export default function MeuPerfil() {
             setSelfieStream(null)
         }
         setShowCamera(false)
+    }
+
+    // Upload de Foto (Fallback para Desktop sem webcam)
+    const handleSelfieUpload = () => {
+        const fileInput = document.createElement('input')
+        fileInput.type = 'file'
+        fileInput.accept = 'image/*'
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0]
+            if (file) {
+                const reader = new FileReader()
+                reader.onloadend = () => {
+                    setStudentDocs(prev => ({
+                        ...prev,
+                        selfie: { status: 'approved', name: file.name, preview: reader.result }
+                    }))
+                    setFeedback({ type: 'success', message: `Selfie "${file.name}" enviada com sucesso!` })
+                }
+                reader.readAsDataURL(file)
+            }
+        }
+        fileInput.click()
     }
 
     // Upload Simulado de Documentos do Aluno
@@ -1517,9 +1539,14 @@ export default function MeuPerfil() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <button onClick={startCamera} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem' }}>
-                                        <Camera size={16} /> Capturar com Webcam (WebRTC)
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <button onClick={startCamera} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem' }}>
+                                            <Camera size={16} /> Capturar com Webcam
+                                        </button>
+                                        <button onClick={handleSelfieUpload} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem' }}>
+                                            <Upload size={16} /> Enviar Arquivo de Foto
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>
