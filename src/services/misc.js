@@ -14,6 +14,7 @@ export const ordersApi = {
 
 export const messagesApi = {
   list: (withUser) => request(`/messages${withUser ? `?with=${withUser}` : ''}`),
+  listClass: (classId) => request(`/messages?class_id=${encodeURIComponent(classId)}`),
   create: (payload) => request('/messages', { method: 'POST', body: payload }),
   contacts: () => request('/messages/contacts'),
   markRead: (id) => request(`/messages/${id}/read`, { method: 'PUT' }),
