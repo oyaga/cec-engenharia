@@ -131,7 +131,11 @@ func (h *Handler) Get(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var s models.Student
 	if err := c.ShouldBindJSON(&s); err != nil {
-		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
+		if strings.Contains(err.Error(), "birth_date") || strings.Contains(err.Error(), "time.Time") {
+			httpx.Error(c, http.StatusBadRequest, "data de nascimento inválida")
+			return
+		}
+		httpx.Error(c, http.StatusBadRequest, "dados inválidos no cadastro do aluno")
 		return
 	}
 	s.ID = uuid.Nil

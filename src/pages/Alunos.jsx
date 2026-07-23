@@ -46,6 +46,14 @@ const maskCurrencyBRL = (value) => {
     return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+const dateToAPI = (value) => {
+    if (!value) return null
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00Z`
+    return value
+}
+
+const dateToInput = (value) => value ? String(value).slice(0, 10) : ''
+
 export default function Alunos() {
     const { userProfile } = useAuth()
     const isGerencial = ['admin', 'coordenador'].includes(userProfile?.role)
@@ -660,7 +668,7 @@ export default function Alunos() {
             full_name: formData.full_name,
             cpf: formData.cpf,
             rg: formData.rg,
-            birth_date: formData.birth_date ? formData.birth_date : null,
+            birth_date: dateToAPI(formData.birth_date),
             birth_place: formData.birth_place,
             marital_status: formData.marital_status,
             email: formData.email,
@@ -773,7 +781,7 @@ export default function Alunos() {
             full_name: s.full_name || '',
             cpf: s.cpf || '',
             rg: s.rg || '',
-            birth_date: s.birth_date || '',
+            birth_date: dateToInput(s.birth_date),
             birth_place: s.birth_place || '',
             marital_status: s.marital_status || 'Solteiro(a)',
             pai: s.parents_names?.pai || '',
