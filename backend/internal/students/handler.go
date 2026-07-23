@@ -3,8 +3,10 @@
 package students
 
 import (
+	"encoding/json"
 	"errors"
 	"html"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -130,12 +132,51 @@ func (h *Handler) Get(c *gin.Context) {
 // Create: POST /students
 func (h *Handler) Create(c *gin.Context) {
 	var s models.Student
-	if err := c.ShouldBindJSON(&s); err != nil {
-		if strings.Contains(err.Error(), "birth_date") || strings.Contains(err.Error(), "time.Time") {
+	body, err := c.GetRawData()
+	if err != nil {
+		httpx.Error(c, http.StatusBadRequest, "não foi possível ler os dados do aluno")
+		return
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "dados inválidos no cadastro do aluno")
+		return
+	}
+	if rawDate, ok := payload["birth_date"]; ok && string(rawDate) != "null" {
+		var dateValue string
+		if err := json.Unmarshal(rawDate, &dateValue); err != nil {
 			httpx.Error(c, http.StatusBadRequest, "data de nascimento inválida")
 			return
 		}
-		httpx.Error(c, http.StatusBadRequest, "dados inválidos no cadastro do aluno")
+		if len(dateValue) == 10 {
+			parsed, parseErr := time.Parse("2006-01-02", dateValue)
+			if parseErr != nil {
+				httpx.Error(c, http.StatusBadRequest, "data de nascimento inválida")
+				return
+			}
+			payload["birth_date"], _ = json.Marshal(parsed.UTC().Format(time.RFC3339))
+		}
+	}
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		httpx.Error(c, http.StatusBadRequest, "não foi possível preparar os dados do aluno")
+		return
+	}
+	if decodeErr := json.Unmarshal(normalized, &s); decodeErr != nil {
+		log.Printf("[students] payload de cadastro inválido: %v", decodeErr)
+		message := "revise os dados informados no formulário"
+		detail := decodeErr.Error()
+		switch {
+		case strings.Contains(detail, "birth_date"):
+			message = "data de nascimento inválida"
+		case strings.Contains(detail, "base_value"), strings.Contains(detail, "discount_value"), strings.Contains(detail, "refund_value"):
+			message = "revise os valores financeiros informados"
+		case strings.Contains(detail, "turma_id"), strings.Contains(detail, "practical_class_id"), strings.Contains(detail, "user_id"):
+			message = "turma ou agendamento selecionado é inválido"
+		case strings.Contains(detail, "address"), strings.Contains(detail, "parents_names"):
+			message = "revise os dados de endereço e filiação"
+		}
+		httpx.Error(c, http.StatusBadRequest, message)
 		return
 	}
 	s.ID = uuid.Nil
@@ -149,7 +190,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	var linkedUser *models.User
 	accountCreated := false
-	err := h.db.Transaction(func(tx *gorm.DB) error {
+	err = h.db.Transaction(func(tx *gorm.DB) error {
 		if s.Email != nil && strings.TrimSpace(*s.Email) != "" {
 			email := strings.ToLower(strings.TrimSpace(*s.Email))
 			s.Email = &email

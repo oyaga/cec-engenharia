@@ -66,6 +66,7 @@ export default function Alunos() {
     const [loading, setLoading] = useState(true)
     const [cepLoading, setCepLoading] = useState(false)
     const [cepMessage, setCepMessage] = useState('')
+    const [formErrorModal, setFormErrorModal] = useState(null)
 
     // Form state
     const [formData, setFormData] = useState({
@@ -635,32 +636,32 @@ export default function Alunos() {
     const handleSaveError = (error) => {
         console.error('Erro ao salvar aluno:', error)
         if (error.message && (error.message.includes('students_cpf_key') || error.message.includes('duplicate key value violates unique constraint'))) {
-            alert(`Erro: O CPF "${formData.cpf}" já está cadastrado para outro aluno no sistema!\n\nSe você deseja refazer este cadastro ou matricular este aluno novamente, por favor primeiro exclua o cadastro de teste antigo na listagem de alunos clicando no botão da lixeira vermelha.`);
+            setFormErrorModal({ title: 'CPF já cadastrado', message: `O CPF "${formData.cpf}" já pertence a outro aluno. Localize o cadastro existente antes de criar uma nova matrícula.`, fields: ['CPF'] })
         } else if (error?.status === 401 || error?.message?.includes('token inválido')) {
-            alert('Sua sessão expirou. Entre novamente para salvar os dados com segurança.');
+            setFormErrorModal({ title: 'Sessão expirada', message: 'Entre novamente para salvar os dados com segurança.', fields: [] })
         } else {
-            alert('Erro ao salvar aluno: ' + (error.message || error));
+            setFormErrorModal({ title: 'Não foi possível salvar o aluno', message: error.message || String(error), fields: ['Dados pessoais', 'Contato e endereço', 'Datas e valores'] })
         }
     }
 
     const handleSubmit = async () => {
         if (!formData.full_name || !formData.cpf) {
-            alert('Por favor, preencha pelo menos Nome e CPF.')
+            setFormErrorModal({ title: 'Campos obrigatórios', message: 'Preencha os campos indicados para continuar.', fields: ['Nome completo', 'CPF'] })
             return
         }
 
         if (!validateCPF(formData.cpf)) {
-            alert('CPF Inválido! Por favor, verifique os números digitados.')
+            setFormErrorModal({ title: 'CPF inválido', message: 'Confira os números digitados no CPF.', fields: ['CPF'] })
             return
         }
 
         if (!formData.rg || !validateRG(formData.rg)) {
-            alert('RG Inválido ou incompleto! Por favor, insira um documento válido.')
+            setFormErrorModal({ title: 'RG inválido', message: 'Informe um RG válido e completo.', fields: ['RG'] })
             return
         }
 
         if (!isEditing && (!formData.email || !formData.phone)) {
-            alert('E-mail e Telefone/WhatsApp são obrigatórios para a criação do acesso do aluno!')
+            setFormErrorModal({ title: 'Contato obrigatório', message: 'Esses dados são necessários para criar o acesso do aluno.', fields: ['E-mail', 'Telefone / WhatsApp'] })
             return
         }
 
@@ -2201,6 +2202,26 @@ export default function Alunos() {
                                 <Printer size={18} /> Imprimir Relatório para Auditoria
                             </button>
                         </div>
+                    </div>
+                </div>
+            ), document.body)}
+
+            {formErrorModal && createPortal((
+                <div role="dialog" aria-modal="true" aria-labelledby="student-form-error-title" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(15, 23, 42, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ width: 'min(460px, 100%)', background: '#fff', borderRadius: '18px', padding: '1.5rem', boxShadow: '0 24px 60px rgba(15,23,42,.3)', borderTop: '5px solid #dc2626' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                            <AlertTriangle size={28} color="#dc2626" style={{ flexShrink: 0 }} />
+                            <div>
+                                <h3 id="student-form-error-title" style={{ margin: 0, color: '#991b1b', fontSize: '1.15rem' }}>{formErrorModal.title}</h3>
+                                <p style={{ margin: '0.65rem 0', color: '#475569', lineHeight: 1.5 }}>{formErrorModal.message}</p>
+                                {formErrorModal.fields?.length > 0 && (
+                                    <div style={{ background: '#fef2f2', borderRadius: '10px', padding: '0.75rem 1rem', color: '#7f1d1d', fontSize: '0.85rem' }}>
+                                        <strong>Verifique:</strong> {formErrorModal.fields.join(', ')}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <button type="button" className="btn btn-primary" autoFocus onClick={() => setFormErrorModal(null)} style={{ width: '100%', marginTop: '1.25rem' }}>Entendi, corrigir formulário</button>
                     </div>
                 </div>
             ), document.body)}
