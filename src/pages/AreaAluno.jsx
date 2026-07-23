@@ -126,6 +126,7 @@ export default function AreaAluno() {
   // Estados para Modal de Selfie / Captura de Câmera
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
+  const [cameraError, setCameraError] = useState('');
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -698,17 +699,41 @@ export default function AreaAluno() {
   };
 
   const startCamera = async () => {
+    setCameraError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: 640, height: 480 } 
-      });
-      setSelfieStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('CAMERA_UNAVAILABLE');
       }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          },
+          audio: false
+        });
+      } catch (constraintError) {
+        if (constraintError?.name === 'NotAllowedError' || constraintError?.name === 'SecurityError') {
+          throw constraintError;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      setSelfieStream(stream);
+      window.setTimeout(() => {
+        if (!videoRef.current) return;
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }, 0);
     } catch (err) {
+      const message = err?.message === 'CAMERA_UNAVAILABLE'
+        ? 'A câmera não está disponível neste navegador. Abra o portal pelo Chrome/Safari usando HTTPS ou use a câmera nativa do celular.'
+        : err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
+          ? 'O acesso à câmera foi bloqueado. Libere a permissão nas configurações do navegador e tente novamente.'
+          : 'Não foi possível iniciar a câmera. Tente novamente ou use a câmera nativa do celular.';
+      setCameraError(message);
       console.error("Erro ao acessar a câmera:", err);
-      alert("Não foi possível acessar a câmera. Por favor, dê permissão de acesso à câmera no seu navegador ou envie um arquivo de imagem.");
     }
   };
 
@@ -720,8 +745,12 @@ export default function AreaAluno() {
   };
 
   const captureSelfie = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !selfieStream) return;
     const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      setCameraError('A câmera ainda está carregando. Aguarde um instante e tente novamente.');
+      return;
+    }
     
     const size = Math.min(video.videoWidth, video.videoHeight);
     const canvas = document.createElement('canvas');
@@ -1987,11 +2016,12 @@ export default function AreaAluno() {
                   </button>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    {doc.field ? 'Re-enviar' : 'Fazer Upload'}
+                    {doc.field ? 'Fotografar / Re-enviar' : 'Fotografar / Selecionar'}
                     <input 
                       type="file" 
                       hidden 
-                      accept=".pdf,image/*" 
+                      accept=".pdf,image/*"
+                      capture="environment"
                       onChange={(e) => handleFileUpload(e, doc.type)} 
                     />
                   </label>
@@ -2701,11 +2731,12 @@ export default function AreaAluno() {
                   </button>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    Selecionar Arquivo
+                    Fotografar / Selecionar
                     <input 
                       type="file" 
                       hidden 
-                      accept=".pdf,image/*" 
+                      accept=".pdf,image/*"
+                      capture="environment"
                       onChange={(e) => handleFileUpload(e, doc.type)} 
                     />
                   </label>
@@ -2814,6 +2845,12 @@ export default function AreaAluno() {
               }} />
             </div>
 
+            {cameraError && (
+              <div role="alert" style={{ margin: '-0.5rem 0 1rem', padding: '0.75rem', borderRadius: '10px', background: '#fff7ed', color: '#9a3412', fontSize: '0.8rem', lineHeight: 1.4 }}>
+                {cameraError}
+              </div>
+            )}
+
             {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button 
@@ -2873,7 +2910,7 @@ export default function AreaAluno() {
                     cursor: 'pointer'
                   }}
                 >
-                  Enviar Arquivo
+                  Abrir Câmera / Arquivo
                 </button>
               </div>
             </div>
@@ -2883,7 +2920,8 @@ export default function AreaAluno() {
               type="file" 
               ref={fileInputRef} 
               hidden 
-              accept="image/*" 
+              accept="image/*"
+              capture="user"
               onChange={handleSelectLocalFile}
             />
           </div>

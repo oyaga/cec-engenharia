@@ -53,6 +53,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("X-XSS-Protection", "0")
+		c.Header("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
 		if cfg.IsProd() {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
