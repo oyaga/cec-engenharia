@@ -635,8 +635,6 @@ export default function Alunos() {
             return
         }
 
-        const generatedPassword = 'CEC@' + Math.floor(100000 + Math.random() * 900000)
-
         const studentPayload = {
             full_name: formData.full_name,
             cpf: formData.cpf,
@@ -698,30 +696,18 @@ export default function Alunos() {
                 alert('Dados atualizados com sucesso!')
                 resetForm(); setView('list'); fetchStudents()
             } else {
-                const { student: savedStudent } = await studentsApi.create(studentPayload)
+                const { student: savedStudent, user, account_created: accountCreated } = await studentsApi.create(studentPayload)
                 await insertGrades(savedStudent.id)
 
-                if (formData.email) {
-                    // Cria o login do aluno via API (não desloga o gestor atual).
-                    try {
-                        const { user } = await usersApi.create({
-                            email: formData.email, password: generatedPassword, role: 'aluno',
-                            full_name: formData.full_name, cpf: formData.cpf, phone: formData.phone,
-                        })
-                        if (user?.id) await studentsApi.update(savedStudent.id, { user_id: user.id })
-                        setCredentials({ name: formData.full_name, email: formData.email, password: generatedPassword, phone: formData.phone })
-                        setShowCredentialsModal(true)
-                    } catch (err) {
-                        try {
-                            const linked = await usersApi.linkStudentAccount(savedStudent.id)
-                            if (!linked.user?.id) throw new Error('conta não vinculada')
-                            alert('Matrícula criada e vinculada à conta de acesso existente.')
-                        } catch (linkErr) {
-                            alert("O aluno foi matriculado, mas houve um erro ao criar ou vincular a conta: " + linkErr.message)
-                        }
-                        resetForm(); setView('list'); fetchStudents()
-                    }
-                } else {
+                if (formData.email && user?.id) {
+                    alert(accountCreated
+                        ? 'Matrícula e conta criadas. O link de primeiro acesso foi enviado por e-mail.'
+                        : 'Matrícula criada e vinculada à conta de acesso existente.')
+                    resetForm(); setView('list'); fetchStudents()
+                    return
+                }
+
+                if (!formData.email) {
                     alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
                     resetForm(); setView('list'); fetchStudents()
                 }

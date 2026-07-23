@@ -259,7 +259,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		mg.PUT("/site-content", cch.InvalidateOn(ckSiteContent), miscH.SaveSiteContent)
 
 		// ─── Students (alunos) ───
-		studentsH := students.NewHandler(gdb)
+		studentsH := students.NewHandler(gdb, ml, cfg.PublicURL)
 		cl.GET("/:id/students", staffOnly, studentsH.ClassStudents)
 		st := v1.Group("/students")
 		st.Use(middleware.RequireAuth(tm))

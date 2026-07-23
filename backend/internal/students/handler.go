@@ -3,9 +3,15 @@
 package students
 
 import (
+	"errors"
+	"html"
 	"net/http"
+	"strings"
+	"time"
 
+	"github.com/PITICALYN/cec-backend/internal/auth"
 	"github.com/PITICALYN/cec-backend/internal/httpx"
+	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/middleware"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
@@ -13,9 +19,17 @@ import (
 	"gorm.io/gorm"
 )
 
-type Handler struct{ db *gorm.DB }
+const welcomeTokenTTL = 72 * time.Hour
 
-func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
+type Handler struct {
+	db        *gorm.DB
+	ml        *mailer.Mailer
+	publicURL string
+}
+
+func NewHandler(db *gorm.DB, ml *mailer.Mailer, publicURL string) *Handler {
+	return &Handler{db: db, ml: ml, publicURL: strings.TrimRight(publicURL, "/")}
+}
 
 // studentRow inclui dados da turma vinculada (nome/curso) para as telas.
 type studentRow struct {
@@ -128,11 +142,90 @@ func (h *Handler) Create(c *gin.Context) {
 	if s.Status == "" {
 		s.Status = "ativa"
 	}
-	if err := h.db.Create(&s).Error; err != nil {
+
+	var linkedUser *models.User
+	accountCreated := false
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if s.Email != nil && strings.TrimSpace(*s.Email) != "" {
+			email := strings.ToLower(strings.TrimSpace(*s.Email))
+			s.Email = &email
+
+			var user models.User
+			findErr := tx.Where("LOWER(email) = ?", email).First(&user).Error
+			switch {
+			case findErr == nil:
+				if user.Role != "aluno" {
+					return errStudentEmailRoleConflict
+				}
+			case errors.Is(findErr, gorm.ErrRecordNotFound):
+				hash, hashErr := auth.HashPassword(uuid.NewString() + uuid.NewString())
+				if hashErr != nil {
+					return hashErr
+				}
+				user = models.User{
+					Email:              email,
+					PasswordHash:       hash,
+					FullName:           s.FullName,
+					Role:               "aluno",
+					CPF:                &s.CPF,
+					Phone:              s.Phone,
+					IsActive:           true,
+					MustChangePassword: true,
+				}
+				if createErr := tx.Create(&user).Error; createErr != nil {
+					return createErr
+				}
+				accountCreated = true
+			default:
+				return findErr
+			}
+			s.UserID = &user.ID
+			linkedUser = &user
+		}
+		return tx.Create(&s).Error
+	})
+	if err != nil {
+		if errors.Is(err, errStudentEmailRoleConflict) {
+			httpx.Error(c, http.StatusConflict, "este e-mail pertence a uma conta que não é de aluno")
+			return
+		}
 		httpx.Error(c, http.StatusConflict, "falha ao criar aluno (CPF duplicado?)")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"student": s})
+	if accountCreated {
+		h.sendWelcome(linkedUser)
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"student":         s,
+		"user":            linkedUser,
+		"account_created": accountCreated,
+	})
+}
+
+var errStudentEmailRoleConflict = errors.New("student email belongs to a non-student account")
+
+func (h *Handler) sendWelcome(user *models.User) {
+	if user == nil || user.Email == "" || h.ml == nil || !h.ml.Enabled() {
+		return
+	}
+	token, err := auth.IssueResetToken(h.db, user.ID, welcomeTokenTTL)
+	if err != nil {
+		return
+	}
+	link := h.publicURL + "/redefinir-senha?token=" + token
+	name := html.EscapeString(strings.TrimSpace(user.FullName))
+	if name == "" {
+		name = "aluno(a)"
+	}
+	body := `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1f2937">` +
+		`<h2 style="color:#0f172a;margin:0 0 16px">CEC Engenharia</h2>` +
+		`<p>Olá, ` + name + `.</p>` +
+		`<p>Sua matrícula e sua conta de acesso foram criadas. Defina sua senha pelo botão abaixo (o link vale por 3 dias):</p>` +
+		`<p style="text-align:center;margin:28px 0"><a href="` + link + `" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;display:inline-block">Definir minha senha</a></p>` +
+		`<p style="font-size:13px;color:#6b7280">Seu login é o e-mail <b>` + html.EscapeString(user.Email) + `</b>.</p>` +
+		`<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">` +
+		`<p style="font-size:12px;color:#9ca3af">Este é um e-mail automático — não responda.</p></div>`
+	h.ml.SendAsync([]string{user.Email}, "Bem-vindo à CEC Engenharia — defina sua senha", body)
 }
 
 // Update: PUT /students/:id — atualização parcial (whitelist).
