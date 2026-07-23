@@ -24,6 +24,11 @@ export function clearToken() {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
+function notifyAuthExpired() {
+  clearToken();
+  window.dispatchEvent(new CustomEvent('cec:auth-expired'));
+}
+
 // ─── Requisição base ─────────────────────────────────────────────────
 // Lança um Error com { status, message } em respostas não-2xx.
 export async function request(path, { method = 'GET', body, auth = true } = {}) {
@@ -52,7 +57,7 @@ export async function request(path, { method = 'GET', body, auth = true } = {}) 
   if (!res.ok) {
     const err = new Error(data?.error || `Erro ${res.status}`);
     err.status = res.status;
-    if (res.status === 401) clearToken();
+    if (res.status === 401) notifyAuthExpired();
     throw err;
   }
   return data;
@@ -75,6 +80,7 @@ export async function uploadFile(file, folder) {
   if (!res.ok) {
     const err = new Error(data?.error || `Erro ${res.status}`);
     err.status = res.status;
+    if (res.status === 401) notifyAuthExpired();
     throw err;
   }
   return data;

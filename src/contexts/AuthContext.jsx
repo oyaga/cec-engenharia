@@ -30,6 +30,15 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => { loadProfile() }, [loadProfile])
 
+    useEffect(() => {
+        const handleExpired = () => {
+            setTokenState(null)
+            setUserProfile(null)
+        }
+        window.addEventListener('cec:auth-expired', handleExpired)
+        return () => window.removeEventListener('cec:auth-expired', handleExpired)
+    }, [])
+
     const login = useCallback(async (email, password, remember = false) => {
         const { token: jwt, user } = await authApi.login(email, password)
         setToken(jwt, remember)

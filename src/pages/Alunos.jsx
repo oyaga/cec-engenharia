@@ -56,6 +56,8 @@ export default function Alunos() {
     const [students, setStudents] = useState([])
     const [classes, setClasses] = useState([])
     const [loading, setLoading] = useState(true)
+    const [cepLoading, setCepLoading] = useState(false)
+    const [cepMessage, setCepMessage] = useState('')
 
     // Form state
     const [formData, setFormData] = useState({
@@ -558,22 +560,35 @@ export default function Alunos() {
 
     const handleCEPBlur = async () => {
         const cep = formData.cep.replace(/\D/g, '')
-        if (cep.length !== 8) return
+        if (cep.length !== 8) {
+            setCepMessage('Informe os 8 números do CEP.')
+            return
+        }
         
+        setCepLoading(true)
+        setCepMessage('')
         try {
             const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+            if (!res.ok) throw new Error('Falha ao consultar CEP')
             const data = await res.json()
             if (!data.erro) {
                 setFormData(prev => ({
                     ...prev,
+                    cep: cep.replace(/(\d{5})(\d{3})/, '$1-$2'),
                     rua: data.logradouro,
                     bairro: data.bairro,
                     cidade: data.localidade,
                     estado: data.uf
                 }))
+                setCepMessage('Endereço preenchido pelo ViaCEP.')
+            } else {
+                setCepMessage('CEP não encontrado. Confira os números ou preencha manualmente.')
             }
         } catch (error) {
             console.error('Error fetching CEP:', error)
+            setCepMessage('Não foi possível consultar o ViaCEP. Preencha o endereço manualmente.')
+        } finally {
+            setCepLoading(false)
         }
     }
 
@@ -586,7 +601,11 @@ export default function Alunos() {
         let { name, value } = e.target
         
         if (name === 'cpf') value = formatCPF(value)
-        if (name === 'cep') value = value.replace(/\D/g, '').slice(0, 8)
+        if (name === 'cep') {
+            const digits = value.replace(/\D/g, '').slice(0, 8)
+            value = digits.length > 5 ? digits.replace(/(\d{5})(\d+)/, '$1-$2') : digits
+            setCepMessage('')
+        }
         if (name === 'base_value' || name === 'discount_value' || name === 'refund_value') {
             value = maskCurrencyBRL(value)
         }
@@ -609,8 +628,10 @@ export default function Alunos() {
         console.error('Erro ao salvar aluno:', error)
         if (error.message && (error.message.includes('students_cpf_key') || error.message.includes('duplicate key value violates unique constraint'))) {
             alert(`Erro: O CPF "${formData.cpf}" já está cadastrado para outro aluno no sistema!\n\nSe você deseja refazer este cadastro ou matricular este aluno novamente, por favor primeiro exclua o cadastro de teste antigo na listagem de alunos clicando no botão da lixeira vermelha.`);
+        } else if (error?.status === 401 || error?.message?.includes('token inválido')) {
+            alert('Sua sessão expirou. Entre novamente para salvar os dados com segurança.');
         } else {
-            alert('Erro ao salvar no Supabase: ' + (error.message || error));
+            alert('Erro ao salvar aluno: ' + (error.message || error));
         }
     }
 
@@ -1069,7 +1090,13 @@ export default function Alunos() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1.5rem', marginTop: '1rem' }}>
                     <div className="form-group">
                         <label className="form-label">CEP</label>
-                        <input type="text" className="form-control" name="cep" value={formData.cep} onChange={handleFormChange} onBlur={handleCEPBlur} placeholder="00000000" />
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input type="text" inputMode="numeric" maxLength="9" className="form-control" name="cep" value={formData.cep} onChange={handleFormChange} onBlur={handleCEPBlur} placeholder="00000-000" />
+                            <button type="button" className="btn btn-secondary" onClick={handleCEPBlur} disabled={cepLoading} style={{ whiteSpace: 'nowrap' }}>
+                                {cepLoading ? 'Buscando...' : 'Buscar CEP'}
+                            </button>
+                        </div>
+                        {cepMessage && <small style={{ display: 'block', marginTop: '0.35rem', color: cepMessage.startsWith('Endereço') ? '#047857' : '#b45309' }}>{cepMessage}</small>}
                     </div>
                     <div className="form-group"><label className="form-label">Rua/Logradouro</label><input type="text" className="form-control" name="rua" value={formData.rua} onChange={handleFormChange} /></div>
                     <div className="form-group"><label className="form-label">Nº</label><input type="text" className="form-control" name="numero" value={formData.numero} onChange={handleFormChange} /></div>
