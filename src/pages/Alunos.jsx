@@ -67,6 +67,7 @@ export default function Alunos() {
     const [cepLoading, setCepLoading] = useState(false)
     const [cepMessage, setCepMessage] = useState('')
     const [formErrorModal, setFormErrorModal] = useState(null)
+    const [formSuccessModal, setFormSuccessModal] = useState(null)
 
     // Form state
     const [formData, setFormData] = useState({
@@ -723,22 +724,31 @@ export default function Alunos() {
                         })
                     }
                 }
-                alert('Dados atualizados com sucesso!')
+                setFormSuccessModal({
+                    title: 'Dados atualizados',
+                    message: 'As informações do aluno foram salvas com sucesso.'
+                })
                 resetForm(); setView('list'); fetchStudents()
             } else {
                 const { student: savedStudent, user, account_created: accountCreated } = await studentsApi.create(studentPayload)
                 await insertGrades(savedStudent.id)
 
                 if (formData.email && user?.id) {
-                    alert(accountCreated
-                        ? 'Matrícula e conta criadas. O link de primeiro acesso foi enviado por e-mail.'
-                        : 'Matrícula criada e vinculada à conta de acesso existente.')
+                    setFormSuccessModal({
+                        title: accountCreated ? 'Matrícula concluída' : 'Matrícula vinculada',
+                        message: accountCreated
+                            ? 'A matrícula e a conta de acesso foram criadas. Enviamos ao aluno um e-mail com o link de primeiro acesso.'
+                            : 'A matrícula foi criada e vinculada à conta de acesso que o aluno já possuía.'
+                    })
                     resetForm(); setView('list'); fetchStudents()
                     return
                 }
 
                 if (!formData.email) {
-                    alert('Matrícula manual realizada! Conta de acesso não gerada pois nenhum e-mail foi fornecido.')
+                    setFormSuccessModal({
+                        title: 'Matrícula concluída',
+                        message: 'A matrícula manual foi realizada. Como nenhum e-mail foi informado, a conta de acesso não foi criada.'
+                    })
                     resetForm(); setView('list'); fetchStudents()
                 }
             }
@@ -2222,6 +2232,23 @@ export default function Alunos() {
                             </div>
                         </div>
                         <button type="button" className="btn btn-primary" autoFocus onClick={() => setFormErrorModal(null)} style={{ width: '100%', marginTop: '1.25rem' }}>Entendi, corrigir formulário</button>
+                    </div>
+                </div>
+            ), document.body)}
+
+            {formSuccessModal && createPortal((
+                <div role="dialog" aria-modal="true" aria-labelledby="student-form-success-title" style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(15, 23, 42, 0.66)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ width: 'min(460px, 100%)', background: '#fff', borderRadius: '20px', padding: '1.75rem', boxShadow: '0 24px 60px rgba(15,23,42,.3)', border: '1px solid #d1fae5' }}>
+                        <div style={{ width: '58px', height: '58px', margin: '0 auto 1rem', borderRadius: '50%', display: 'grid', placeItems: 'center', background: '#ecfdf5', color: '#059669' }}>
+                            <CheckCircle size={32} aria-hidden="true" />
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                            <h3 id="student-form-success-title" style={{ margin: 0, color: '#0f172a', fontSize: '1.25rem' }}>{formSuccessModal.title}</h3>
+                            <p style={{ margin: '0.75rem 0 0', color: '#475569', lineHeight: 1.55 }}>{formSuccessModal.message}</p>
+                        </div>
+                        <button type="button" className="btn btn-primary" autoFocus onClick={() => setFormSuccessModal(null)} style={{ width: '100%', marginTop: '1.5rem', minHeight: '44px' }}>
+                            Concluir
+                        </button>
                     </div>
                 </div>
             ), document.body)}
