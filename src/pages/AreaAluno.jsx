@@ -132,6 +132,7 @@ export default function AreaAluno() {
   // Estados para Modal de Selfie / Captura de Câmera
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
+  const [cameraError, setCameraError] = useState('');
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -790,6 +791,7 @@ export default function AreaAluno() {
 
   const startCamera = async () => {
     try {
+      setCameraError('');
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera não suportada neste navegador');
       }
@@ -801,8 +803,8 @@ export default function AreaAluno() {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
+      setCameraError('Não foi possível acessar a câmera. Autorize o navegador ou envie um arquivo de imagem.');
       console.error("Erro ao acessar a câmera:", err);
-      alert("Não foi possível acessar a câmera. Por favor, dê permissão de acesso à câmera no seu navegador ou envie um arquivo de imagem.");
     }
   };
 
@@ -814,7 +816,10 @@ export default function AreaAluno() {
   };
 
   const captureSelfie = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current?.videoWidth) {
+      setCameraError('A câmera ainda não está pronta. Aguarde um instante ou envie um arquivo.');
+      return;
+    }
     const video = videoRef.current;
     
     const size = Math.min(video.videoWidth, video.videoHeight);
@@ -2198,15 +2203,20 @@ export default function AreaAluno() {
                   </a>
                 )}
                 {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                    }}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    {doc.field ? 'Reenviar foto' : 'Enviar foto'}
-                  </button>
+                  <>
+                    <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                      {doc.field ? 'Reenviar arquivo' : 'Enviar arquivo'}
+                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
+                    >
+                      Usar câmera
+                    </button>
+                  </>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
                     {doc.field ? 'Re-enviar' : 'Fazer Upload'}
@@ -2909,15 +2919,20 @@ export default function AreaAluno() {
               <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
                 {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                    }}
-                    style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    Enviar foto
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                      Enviar arquivo
+                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
+                      style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
+                    >
+                      Usar câmera
+                    </button>
+                  </div>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
                     Selecionar Arquivo
@@ -3018,6 +3033,11 @@ export default function AreaAluno() {
 
             {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {cameraError && (
+                <div role="alert" style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                  {cameraError}
+                </div>
+              )}
               {!selfieStream && (
                 <button
                   onClick={startCamera}
