@@ -784,6 +784,8 @@ export default function AreaAluno() {
       setShowSelfieModal(false);
       stopCamera();
     }
+    // Permite selecionar novamente o mesmo arquivo caso o envio precise ser repetido.
+    e.target.value = '';
   };
 
   // Upload de Documentos Abendi
@@ -2008,11 +2010,10 @@ export default function AreaAluno() {
                     className="btn btn-primary" 
                     onClick={() => {
                       setShowSelfieModal(true);
-                      setTimeout(startCamera, 100);
                     }}
                     style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
                   >
-                    {doc.field ? 'Re-enviar Foto/Selfie' : 'Tirar Selfie'}
+                    {doc.field ? 'Reenviar foto' : 'Enviar foto'}
                   </button>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
@@ -2698,7 +2699,9 @@ export default function AreaAluno() {
   }
 
   // Se houver pendência Abendi, exibe bloqueio amigável
-  if (missingDocs) {
+  // Mantém o modal disponível também na tela de pendências obrigatórias.
+  // Antes deste ajuste, o return abaixo ocultava o modal e impedia o envio da foto.
+  if (missingDocs && !showSelfieModal) {
     return (
       <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '4rem auto', padding: '0 1.5rem' }}>
         <div className="card text-center" style={{ padding: '3.5rem 2rem', border: '2px solid #FCD34D', backgroundColor: '#FFFBEB', borderRadius: '24px' }}>
@@ -2723,11 +2726,10 @@ export default function AreaAluno() {
                     className="btn btn-primary" 
                     onClick={() => {
                       setShowSelfieModal(true);
-                      setTimeout(startCamera, 100);
                     }}
                     style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
                   >
-                    Tirar Selfie
+                    Enviar foto
                   </button>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
@@ -2853,8 +2855,17 @@ export default function AreaAluno() {
 
             {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {!selfieStream && (
+                <button
+                  onClick={startCamera}
+                  style={{ width: '100%', padding: '0.85rem', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer' }}
+                >
+                  Usar camera para selfie
+                </button>
+              )}
               <button 
                 onClick={captureSelfie}
+                disabled={!selfieStream}
                 style={{
                   width: '100%',
                   padding: '0.85rem',
@@ -2864,7 +2875,8 @@ export default function AreaAluno() {
                   borderRadius: '12px',
                   fontWeight: 'bold',
                   fontSize: '0.9rem',
-                  cursor: 'pointer',
+                  cursor: selfieStream ? 'pointer' : 'not-allowed',
+                  opacity: selfieStream ? 1 : 0.55,
                   boxShadow: '0 4px 12px rgba(0, 75, 73, 0.2)',
                   display: 'flex',
                   alignItems: 'center',
