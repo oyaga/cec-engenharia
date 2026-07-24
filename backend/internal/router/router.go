@@ -276,7 +276,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		// ─── Storage (arquivos) ───
 		storageH := storage.NewHandler(cfg.StorageDir, cfg.PublicURL)
 		up := v1.Group("/upload")
-		up.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
+		// Alunos autenticados enviam a selfie e os documentos obrigatórios por esta rota.
+		// O handler preserva as restrições de extensão e tamanho dos arquivos.
+		up.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "atendente", "instrutor", "aluno"))
 		up.POST("", storageH.Upload)
 		v1.GET("/files/*path", storageH.Serve) // leitura pública dos arquivos
 
