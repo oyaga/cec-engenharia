@@ -2006,15 +2006,20 @@ export default function AreaAluno() {
                   </a>
                 )}
                 {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                    }}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    {doc.field ? 'Reenviar foto' : 'Enviar foto'}
-                  </button>
+                  <>
+                    <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                      {doc.field ? 'Reenviar arquivo' : 'Enviar arquivo'}
+                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
+                    >
+                      Usar câmera
+                    </button>
+                  </>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
                     {doc.field ? 'Fotografar / Re-enviar' : 'Fotografar / Selecionar'}
@@ -2722,15 +2727,20 @@ export default function AreaAluno() {
               <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
                 {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                    }}
-                    style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    Enviar foto
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
+                      Enviar arquivo
+                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
+                      style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
+                    >
+                      Usar câmera
+                    </button>
+                  </div>
                 ) : (
                   <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
                     Fotografar / Selecionar
@@ -2855,6 +2865,11 @@ export default function AreaAluno() {
 
             {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {cameraError && (
+                <div role="alert" style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                  {cameraError}
+                </div>
+              )}
               {!selfieStream && (
                 <button
                   onClick={startCamera}
