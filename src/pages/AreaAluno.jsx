@@ -135,6 +135,7 @@ export default function AreaAluno() {
   const [cameraError, setCameraError] = useState('');
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
+  const [uploadingDoc, setUploadingDoc] = useState(null); // docType em upload ou null
 
   // Efeito para a saudação baseada no horário
   useEffect(() => {
@@ -838,21 +839,25 @@ export default function AreaAluno() {
     
     ctx.drawImage(video, sx, sy, size, size, 0, 0, 400, 400);
     
-    canvas.toBlob((blob) => {
+    canvas.toBlob(async (blob) => {
       if (blob) {
         const file = new File([blob], `selfie-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        handleFileUpload(file, 'photo');
-        setShowSelfieModal(false);
-        stopCamera();
+        const ok = await handleFileUpload(file, 'photo');
+        if (ok) {
+          setShowSelfieModal(false);
+          stopCamera();
+        }
       }
     }, 'image/jpeg', 0.9);
   };
 
-  const handleSelectLocalFile = (e) => {
+  const handleSelectLocalFile = async (e) => {
     if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0], 'photo');
-      setShowSelfieModal(false);
-      stopCamera();
+      const ok = await handleFileUpload(e.target.files[0], 'photo');
+      if (ok) {
+        setShowSelfieModal(false);
+        stopCamera();
+      }
     }
     // Permite selecionar novamente o mesmo arquivo caso o envio precise ser repetido.
     e.target.value = '';
@@ -866,35 +871,61 @@ export default function AreaAluno() {
     } else {
       file = e; // se passarmos o objeto File diretamente
     }
-    if (!file || !studentId) return;
 
+    if (!file) {
+      alert('Nenhum arquivo foi selecionado.');
+      return false;
+    }
+
+    if (!studentId) {
+      console.error('[UPLOAD] studentId está null — aluno sem cadastro na tabela students para user_id:', session?.user?.id);
+      alert('Erro: seu cadastro de aluno não foi localizado no sistema. Por favor, entre em contato com a secretaria.');
+      return false;
+    }
+
+    setUploadingDoc(docType);
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${studentId}_${docType}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${studentId}/${fileName}`;
 
+      console.log(`[UPLOAD] Iniciando upload: bucket=student_documents path=${filePath} size=${file.size}`);
+
       const { error: uploadError } = await supabase.storage
         .from('student_documents')
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('[UPLOAD] Falha no storage.upload:', uploadError);
+        throw uploadError;
+      }
 
       const { data: { publicUrl } } = supabase.storage
         .from('student_documents')
         .getPublicUrl(filePath);
+
+      console.log(`[UPLOAD] Upload OK. Atualizando students.doc_${docType}_url...`);
 
       const { error: updateError } = await supabase
         .from('students')
         .update({ [`doc_${docType}_url`]: publicUrl })
         .eq('id', studentId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('[UPLOAD] Falha no update da tabela students:', updateError);
+        throw updateError;
+      }
 
       alert(`Documento (${docType.toUpperCase()}) enviado com sucesso!`);
       fetchData();
+      return true;
     } catch (error) {
-      console.error('Erro no upload de documento:', error);
-      alert('Falha ao enviar arquivo. Por favor, tente novamente.');
+      console.error('[UPLOAD] Erro completo:', error);
+      const msg = error?.message || error?.error_description || 'Erro desconhecido';
+      alert(`Falha ao enviar documento (${docType}): ${msg}. Verifique sua conexão e tente novamente.`);
+      return false;
+    } finally {
+      setUploadingDoc(null);
     }
   };
 
@@ -2910,42 +2941,52 @@ export default function AreaAluno() {
           
           <div style={{ display: 'grid', gap: '1.25rem', textAlign: 'left', maxWidth: '550px', margin: '0 auto' }}>
             {[
-              { type: 'photo', label: 'Foto de Rosto (Você pode tirar uma selfie agora)' },
-              { type: 'id', label: 'Documento de Identidade com Foto (RG ou CNH)' },
-              { type: 'cpf', label: 'CPF' },
-              { type: 'address', label: 'Comprovante de Residência atualizado' },
-              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)' }
-            ].map((doc) => (
-              <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
-                {doc.type === 'photo' ? (
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                      Enviar arquivo
-                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
+              { type: 'photo', label: 'Foto de Rosto (Você pode tirar uma selfie agora)', field: 'doc_photo_url' },
+              { type: 'id', label: 'Documento de Identidade com Foto (RG ou CNH)', field: 'doc_id_url' },
+              { type: 'cpf', label: 'CPF', field: 'doc_cpf_url' },
+              { type: 'address', label: 'Comprovante de Residência atualizado', field: 'doc_address_url' },
+              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: 'doc_education_url' }
+            ].map((doc) => {
+              const isUploading = uploadingDoc === doc.type;
+              const alreadySent = studentData?.[doc.field];
+              return (
+                <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: alreadySent ? '#f0fdf4' : 'white', borderRadius: '14px', border: `1px solid ${alreadySent ? '#86efac' : '#FDE68A'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', transition: 'all 0.3s ease' }}>
+                  <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {alreadySent && <CheckCircle size={16} color="#16a34a" />}
+                    {doc.label}
+                    {alreadySent && <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>✓ Enviado</span>}
+                  </span>
+                  {doc.type === 'photo' ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'wait' : 'pointer', margin: 0, borderRadius: '8px', opacity: isUploading ? 0.6 : 1 }}>
+                        {isUploading ? 'Enviando...' : (alreadySent ? 'Reenviar arquivo' : 'Enviar arquivo')}
+                        <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} disabled={isUploading} />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
+                        disabled={isUploading}
+                        style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'not-allowed' : 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold', opacity: isUploading ? 0.6 : 1 }}
+                      >
+                        Usar câmera
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'wait' : 'pointer', margin: 0, borderRadius: '8px', opacity: isUploading ? 0.6 : 1 }}>
+                      {isUploading ? 'Enviando...' : (alreadySent ? 'Reenviar Arquivo' : 'Selecionar Arquivo')}
+                      <input 
+                        type="file" 
+                        hidden 
+                        accept=".pdf,image/*" 
+                        onChange={(e) => handleFileUpload(e, doc.type)}
+                        disabled={isUploading}
+                      />
                     </label>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
-                      style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
-                    >
-                      Usar câmera
-                    </button>
-                  </div>
-                ) : (
-                  <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    Selecionar Arquivo
-                    <input 
-                      type="file" 
-                      hidden 
-                      accept=".pdf,image/*" 
-                      onChange={(e) => handleFileUpload(e, doc.type)} 
-                    />
-                  </label>
-                )}
+                  )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
