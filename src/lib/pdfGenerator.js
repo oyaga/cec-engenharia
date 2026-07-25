@@ -474,7 +474,7 @@ function generateClassReportPDF(doc, classData) {
     yPos += 10
 
     if (!students || students.length === 0) {
-        doc.setFontStyle('italic')
+        doc.setFont('helvetica', 'italic')
         doc.text('Nenhum aluno registrado/vinculado a esta turma.', 15, yPos)
         return
     }

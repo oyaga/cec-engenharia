@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { 
     User, Mail, Phone, Calendar, Shield, Save, Key, Loader2, BookOpen, 
     GraduationCap, CheckCircle, AlertCircle, Eye, EyeOff, Plus, Trash, 
-    Award, FileText, CreditCard, Camera, MapPin, Building, Activity, Sparkles 
+    Award, FileText, CreditCard, Camera, MapPin, Building, Activity, Sparkles,
+    UploadCloud as Upload
 } from 'lucide-react'
 import { studentsApi, classesApi } from '../services/academic'
 import { financialApi } from '../services/financial'
@@ -376,9 +377,32 @@ export default function MeuPerfil() {
             }
         } catch (err) {
             console.error('Erro ao acessar a câmera:', err)
-            alert('Não foi possível acessar a sua webcam.')
+            setFeedback({ type: 'error', message: 'Não foi possível acessar a webcam. Você pode escolher uma foto salva no computador.' })
             setShowCamera(false)
         }
+    }
+
+    const handleSelfieFile = (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            setFeedback({ type: 'error', message: 'Escolha uma foto nos formatos JPG, PNG ou WEBP.' })
+            return
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setFeedback({ type: 'error', message: 'A foto deve ter no máximo 10 MB.' })
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = () => {
+            setStudentDocs(prev => ({
+                ...prev,
+                selfie: { status: 'approved', name: file.name, preview: reader.result }
+            }))
+            setFeedback({ type: 'success', message: 'Foto selecionada com sucesso!' })
+        }
+        reader.readAsDataURL(file)
     }
 
     // Capturar Selfie
@@ -1435,9 +1459,15 @@ export default function MeuPerfil() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <button onClick={startCamera} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem' }}>
-                                        <Camera size={16} /> Capturar com Webcam (WebRTC)
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                                        <button onClick={startCamera} type="button" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem' }}>
+                                            <Camera size={16} /> Usar câmera
+                                        </button>
+                                        <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                            <Upload size={16} /> Escolher foto do computador
+                                            <input type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={handleSelfieFile} />
+                                        </label>
+                                    </div>
                                 )}
                             </div>
                         </div>

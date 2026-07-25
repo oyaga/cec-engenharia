@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
 import { lmsApi } from '../services/lms';
@@ -123,11 +123,16 @@ export default function AreaAluno() {
   const [availablePracticalClasses, setAvailablePracticalClasses] = useState([]);
   const [schedulingActionLoading, setSchedulingActionLoading] = useState(null);
 
-  // Estados para Modal de Selfie / Captura de Câmera
+  // Estados para Modal de Câmera / Upload de Documentos
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
   const [cameraError, setCameraError] = useState('');
+  const [documentNotice, setDocumentNotice] = useState(null);
+  const [uploadingDoc, setUploadingDoc] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [activeUploadType, setActiveUploadType] = useState(null);
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Efeito para a saudação baseada no horário
@@ -698,7 +703,7 @@ export default function AreaAluno() {
     }
   };
 
-  const startCamera = async () => {
+  const startCameraLegacy = async () => {
     setCameraError('');
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -737,7 +742,7 @@ export default function AreaAluno() {
     }
   };
 
-  const stopCamera = () => {
+  const stopCameraLegacy = () => {
     if (selfieStream) {
       selfieStream.getTracks().forEach(track => track.stop());
       setSelfieStream(null);
@@ -778,11 +783,14 @@ export default function AreaAluno() {
     }, 'image/jpeg', 0.9);
   };
 
-  const handleSelectLocalFile = (e) => {
+  const handleSelectLocalFile = async (e) => {
     if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0], 'photo');
-      setShowSelfieModal(false);
-      stopCamera();
+      const uploaded = await handleFileUpload(e.target.files[0], 'photo');
+      if (uploaded) {
+        setShowSelfieModal(false);
+        stopCamera();
+      }
+      e.target.value = '';
     }
   };
 
@@ -796,15 +804,33 @@ export default function AreaAluno() {
     }
     if (!file || !studentId) return;
 
+    if (docType === 'photo') {
+      const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!acceptedImageTypes.includes(file.type)) {
+        setDocumentNotice({ type: 'error', title: 'Formato não aceito', message: 'Escolha uma foto nos formatos JPG, PNG ou WEBP.' });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setDocumentNotice({ type: 'error', title: 'Foto muito grande', message: 'A foto deve ter no máximo 10 MB. Reduza o tamanho do arquivo e tente novamente.' });
+        return false;
+      }
+    }
+
     try {
       const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`);
       await studentsApi.update(studentId, { [`doc_${docType}_url`]: publicUrl });
 
-      alert(`Documento (${docType.toUpperCase()}) enviado com sucesso!`);
+      setDocumentNotice({
+        type: 'success',
+        title: docType === 'photo' ? 'Foto enviada' : 'Documento enviado',
+        message: docType === 'photo' ? 'Sua foto foi salva e enviada para auditoria.' : 'O documento foi enviado para auditoria com sucesso.'
+      });
       fetchData();
+      return true;
     } catch (error) {
       console.error('Erro no upload de documento:', error);
-      alert('Falha ao enviar arquivo. Por favor, tente novamente.');
+      setDocumentNotice({ type: 'error', title: 'Falha no envio', message: 'Não foi possível enviar o arquivo. Verifique sua conexão e tente novamente.' });
+      return false;
     }
   };
 
@@ -919,6 +945,32 @@ export default function AreaAluno() {
           Bem-vindo de volta ao seu portal de estudos C&C Engenharia e Capacitação. Veja abaixo seu andamento teórico e presencial.
         </p>
       </div>
+
+      {/* BANNER: documentos pendentes ou reprovados */}
+      {studentData && (() => {
+        const docTypes = ['photo','id','cpf','address','education'];
+        const pendentes = docTypes.filter(t => !studentData['doc_' + t + '_url']);
+        const reprovados = docTypes.filter(t => studentData['doc_' + t + '_status'] === 'rejected');
+        if (pendentes.length === 0 && reprovados.length === 0) return null;
+        const isReprov = reprovados.length > 0;
+        return (
+          <div style={{ padding: '1rem 1.25rem', borderRadius: '12px', background: isReprov ? '#fee2e2' : '#fef3c7', border: '1px solid ' + (isReprov ? '#fca5a5' : '#fde68a'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <AlertCircle size={18} color={isReprov ? '#b91c1c' : '#b45309'} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isReprov ? '#b91c1c' : '#92400e' }}>
+                {isReprov
+                  ? reprovados.length + ' documento(s) reprovado(s) — revise e reenvie para liberar seu certificado.'
+                  : pendentes.length + ' documento(s) pendente(s) — envie para manter conformidade Abendi.'}
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveTab('documentos')}
+              style={{ fontSize: '0.8rem', fontWeight: 700, padding: '0.4rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', background: isReprov ? '#b91c1c' : '#b45309', color: 'white', whiteSpace: 'nowrap' }}>
+              Enviar agora
+            </button>
+          </div>
+        );
+      })()}
 
       {/* CARDS DE KPIS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
@@ -1971,84 +2023,250 @@ export default function AreaAluno() {
   ), document.body);
 
   // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
+  const DOC_DEFS = [
+    { type: 'photo',     label: 'Foto de Rosto',               hint: 'Selfie frontal, fundo claro, sem óculos ou boné.',              accept: 'image/*',      allowCamera: true },
+    { type: 'id',        label: 'RG ou CNH (frente e verso)',   hint: 'Documento oficial com foto. PDF ou imagem nítida.',             accept: '.pdf,image/*', allowCamera: true },
+    { type: 'cpf',       label: 'CPF',                          hint: 'Cartão CPF físico ou comprovante da Receita Federal.',          accept: '.pdf,image/*', allowCamera: true },
+    { type: 'address',   label: 'Comprovante de Residência',    hint: 'Conta de luz, água ou telefone com menos de 90 dias.',         accept: '.pdf,image/*', allowCamera: true },
+    { type: 'education', label: 'Comprovante de Escolaridade',  hint: 'Diploma, certificado ou histórico escolar.',                   accept: '.pdf,image/*', allowCamera: true },
+  ];
+
+  const docUrl    = (type) => studentData ? studentData['doc_' + type + '_url']    : null;
+  const docStatus = (type) => studentData ? studentData['doc_' + type + '_status'] : null;
+  const docReject = (type) => studentData ? studentData['doc_' + type + '_reject'] : null;
+
+  const docsTotal      = DOC_DEFS.length;
+  const docsEnviados   = DOC_DEFS.filter(d => !!docUrl(d.type)).length;
+  const docsAprovados  = DOC_DEFS.filter(d => docStatus(d.type) === 'approved').length;
+  const docsRejeitados = DOC_DEFS.filter(d => docStatus(d.type) === 'rejected').length;
+
+  const STATUS_CFG = {
+    approved: { color: '#10b981', bg: '#d1fae5', border: '#a7f3d0', label: 'Aprovado',    icon: 'checkmark' },
+    pending:  { color: '#d97706', bg: '#fef3c7', border: '#fde68a', label: 'Em analise',  icon: 'clock'     },
+    rejected: { color: '#ef4444', bg: '#fee2e2', border: '#fca5a5', label: 'Reprovado',   icon: 'x'         },
+    missing:  { color: '#94a3b8', bg: '#f8fafc', border: '#e2e8f0', label: 'Nao enviado', icon: 'circle'    },
+  };
+
+  const getDocSK = (type) => {
+    if (!docUrl(type)) return 'missing';
+    return docStatus(type) || 'pending';
+  };
+
+  const openCameraForDoc = async (type) => {
+    setActiveUploadType(type);
+    setCameraError('');
+    setShowSelfieModal(true);
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        setSelfieStream(stream);
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      } catch {
+        try {
+          const s2 = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          setSelfieStream(s2);
+          if (videoRef.current) videoRef.current.srcObject = s2;
+        } catch (e2) { setCameraError('Camera nao disponivel: ' + (e2.message || 'Permissao negada')); }
+      }
+    }, 150);
+  };
+
+  const stopCamera = () => {
+    if (selfieStream) selfieStream.getTracks().forEach(t => t.stop());
+    setSelfieStream(null);
+    setShowSelfieModal(false);
+    setActiveUploadType(null);
+    setCameraError('');
+  };
+
+  const captureFromCamera = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const v = videoRef.current, c = canvasRef.current;
+    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+    c.getContext('2d').drawImage(v, 0, 0);
+    c.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], 'doc_' + activeUploadType + '_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+      stopCamera();
+      await handleFileUploadDoc({ target: { files: [file] } }, activeUploadType);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const handleFileUploadDoc = async (e, type) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !studentId) return;
+    if (file.size > 5 * 1024 * 1024) { setUploadError('Arquivo muito grande. Maximo 5 MB.'); return; }
+    setUploadingDoc(type);
+    setUploadError(null);
+    try {
+      const res = await uploadFile(file, 'students/' + studentId);
+      const url = res.url;
+      const patch = {};
+      patch['doc_' + type + '_url']    = url;
+      patch['doc_' + type + '_status'] = 'pending';
+      patch['doc_' + type + '_reject'] = null;
+      await studentsApi.update(studentId, patch);
+      setStudentData(prev => ({ ...prev, ...patch }));
+    } catch (err) {
+      setUploadError('Falha ao enviar: ' + (err.message || 'tente novamente'));
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
   const renderDocumentos = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Secretaria Digital - Envio de Documentos</h3>
-        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrícula em conformidade com as regras da **Abendi** e garantir a emissão de certificados.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 4px' }}>Secretaria Digital - Documentos</h3>
+        <p style={{ fontSize: '0.83rem', color: '#64748b', margin: 0 }}>Envie seus documentos para manter conformidade com a Abendi e liberar seu certificado.</p>
       </div>
 
-      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
-        {/* Formulário de Upload */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {[
-            { type: 'photo', label: 'Foto de Rosto (Foto / Selfie)', field: studentData?.doc_photo_url, signedField: signedUrls.photo },
-            { type: 'id', label: 'Documento de Identidade Oficial (RG ou CNH)', field: studentData?.doc_id_url, signedField: signedUrls.id },
-            { type: 'cpf', label: 'Cadastro de Pessoa Física (CPF)', field: studentData?.doc_cpf_url, signedField: signedUrls.cpf },
-            { type: 'address', label: 'Comprovante de Residência recente', field: studentData?.doc_address_url, signedField: signedUrls.address },
-            { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: studentData?.doc_education_url, signedField: signedUrls.education }
-          ].map(doc => (
-            <div key={doc.type} className="card" style={{ padding: '1.25rem', backgroundColor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <span style={{ fontWeight: '750', fontSize: '0.88rem', color: 'var(--primary-dark)', display: 'block' }}>{doc.label}</span>
-                <span style={{ fontSize: '0.72rem', color: doc.field ? '#10b981' : '#f59e0b', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px', marginTop: '2px' }}>
-                  {doc.field ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                  {doc.field ? 'Enviado para Auditoria' : 'Pendente de Upload'}
-                </span>
-              </div>
+      <div className="card" style={{ padding: '1.25rem', background: 'white' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>Progresso da documentacao</span>
+          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>{docsAprovados} aprovado(s) de {docsTotal}</span>
+        </div>
+        <div style={{ height: '10px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: Math.round((docsAprovados / docsTotal) * 100) + '%', background: 'linear-gradient(90deg,#10b981,#059669)', borderRadius: '99px', transition: 'width .4s' }} />
+        </div>
+        {docsRejeitados > 0 && (
+          <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '0.78rem', color: '#b91c1c', fontWeight: 600 }}>
+            {docsRejeitados} documento(s) reprovado(s) - veja o motivo e reenvie.
+          </div>
+        )}
+        {uploadError && (
+          <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '0.78rem', color: '#b91c1c', fontWeight: 600 }}>
+            {uploadError}
+          </div>
+        )}
+      </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                {doc.field && (
-                  <a href={doc.signedField || doc.field} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', textDecoration: 'none' }}>
-                    Visualizar
-                  </a>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        {DOC_DEFS.map(function(doc) {
+          var sk   = getDocSK(doc.type);
+          var sc   = STATUS_CFG[sk];
+          var url  = docUrl(doc.type);
+          var note = docReject(doc.type);
+          var busy = uploadingDoc === doc.type;
+          return (
+            <div key={doc.type} className="card" style={{ padding: '1rem 1.25rem', background: 'white', borderLeft: '4px solid ' + sc.border, display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 750, fontSize: '0.9rem', color: '#1e293b' }}>{doc.label}</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: sc.color, background: sc.bg, border: '1px solid ' + sc.border, padding: '1px 8px', borderRadius: '99px' }}>{sc.label}</span>
+                </div>
+                <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748b' }}>{doc.hint}</p>
+                {sk === 'rejected' && note && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#b91c1c', background: '#fee2e2', borderRadius: '6px', padding: '0.35rem 0.6rem', fontWeight: 600 }}>Motivo: {note}</div>
                 )}
-                {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                      setTimeout(startCamera, 100);
-                    }}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    {doc.field ? 'Re-enviar Foto/Selfie' : 'Tirar Selfie'}
-                  </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end', flexShrink: 0 }}>
+                {busy ? (
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Enviando...</span>
                 ) : (
-                  <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    {doc.field ? 'Fotografar / Re-enviar' : 'Fotografar / Selecionar'}
-                    <input 
-                      type="file" 
-                      hidden 
-                      accept=".pdf,image/*"
-                      capture="environment"
-                      onChange={(e) => handleFileUpload(e, doc.type)} 
-                    />
-                  </label>
+                  <React.Fragment>
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none', background: 'var(--primary-light)', padding: '0.3rem 0.75rem', borderRadius: '6px' }}>
+                        Ver arquivo
+                      </a>
+                    )}
+                    {doc.allowCamera && (
+                      <button onClick={function(){ openCameraForDoc(doc.type); }}
+                        style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: 'none', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        📷 {url ? 'Tirar nova foto' : 'Usar câmera'}
+                      </button>
+                    )}
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4f46e5', background: '#ede9fe', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      📎 {url ? 'Substituir arquivo' : 'Anexar arquivo'}
+                      <input type="file" hidden accept={doc.accept} onChange={function(e){ handleFileUploadDoc(e, doc.type); e.target.value = ''; }} />
+                    </label>
+                  </React.Fragment>
                 )}
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Status e Orientações Abendi */}
-        <div>
-          <div className="card" style={{ backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0369a1', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <FileCheck size={18} /> Diretrizes de Auditoria Abendi
-            </h4>
-            <ul style={{ fontSize: '0.8rem', color: '#0369a1', paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: 1.4 }}>
-              <li>Os arquivos devem estar legíveis e sem cortes nas bordas.</li>
-              <li>A foto de rosto deve ser frontal, com fundo claro e sem óculos de sol ou boné.</li>
-              <li>Formatos aceitos: PDF, PNG, JPG e JPEG de até 5MB.</li>
-              <li>Certificados de conclusão dependem de 100% dos documentos aprovados.</li>
-            </ul>
-          </div>
-        </div>
+          );
+        })}
       </div>
+
+      <div className="card" style={{ padding: '1.25rem', background: '#f0f9ff', borderColor: '#bae6fd' }}>
+        <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0369a1', margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <FileCheck size={16} /> Diretrizes Abendi
+        </h4>
+        <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.78rem', color: '#0369a1', display: 'flex', flexDirection: 'column', gap: '4px', lineHeight: 1.5 }}>
+          <li>Arquivos legíveis, sem cortes nas bordas.</li>
+          <li>Foto frontal, fundo claro, sem adereços.</li>
+          <li>PDF, PNG, JPG — maximo 5 MB por arquivo.</li>
+          <li>Certificado bloqueado ate todos os documentos serem aprovados.</li>
+        </ul>
+      </div>
+
+      {showSelfieModal && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '20px', padding: '1.5rem', maxWidth: '500px', width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>
+                  📷 {DOC_DEFS.find(function(d){ return d.type === activeUploadType; })?.label || 'Documento'}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>Posicione o documento na frente da câmera e capture.</p>
+              </div>
+              <button onClick={stopCamera}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', fontSize: '1.1rem', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                ✕
+              </button>
+            </div>
+
+            {cameraError ? (
+              /* Câmera indisponível — oferecer upload de arquivo como fallback */
+              <div style={{ padding: '1.25rem', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fde68a', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ fontSize: '2rem' }}>📵</div>
+                <p style={{ margin: 0, fontSize: '0.83rem', color: '#92400e', fontWeight: 600 }}>{cameraError}</p>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#92400e' }}>Você ainda pode enviar uma foto ou PDF do arquivo:</p>
+                <label style={{ fontWeight: 700, color: 'white', background: '#4f46e5', padding: '0.65rem 1.25rem', borderRadius: '10px', cursor: 'pointer', display: 'inline-block' }}>
+                  📎 Escolher arquivo do dispositivo
+                  <input type="file" hidden accept="image/*,.pdf"
+                    onChange={function(e){ stopCamera(); handleFileUploadDoc(e, activeUploadType); e.target.value = ''; }} />
+                </label>
+              </div>
+            ) : (
+              <React.Fragment>
+                {/* Preview da câmera */}
+                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}>
+                  <video ref={videoRef} autoPlay playsInline muted
+                    style={{ width: '100%', display: 'block', maxHeight: '320px', objectFit: 'cover' }} />
+                  {/* Guia de enquadramento */}
+                  <div style={{ position: 'absolute', inset: '10%', border: '2px dashed rgba(255,255,255,0.4)', borderRadius: '8px', pointerEvents: 'none' }} />
+                </div>
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <button onClick={stopCamera}
+                    style={{ padding: '0.7rem', background: '#f1f5f9', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', color: '#475569', fontSize: '0.85rem' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={captureFromCamera}
+                    style={{ padding: '0.7rem', background: '#2563eb', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', color: 'white', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    📸 Capturar
+                  </button>
+                </div>
+                {/* Alternativa: subir arquivo */}
+                <div style={{ textAlign: 'center', paddingTop: '0.25rem', borderTop: '1px solid #f1f5f9' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#64748b', cursor: 'pointer', fontWeight: 600 }}>
+                    ou prefere <span style={{ color: '#4f46e5', textDecoration: 'underline' }}>escolher um arquivo</span>
+                    <input type="file" hidden accept="image/*,.pdf"
+                      onChange={function(e){ stopCamera(); handleFileUploadDoc(e, activeUploadType); e.target.value = ''; }} />
+                  </label>
+                </div>
+              </React.Fragment>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
-
   // ABA 8: MEUS CERTIFICADOS
   const renderCertificates = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -2697,90 +2915,8 @@ export default function AreaAluno() {
     );
   }
 
-  // Se houver pendência Abendi, exibe bloqueio amigável
-  if (missingDocs) {
-    return (
-      <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '4rem auto', padding: '0 1.5rem' }}>
-        <div className="card text-center" style={{ padding: '3.5rem 2rem', border: '2px solid #FCD34D', backgroundColor: '#FFFBEB', borderRadius: '24px' }}>
-          <AlertCircle size={48} color="#b45309" style={{ margin: '0 auto 1rem' }} />
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#92400E' }}>Falta pouco para acessar suas aulas!</h2>
-          <p style={{ color: '#B45309', marginBottom: '2.5rem', fontSize: '1.05rem', lineHeight: '1.6', maxWidth: '600px', margin: '0 auto 2.5rem' }}>
-            Por exigência da certificação nacional **Abendi**, precisamos que você conclua o envio dos seus documentos obrigatórios antes de liberar o acesso completo à plataforma LMS.
-          </p>
-          
-          <div style={{ display: 'grid', gap: '1.25rem', textAlign: 'left', maxWidth: '550px', margin: '0 auto' }}>
-            {[
-              { type: 'photo', label: 'Foto de Rosto (Você pode tirar uma selfie agora)' },
-              { type: 'id', label: 'Documento de Identidade com Foto (RG ou CNH)' },
-              { type: 'cpf', label: 'CPF' },
-              { type: 'address', label: 'Comprovante de Residência atualizado' },
-              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)' }
-            ].map((doc) => (
-              <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1 }}>{doc.label}</span>
-                {doc.type === 'photo' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setShowSelfieModal(true);
-                      setTimeout(startCamera, 100);
-                    }}
-                    style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px', border: 'none', fontWeight: 'bold' }}
-                  >
-                    Tirar Selfie
-                  </button>
-                ) : (
-                  <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    Fotografar / Selecionar
-                    <input 
-                      type="file" 
-                      hidden 
-                      accept=".pdf,image/*"
-                      capture="environment"
-                      onChange={(e) => handleFileUpload(e, doc.type)} 
-                    />
-                  </label>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Roteamento condicional baseado na rota ativa
-  const getActiveTabContent = () => {
-    const path = location.pathname;
-    
-    if (path === '/area-aluno/cursos') {
-      return renderCursos();
-    } else if (path === '/area-aluno/ead') {
-      return renderCursos(); // Aulas EAD também lista e direciona para player
-    } else if (path === '/area-aluno/presencial') {
-      return renderPresencial();
-    } else if (path === '/area-aluno/desempenho') {
-      return renderDesempenho();
-    } else if (path === '/area-aluno/forum') {
-      return renderForum();
-    } else if (path === '/area-aluno/mensagens') {
-      return renderMensagens();
-    } else if (path === '/area-aluno/documentos') {
-      return renderDocumentos();
-    } else if (path === '/area-aluno/certificados') {
-      return renderCertificates();
-    } else if (path === '/area-aluno/financeiro') {
-      return renderFinanceiro();
-    } else if (path === '/area-aluno/vitrine') {
-      return renderVitrine();
-    } else if (path === '/area-aluno/avisos') {
-      return renderQuadroAvisos();
-    } else {
-      return renderDashboard();
-    }
-  };
-
-  const isChatFull = location.pathname === '/area-aluno/mensagens';
+  // Banner de onboarding: mostra aviso inline (nao bloqueia mais a tela inteira)
+  // O aluno pode fechar o aviso e ir direto para a aba Documentos.
   return (
     <div className="animate-fade-in" style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <style>{`
@@ -2806,10 +2942,10 @@ export default function AreaAluno() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '440px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid #e2e8f0', textAlign: 'center', boxSizing: 'border-box' }} className="animate-scale-up">
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)' }}>
-              Capturar Selfie
+              Enviar foto de identificação
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 1.5rem 0', lineHeight: 1.4 }}>
-              Posicione seu rosto no centro da bola para encaixar a foto. A imagem será recortada em círculo para sua total privacidade.
+              Use a câmera ou escolha uma foto JPG, PNG ou WEBP já salva no seu dispositivo.
             </p>
 
             {/* Vídeo com a Câmera */}
@@ -2910,7 +3046,7 @@ export default function AreaAluno() {
                     cursor: 'pointer'
                   }}
                 >
-                  Abrir Câmera / Arquivo
+                  Escolher foto salva
                 </button>
               </div>
             </div>
@@ -2920,10 +3056,24 @@ export default function AreaAluno() {
               type="file" 
               ref={fileInputRef} 
               hidden 
-              accept="image/*"
-              capture="user"
+              accept="image/jpeg,image/png,image/webp"
               onChange={handleSelectLocalFile}
             />
+          </div>
+        </div>
+      ), document.body)}
+
+      {documentNotice && createPortal((
+        <div role="dialog" aria-modal="true" aria-labelledby="document-notice-title" style={{ position: 'fixed', inset: 0, zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(15, 23, 42, 0.72)' }}>
+          <div style={{ width: 'min(430px, 100%)', padding: '1.75rem', borderRadius: '20px', background: '#fff', boxShadow: '0 24px 60px rgba(15,23,42,.32)', textAlign: 'center' }}>
+            <div style={{ width: 58, height: 58, margin: '0 auto 1rem', borderRadius: '50%', display: 'grid', placeItems: 'center', background: documentNotice.type === 'success' ? '#ecfdf5' : '#fef2f2', color: documentNotice.type === 'success' ? '#059669' : '#dc2626' }}>
+              {documentNotice.type === 'success' ? <CheckCircle size={32} /> : <AlertCircle size={32} />}
+            </div>
+            <h3 id="document-notice-title" style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem' }}>{documentNotice.title}</h3>
+            <p style={{ margin: '0.75rem 0 0', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.55 }}>{documentNotice.message}</p>
+            <button type="button" autoFocus className="btn btn-primary" onClick={() => setDocumentNotice(null)} style={{ width: '100%', marginTop: '1.4rem', minHeight: 44 }}>
+              Entendi
+            </button>
           </div>
         </div>
       ), document.body)}

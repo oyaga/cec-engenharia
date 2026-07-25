@@ -64,8 +64,20 @@ type Student struct {
 	DocCPFURL            *string    `gorm:"column:doc_cpf_url" json:"doc_cpf_url,omitempty"`
 	DocAddressURL        *string    `gorm:"column:doc_address_url" json:"doc_address_url,omitempty"`
 	DocEducationURL      *string    `gorm:"column:doc_education_url" json:"doc_education_url,omitempty"`
-	ProgressPercent      int        `gorm:"column:progress_percent" json:"progress_percent"`
-	TermsAccepted        bool       `gorm:"column:terms_accepted" json:"terms_accepted"`
+	// Status de revisão por documento: "pending" | "approved" | "rejected"
+	DocPhotoStatus     *string `gorm:"column:doc_photo_status;default:'pending'" json:"doc_photo_status,omitempty"`
+	DocIDStatus        *string `gorm:"column:doc_id_status;default:'pending'" json:"doc_id_status,omitempty"`
+	DocCPFStatus       *string `gorm:"column:doc_cpf_status;default:'pending'" json:"doc_cpf_status,omitempty"`
+	DocAddressStatus   *string `gorm:"column:doc_address_status;default:'pending'" json:"doc_address_status,omitempty"`
+	DocEducationStatus *string `gorm:"column:doc_education_status;default:'pending'" json:"doc_education_status,omitempty"`
+	// Motivo de rejeição por documento (preenchido pela secretaria ao rejeitar)
+	DocPhotoReject     *string `gorm:"column:doc_photo_reject" json:"doc_photo_reject,omitempty"`
+	DocIDReject        *string `gorm:"column:doc_id_reject" json:"doc_id_reject,omitempty"`
+	DocCPFReject       *string `gorm:"column:doc_cpf_reject" json:"doc_cpf_reject,omitempty"`
+	DocAddressReject   *string `gorm:"column:doc_address_reject" json:"doc_address_reject,omitempty"`
+	DocEducationReject *string `gorm:"column:doc_education_reject" json:"doc_education_reject,omitempty"`
+	ProgressPercent    int     `gorm:"column:progress_percent" json:"progress_percent"`
+	TermsAccepted      bool    `gorm:"column:terms_accepted" json:"terms_accepted"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }

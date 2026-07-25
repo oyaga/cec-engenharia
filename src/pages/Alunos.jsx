@@ -109,6 +109,7 @@ export default function Alunos() {
         holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '',
         cpf: '', email: '', phone: '', postalCode: '', addressNumber: ''
     })
+    const [maxInstallmentsCard, setMaxInstallmentsCard] = useState('10')
     const [boletoDueDate, setBoletoDueDate] = useState('')
     const [financingInstallments, setFinancingInstallments] = useState('6')
     const [pixQrCodeImage, setPixQrCodeImage] = useState('')
@@ -1491,43 +1492,121 @@ export default function Alunos() {
 
                         {/* Documentos Digitais (Upload) */}
                         <div style={{ padding: '1.5rem', backgroundColor: '#F0F9FF', borderRadius: 'var(--radius-lg)', border: '1px solid #BAE6FD' }}>
-                            <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', borderBottom: '1px solid #7DD3FC', paddingBottom: '0.5rem', color: '#0369A1' }}>Documentação Digital (Arquivos)</h3>
+                            <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', borderBottom: '1px solid #7DD3FC', paddingBottom: '0.5rem', color: '#0369A1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <FileText size={18} /> Revisão de Documentos (Abendi)
+                            </h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {[
-                                    { label: 'Foto 3x4', key: 'photo', icon: <Plus size={14} /> },
-                                    { label: 'RG/Identidade', key: 'id', icon: <FileText size={14} /> },
-                                    { label: 'CPF', key: 'cpf', icon: <Paperclip size={14} /> },
-                                    { label: 'Escolaridade', key: 'education', icon: <Award size={14} /> },
-                                    { label: 'Residência', key: 'address', icon: <Printer size={14} /> },
-                                    { label: 'Anexar Prova PDF', key: 'provas', icon: <UploadCloud size={14} /> }
-                                ].map(doc => (
-                                    <div key={doc.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #E0F2FE' }}>
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{doc.label}</span>
-                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                            {student.originalData[`doc_${doc.key}_url`] && doc.key !== 'provas' && (
-                                                <a href={signedUrls[doc.key] || student.originalData[`doc_${doc.key}_url`]} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: '#0369A1', fontWeight: 600 }}>Ver</a>
+                                    { label: 'Foto de Rosto',            key: 'photo'     },
+                                    { label: 'RG / CNH',                 key: 'id'        },
+                                    { label: 'CPF',                      key: 'cpf'       },
+                                    { label: 'Comprovante de Residência', key: 'address'   },
+                                    { label: 'Comprovante de Escolaridade', key: 'education' },
+                                ].map(doc => {
+                                    const url    = signedUrls[doc.key] || student.originalData[`doc_${doc.key}_url`];
+                                    const status = student.originalData[`doc_${doc.key}_status`] || (url ? 'pending' : null);
+                                    const note   = student.originalData[`doc_${doc.key}_reject`];
+                                    const statusColors = {
+                                        approved: { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0', label: 'Aprovado' },
+                                        pending:  { bg: '#fef3c7', color: '#92400e', border: '#fde68a', label: 'Em análise' },
+                                        rejected: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Reprovado' },
+                                    };
+                                    const sc = statusColors[status] || { bg: '#f8fafc', color: '#64748b', border: '#e2e8f0', label: 'Não enviado' };
+                                    return (
+                                        <div key={doc.key} style={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid ' + sc.border, overflow: 'hidden' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                                                    <span style={{ fontSize: '0.83rem', fontWeight: 600, color: '#1e293b' }}>{doc.label}</span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 7px', borderRadius: '99px', background: sc.bg, color: sc.color, border: '1px solid ' + sc.border, whiteSpace: 'nowrap' }}>{sc.label}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                    {url && (
+                                                        <a href={url} target="_blank" rel="noreferrer"
+                                                            style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#e0f2fe', borderRadius: '5px', textDecoration: 'none' }}>
+                                                            Ver
+                                                        </a>
+                                                    )}
+                                                    {/* Upload pela secretaria */}
+                                                    <label style={{ cursor: 'pointer', fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#eff6ff', borderRadius: '5px' }}>
+                                                        Upload
+                                                        <input type="file" hidden accept=".pdf,image/*" onChange={(e) => handleFileUpload(student.id, e.target.files[0], doc.key)} />
+                                                    </label>
+                                                    {/* Aprovar */}
+                                                    {url && status !== 'approved' && (
+                                                        <button onClick={async () => {
+                                                            try {
+                                                                await studentsApi.reviewDoc(student.id, doc.key, 'approved');
+                                                                const patch = { [`doc_${doc.key}_status`]: 'approved', [`doc_${doc.key}_reject`]: null };
+                                                                setView(prev => ({ ...prev, originalData: { ...prev.originalData, ...patch } }));
+                                                            } catch(e) { alert('Erro: ' + e.message); }
+                                                        }}
+                                                            style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#d1fae5', color: '#065f46', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                                                            ✓ Aprovar
+                                                        </button>
+                                                    )}
+                                                    {/* Reprovar */}
+                                                    {url && status !== 'rejected' && (
+                                                        <button onClick={async () => {
+                                                            const motivo = window.prompt('Motivo da reprovação (será exibido ao aluno):');
+                                                            if (motivo === null) return;
+                                                            try {
+                                                                await studentsApi.reviewDoc(student.id, doc.key, 'rejected', motivo);
+                                                                const patch = { [`doc_${doc.key}_status`]: 'rejected', [`doc_${doc.key}_reject`]: motivo };
+                                                                setView(prev => ({ ...prev, originalData: { ...prev.originalData, ...patch } }));
+                                                            } catch(e) { alert('Erro: ' + e.message); }
+                                                        }}
+                                                            style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                                                            ✗ Reprovar
+                                                        </button>
+                                                    )}
+                                                    {/* Redefinir para pending */}
+                                                    {url && status === 'approved' && (
+                                                        <button onClick={async () => {
+                                                            try {
+                                                                await studentsApi.reviewDoc(student.id, doc.key, 'pending');
+                                                                const patch = { [`doc_${doc.key}_status`]: 'pending' };
+                                                                setView(prev => ({ ...prev, originalData: { ...prev.originalData, ...patch } }));
+                                                            } catch(e) { alert('Erro: ' + e.message); }
+                                                        }}
+                                                            style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                                                            Redefinir
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {/* Motivo de reprovação */}
+                                            {status === 'rejected' && note && (
+                                                <div style={{ padding: '0.4rem 0.85rem', background: '#fee2e2', fontSize: '0.72rem', color: '#991b1b', fontWeight: 600, borderTop: '1px solid #fca5a5' }}>
+                                                    Motivo: {note}
+                                                </div>
                                             )}
-                                            {doc.key === 'provas' && student.originalData.doc_exams_url?.length > 0 && (
-                                                <span style={{ fontSize: '0.7rem', color: '#0369A1' }}>{student.originalData.doc_exams_url.length} anexos</span>
-                                            )}
-                                            <label style={{ cursor: 'pointer', color: 'var(--primary)', padding: '0.25rem', backgroundColor: '#EFF6FF', borderRadius: '4px' }}>
-                                                {doc.icon}
-                                                <input type="file" hidden accept=".pdf,image/*" onChange={(e) => handleFileUpload(student.id, e.target.files[0], doc.key)} />
-                                            </label>
                                         </div>
+                                    );
+                                })}
+
+                                {/* Provas / exames */}
+                                <div style={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0.6rem 0.85rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.83rem', fontWeight: 600, color: '#1e293b' }}>
+                                            Provas em PDF {student.originalData.doc_exams_url?.length > 0 && <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({student.originalData.doc_exams_url.length} arquivo(s))</span>}
+                                        </span>
+                                        <label style={{ cursor: 'pointer', fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 700, padding: '0.25rem 0.6rem', background: '#eff6ff', borderRadius: '5px' }}>
+                                            + Anexar
+                                            <input type="file" hidden accept=".pdf,image/*" onChange={(e) => handleFileUpload(student.id, e.target.files[0], 'provas')} />
+                                        </label>
                                     </div>
-                                ))}
-                            </div>
-                            {student.originalData.doc_exams_url?.length > 0 && (
-                                <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#0369A1' }}>
-                                    <strong>Provas Anexadas:</strong>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                        {(signedUrls.exams || student.originalData.doc_exams_url).map((exam, idx) => (
-                                            <a key={idx} href={exam.url} target="_blank" rel="noreferrer" style={{ padding: '0.2rem 0.5rem', backgroundColor: '#fff', border: '1px solid #BAE6FD', borderRadius: '4px' }}>Prova {idx+1}</a>
-                                        ))}
-                                    </div>
+                                    {student.originalData.doc_exams_url?.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                            {(signedUrls.exams || student.originalData.doc_exams_url).map((exam, idx) => (
+                                                <a key={idx} href={exam.url} target="_blank" rel="noreferrer"
+                                                    style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', color: '#0369a1', textDecoration: 'none' }}>
+                                                    Prova {idx + 1}
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
 

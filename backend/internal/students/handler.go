@@ -306,6 +306,11 @@ func (h *Handler) Update(c *gin.Context) {
 		"how_knew": true, "how_knew_other": true, "cancellation_date": true, "refund_value": true,
 		"cancellation_reason": true, "cancellation_note": true, "doc_exams_url": true,
 		"asaas_customer_id": true, "asaas_payment_id": true,
+		// status/rejeição de documentos (apenas staff)
+		"doc_photo_status": true, "doc_id_status": true, "doc_cpf_status": true,
+		"doc_address_status": true, "doc_education_status": true,
+		"doc_photo_reject": true, "doc_id_reject": true, "doc_cpf_reject": true,
+		"doc_address_reject": true, "doc_education_reject": true,
 	}
 	selfAllowed := map[string]bool{
 		"terms_accepted": true, "phone": true, "email": true, "address": true,
@@ -339,4 +344,55 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// ReviewDoc: POST /students/:id/review-doc
+// Permite que staff aprove ou rejeite um documento específico do aluno.
+// Body: { "doc": "photo"|"id"|"cpf"|"address"|"education", "status": "approved"|"rejected", "note": "motivo opcional" }
+func (h *Handler) ReviewDoc(c *gin.Context) {
+	var s models.Student
+	if err := h.db.First(&s, "id = ?", c.Param("id")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "aluno não encontrado")
+		return
+	}
+
+	var req struct {
+		Doc    string `json:"doc" binding:"required"`
+		Status string `json:"status" binding:"required"`
+		Note   string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "informe doc e status")
+		return
+	}
+
+	validDocs := map[string]bool{"photo": true, "id": true, "cpf": true, "address": true, "education": true}
+	if !validDocs[req.Doc] {
+		httpx.Error(c, http.StatusBadRequest, "documento inválido")
+		return
+	}
+	if req.Status != "approved" && req.Status != "rejected" && req.Status != "pending" {
+		httpx.Error(c, http.StatusBadRequest, "status deve ser approved, rejected ou pending")
+		return
+	}
+
+	// Monta as colunas dinamicamente para não precisar de switch gigante.
+	statusCol := "doc_" + req.Doc + "_status"
+	rejectCol := "doc_" + req.Doc + "_reject"
+
+	updates := map[string]any{statusCol: req.Status}
+	if req.Status == "rejected" {
+		updates[rejectCol] = req.Note
+	} else {
+		updates[rejectCol] = nil // limpa motivo ao aprovar/redefinir
+	}
+
+	if err := h.db.Model(&s).Updates(updates).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar status do documento")
+		return
+	}
+
+	// Quando o aluno envia um novo arquivo o status volta a pending automaticamente
+	// (o frontend faz isso ao salvar doc_*_url — sem lógica extra aqui).
+	c.JSON(http.StatusOK, gin.H{"ok": true, "doc": req.Doc, "status": req.Status})
 }

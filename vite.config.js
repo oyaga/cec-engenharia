@@ -26,16 +26,9 @@ export default defineConfig({
           })
         },
       },
-      '/asaas-sandbox': {
-        target: 'https://sandbox.asaas.com/api/v3',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/asaas-sandbox/, '')
-      },
-      '/asaas-production': {
-        target: 'https://api.asaas.com/api/v3',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/asaas-production/, '')
-      }
+      // Asaas é inteiramente proxied pelo backend Go (/api/v1/payments/*).
+      // As rotas /asaas-sandbox e /asaas-production foram removidas — a chave
+      // da API nunca deve ir ao browser.
     }
   },
   build: {
@@ -49,9 +42,6 @@ export default defineConfig({
             if (id.includes('recharts')) {
               return 'vendor-charts';
             }
-            if (id.includes('@supabase')) {
-              return 'vendor-supabase';
-            }
             if (id.includes('framer-motion')) {
               return 'vendor-motion';
             }
@@ -63,4 +53,3 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000
   }
 })
-

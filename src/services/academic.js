@@ -62,4 +62,10 @@ export const studentsApi = {
   create: (payload) => request('/students', { method: 'POST', body: payload }),
   update: (id, payload) => request(`/students/${id}`, { method: 'PUT', body: payload }),
   remove: (id) => request(`/students/${id}`, { method: 'DELETE' }),
+  // Revisão de documento pela secretaria
+  // doc: 'photo'|'id'|'cpf'|'address'|'education'
+  // status: 'approved'|'rejected'|'pending'
+  // note: motivo (obrigatório ao rejeitar)
+  reviewDoc: (id, doc, status, note = '') =>
+    request(`/students/${id}/review-doc`, { method: 'POST', body: { doc, status, note } }),
 };
