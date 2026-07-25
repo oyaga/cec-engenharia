@@ -13,6 +13,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Alunos = lazy(() => import('./pages/Alunos'))
 const Turmas = lazy(() => import('./pages/Turmas'))
 const Financeiro = lazy(() => import('./pages/Financeiro'))
+const ProfessorLayout = lazy(() => import('./components/ProfessorLayout'))
 const Professor = lazy(() => import('./pages/Professor'))
 const Auditoria = lazy(() => import('./pages/Auditoria'))
 const ConfigDocs = lazy(() => import('./pages/ConfigDocs'))
@@ -169,7 +170,6 @@ function App() {
               <Route path="/secretaria/cursos" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_cursos"><Cursos /></RoleGuard>} />
               <Route path="/financeiro" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_financeiro"><Financeiro /></RoleGuard>} />
               <Route path="/relatorios" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_relatorios"><Relatorios /></RoleGuard>} />
-              <Route path="/professor" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
               <Route path="/auditoria" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_auditoria"><Auditoria /></RoleGuard>} />
               <Route path="/ouvidoria-admin" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_ouvidoria"><OuvidoriaAdmin /></RoleGuard>} />
               <Route path="/admin/testimonials" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']} requiredPermission="access_dashboard"><TestimonialsAdmin /></RoleGuard>} />
@@ -185,6 +185,18 @@ function App() {
               <Route path="/config-asaas" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_config_asaas"><ConfigAsaas /></RoleGuard>} />
               <Route path="/secretaria/instrutores" element={<RoleGuard allowedRoles={['admin', 'coordenador']} requiredPermission="access_instrutores"><Instrutores /></RoleGuard>} />
               <Route path="/secretaria/perfil" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'atendente']}><MeuPerfil /></RoleGuard>} />
+            </Route>
+
+            {/* Private App Routes (PROFESSOR PORTAL) */}
+            <Route element={
+              <PrivateRoute>
+                <ProfessorLayout />
+              </PrivateRoute>
+            }>
+              <Route path="/professor" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
+              <Route path="/professor/comentarios" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
+              <Route path="/professor/chat" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
+              <Route path="/professor/analytics" element={<RoleGuard allowedRoles={['admin', 'coordenador', 'instrutor']} requiredPermission="access_instrutor_portal"><Professor /></RoleGuard>} />
               <Route path="/professor/perfil" element={<RoleGuard allowedRoles={['instrutor']}><MeuPerfil /></RoleGuard>} />
             </Route>
 

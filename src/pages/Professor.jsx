@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { 
     BookOpen, CheckSquare, List, Calendar as CalendarIcon, Edit3, 
@@ -20,7 +21,8 @@ const JUSTIFICATION_OPTIONS = [
 ]
 
 export default function Professor() {
-    const [activeTab, setActiveTab] = useState('minhasTurmas') // minhasTurmas | duvidasEad | diario
+    const { activeTab, setActiveTab } = useOutletContext() || { activeTab: 'minhasTurmas', setActiveTab: () => {} }
+
     const [selectedClass, setSelectedClass] = useState(null)
     const [loading, setLoading] = useState(true)
     const [userRole, setUserRole] = useState('instrutor')
@@ -2242,40 +2244,14 @@ export default function Professor() {
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <div>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Portal do Instrutor / Professor</h2>
                     <p className="text-muted" style={{ fontSize: '0.9rem' }}>Gerencie suas aulas presenciais, faça chamadas e responda a dúvidas do EAD.</p>
                 </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '2rem' }}>
-                <button
-                    className={`btn ${activeTab === 'minhasTurmas' || activeTab === 'diario' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('minhasTurmas')}
-                >
-                    <List size={16} /> Fichário Eletrônico (Presencial)
-                </button>
-                <button
-                    className={`btn ${activeTab === 'duvidasEad' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('duvidasEad')}
-                >
-                    <BookOpen size={16} /> Dúvidas Pedagógicas (EAD)
-                </button>
-                <button
-                    className={`btn ${activeTab === 'messages' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('messages')}
-                >
-                    <MessageCircle size={16} /> Mensagens Diretas (Chats)
-                </button>
-                <button
-                    className={`btn ${activeTab === 'analytics' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('analytics')}
-                >
-                    <BarChart3 size={16} /> Aproveitamento &amp; Analytics
-                </button>
-            </div>
-            
+            {/* As abas agora são controladas pela sidebar no ProfessorLayout */}            
             {activeTab === 'minhasTurmas' && renderTurmas()}
             {activeTab === 'diario' && renderDiario()}
             {activeTab === 'duvidasEad' && renderDoubtEad()}

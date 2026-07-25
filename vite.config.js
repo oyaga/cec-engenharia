@@ -6,16 +6,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/asaas-sandbox': {
-        target: 'https://sandbox.asaas.com/api/v3',
+      // Todas as chamadas à API (incluindo pagamentos/Asaas) passam pelo
+      // backend Go. Não há mais proxies diretos ao Asaas no browser.
+      '/api': {
+        target: 'http://127.0.0.1:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/asaas-sandbox/, '')
+        ws: true,
       },
-      '/asaas-production': {
-        target: 'https://api.asaas.com/api/v3',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/asaas-production/, '')
-      }
     }
   },
   build: {
@@ -29,9 +26,6 @@ export default defineConfig({
             if (id.includes('recharts')) {
               return 'vendor-charts';
             }
-            if (id.includes('@supabase')) {
-              return 'vendor-supabase';
-            }
             if (id.includes('framer-motion')) {
               return 'vendor-motion';
             }
@@ -43,4 +37,3 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000
   }
 })
-

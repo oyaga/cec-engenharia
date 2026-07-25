@@ -59,8 +59,35 @@ const Footer = () => {
     }
   };
 
-  const links_rapidos = footer.links_rapidos || [];
   const links_institucional = footer.links_institucional || [];
+
+  const routeForFooterLink = (item = {}) => {
+    const label = String(item.label || '').toLowerCase();
+    const url = String(item.url || '/').trim();
+    if (label.includes('treinamento') || label.includes('curso') || url === '/cursos') return '/#cursos';
+    if (label.includes('início') || label.includes('inicio') || label === 'home') return '/';
+    if (label.includes('sobre')) return '/sobre-nos';
+    if (label.includes('contato') || label.includes('fale')) return '/contato';
+    if (label.includes('ouvidoria')) return '/ouvidoria';
+    if (label.includes('privacidade')) return '/privacidade';
+    if (label.includes('termos')) return '/termos';
+    return url.startsWith('/') || url.startsWith('#') ? url : `/${url}`;
+  };
+
+  const handleFooterNavigation = (e, item) => {
+    const url = routeForFooterLink(item);
+    if (url === '/') window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (url.includes('#')) {
+      const targetId = url.split('#')[1];
+      const el = document.getElementById(targetId);
+      if (el) {
+        e.preventDefault();
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else if (url === window.location.pathname) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleAddLink = (key) => {
     const current = footer[key] || [];
@@ -154,21 +181,8 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={item.url}
-                    onClick={(e) => {
-                      if (item.url === '/' || item.url === '#') {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
-                        const targetId = item.url.split('#')[1];
-                        const el = document.getElementById(targetId);
-                        if (el) {
-                          e.preventDefault();
-                          el.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      } else if (item.url === window.location.pathname) {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }
-                    }}
+                    to={routeForFooterLink(item)}
+                    onClick={(e) => handleFooterNavigation(e, item)}
                   >
                     {item.label}
                   </Link>
@@ -219,21 +233,8 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={item.url}
-                    onClick={(e) => {
-                      if (item.url === '/' || item.url === '#') {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      } else if (item.url.startsWith('/#') || item.url.startsWith('#')) {
-                        const targetId = item.url.split('#')[1];
-                        const el = document.getElementById(targetId);
-                        if (el) {
-                          e.preventDefault();
-                          el.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      } else if (item.url === window.location.pathname) {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }
-                    }}
+                    to={routeForFooterLink(item)}
+                    onClick={(e) => handleFooterNavigation(e, item)}
                   >
                     {item.label}
                   </Link>
