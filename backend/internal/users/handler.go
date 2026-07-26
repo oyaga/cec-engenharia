@@ -45,6 +45,7 @@ func toJSON(m map[string]any) datatypes.JSON {
 var validRoles = map[string]bool{
 	"admin": true, "coordenador": true, "atendente": true,
 	"instrutor": true, "aluno": true, "webdesigner": true,
+	"financeiro": true, "administrativo": true,
 }
 
 // papéis "elevados" que só um admin pode criar/alterar/excluir.
