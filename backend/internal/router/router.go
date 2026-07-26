@@ -283,7 +283,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		// ─── Storage (arquivos) ───
 		storageH := storage.NewHandler(cfg.StorageDir, cfg.PublicURL)
 		up := v1.Group("/upload")
-		up.Use(middleware.RequireAuth(tm), middleware.RequireRole(staffRoles...))
+		// Aluno pode fazer upload dos próprios documentos (doc_*_url).
+		// Staff pode fazer upload de qualquer arquivo.
+		up.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "atendente", "aluno", "instrutor", "webdesigner"))
 		up.POST("", storageH.Upload)
 		v1.GET("/files/*path", storageH.Serve) // leitura pública dos arquivos
 
