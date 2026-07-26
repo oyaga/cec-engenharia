@@ -2962,8 +2962,76 @@ export default function AreaAluno() {
     );
   }
 
-  // Banner de onboarding: mostra aviso inline (nao bloqueia mais a tela inteira)
-  // O aluno pode fechar o aviso e ir direto para a aba Documentos.
+  // ── BLOQUEIO: documentos pendentes ou reprovados ──────────────────────
+  // O aluno só acessa o portal depois de enviar todos os documentos.
+  // Se algum foi reprovado, também fica bloqueado até reenviar.
+  const docTypes = ['photo', 'id', 'cpf', 'address', 'education'];
+  const docsPendentes  = studentData ? docTypes.filter(t => !studentData['doc_' + t + '_url']) : [];
+  const docsReprovados = studentData ? docTypes.filter(t => studentData['doc_' + t + '_status'] === 'rejected') : [];
+  const docsBlockado   = studentData && (docsPendentes.length > 0 || docsReprovados.length > 0);
+
+  if (docsBlockado && activeTab !== 'documentos') {
+    const isReprov = docsReprovados.length > 0;
+    const docLabels = { photo: 'Foto de Rosto', id: 'RG ou CNH', cpf: 'CPF', address: 'Comprovante de Residência', education: 'Comprovante de Escolaridade' };
+    const pendList  = [...docsPendentes, ...docsReprovados];
+
+    return (
+      <div className="animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', padding: '1rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ maxWidth: '560px', width: '100%', background: 'white', borderRadius: '24px', padding: '2.5rem 2rem', boxShadow: '0 20px 40px -8px rgba(0,0,0,0.1)', border: isReprov ? '1px solid #fca5a5' : '1px solid #fde68a' }}>
+          {/* Ícone */}
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'inline-flex', padding: '1.1rem', borderRadius: '50%', background: isReprov ? '#fee2e2' : '#fef3c7', marginBottom: '1rem' }}>
+              <AlertCircle size={40} color={isReprov ? '#b91c1c' : '#b45309'} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: isReprov ? '#991b1b' : '#92400e', margin: '0 0 0.5rem' }}>
+              {isReprov ? 'Documentos reprovados' : 'Documentos obrigatórios pendentes'}
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0, lineHeight: 1.6 }}>
+              {isReprov
+                ? 'Um ou mais documentos foram reprovados pela secretaria. Corrija e reenvie para liberar o acesso ao portal.'
+                : 'Para acessar o portal de estudos, você precisa enviar todos os documentos exigidos pela norma Abendi.'}
+            </p>
+          </div>
+
+          {/* Lista de documentos pendentes/reprovados */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+            {pendList.map(t => {
+              const reprovado = docsReprovados.includes(t);
+              const note = studentData['doc_' + t + '_reject'];
+              return (
+                <div key={t} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.75rem 1rem', borderRadius: '10px', background: reprovado ? '#fee2e2' : '#fef9e7', border: '1px solid ' + (reprovado ? '#fca5a5' : '#fde68a') }}>
+                  <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '1px' }}>{reprovado ? '✗' : '○'}</span>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: reprovado ? '#991b1b' : '#92400e' }}>
+                      {docLabels[t]}
+                    </span>
+                    {reprovado && note && (
+                      <div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '2px' }}>Motivo: {note}</div>
+                    )}
+                    {!reprovado && (
+                      <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '2px' }}>Não enviado</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Botão de ação */}
+          <button
+            onClick={() => setActiveTab('documentos')}
+            style={{ width: '100%', padding: '0.9rem', borderRadius: '12px', border: 'none', cursor: 'pointer', background: isReprov ? '#b91c1c' : '#b45309', color: 'white', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <FileCheck size={20} /> Ir para Envio de Documentos
+          </button>
+
+          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: '1rem', marginBottom: 0 }}>
+            Após o envio, a secretaria analisará em até 1 dia útil.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in" style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <style>{`
