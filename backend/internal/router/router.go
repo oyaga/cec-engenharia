@@ -66,8 +66,8 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 				"media-src 'self' https:; "+
 				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
 				"font-src 'self' https://fonts.gstatic.com; "+
-				"script-src 'self'; "+
-				"connect-src 'self' https://viacep.com.br; "+
+				"script-src 'self' https://static.cloudflareinsights.com; "+
+				"connect-src 'self' https://viacep.com.br https://cloudflareinsights.com; "+
 				"frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; "+
 				"frame-ancestors 'none'")
 		}
