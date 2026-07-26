@@ -55,6 +55,9 @@ export default function AreaAluno() {
   const [loading, setLoading] = useState(true);
   const [greeting, setGreeting] = useState('Olá');
   const [missingDocs, setMissingDocs] = useState(false);
+  const [docsBlockado, setDocsBlockado] = useState(false);
+  const [docsPendentes, setDocsPendentes] = useState([]);
+  const [docsReprovados, setDocsReprovados] = useState([]);
   const [studentData, setStudentData] = useState(null);
 
   // Dados das abas
@@ -197,6 +200,12 @@ export default function AreaAluno() {
         setStudentId(student.id);
         setTurmaId(student.turma_id);
         setStudentData(student);
+        const DOC_TYPES = ['photo', 'id', 'cpf', 'address', 'education'];
+        const pend = DOC_TYPES.filter(t => !student['doc_' + t + '_url']);
+        const reprov = DOC_TYPES.filter(t => student['doc_' + t + '_status'] === 'rejected');
+        setDocsPendentes(pend);
+        setDocsReprovados(reprov);
+        setDocsBlockado(pend.length > 0 || reprov.length > 0);
         const hasMissing = !student.doc_photo_url || !student.doc_id_url || !student.doc_cpf_url || !student.doc_address_url || !student.doc_education_url;
         setMissingDocs(hasMissing);
       }
@@ -333,6 +342,13 @@ export default function AreaAluno() {
     else if (p.includes('/vitrine'))     setActiveTab('vitrine');
     else                                 setActiveTab('cursos');
   }, [location.pathname]);
+
+  // Bloqueia navegação enquanto docs pendentes — deve ficar antes de qualquer return
+  useEffect(() => {
+    if (!loading && docsBlockado && !location.pathname.includes('/documentos')) {
+      navigate('/area-aluno/documentos', { replace: true });
+    }
+  }, [loading, docsBlockado, location.pathname]);
 
   // Função para carregar fórum (com resiliência no localStorage)
   const loadForum = async (activeTurmaId) => {
@@ -2115,9 +2131,7 @@ export default function AreaAluno() {
     setUploadingDoc(type);
     setUploadError(null);
     try {
-      const res = await uploadFile(file, 'students/' + studentId);
-      const url = res.url;
-      const patch = {};
+      con
       patch['doc_' + type + '_url']    = url;
       patch['doc_' + type + '_status'] = 'pending';
       patch['doc_' + type + '_reject'] = null;
@@ -2971,11 +2985,7 @@ export default function AreaAluno() {
   const docsBlockado   = docsPendentes.length > 0 || docsReprovados.length > 0;
 
   // Redireciona para documentos se tentar acessar outra rota enquanto bloqueado
-  useEffect(() => {
-    if (!loading && docsBlockado && !location.pathname.includes('/documentos')) {
-      navigate('/area-aluno/documentos', { replace: true });
-    }
-  }, [loading, docsBlockado, location.pathname]);
+
 
   if (docsBlockado && !location.pathname.includes('/documentos')) {
     const isReprov = docsReprovados.length > 0;
