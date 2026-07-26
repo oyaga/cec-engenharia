@@ -2966,11 +2966,18 @@ export default function AreaAluno() {
   // O aluno só acessa o portal depois de enviar todos os documentos.
   // Se algum foi reprovado, também fica bloqueado até reenviar.
   const docTypes = ['photo', 'id', 'cpf', 'address', 'education'];
-  const docsPendentes  = studentData ? docTypes.filter(t => !studentData['doc_' + t + '_url']) : [];
+  const docsPendentes  = studentData ? docTypes.filter(t => !studentData['doc_' + t + '_url']) : docTypes;
   const docsReprovados = studentData ? docTypes.filter(t => studentData['doc_' + t + '_status'] === 'rejected') : [];
-  const docsBlockado   = studentData && (docsPendentes.length > 0 || docsReprovados.length > 0);
+  const docsBlockado   = docsPendentes.length > 0 || docsReprovados.length > 0;
 
-  if (docsBlockado && activeTab !== 'documentos') {
+  // Redireciona para documentos se tentar acessar outra rota enquanto bloqueado
+  useEffect(() => {
+    if (!loading && docsBlockado && !location.pathname.includes('/documentos')) {
+      navigate('/area-aluno/documentos', { replace: true });
+    }
+  }, [loading, docsBlockado, location.pathname]);
+
+  if (docsBlockado && !location.pathname.includes('/documentos')) {
     const isReprov = docsReprovados.length > 0;
     const docLabels = { photo: 'Foto de Rosto', id: 'RG ou CNH', cpf: 'CPF', address: 'Comprovante de Residência', education: 'Comprovante de Escolaridade' };
     const pendList  = [...docsPendentes, ...docsReprovados];
