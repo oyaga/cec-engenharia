@@ -2063,6 +2063,9 @@ export default function AreaAluno() {
     { type: 'education', label: 'Comprovante de Escolaridade',  hint: 'Diploma, certificado ou histórico escolar.',                   accept: '.pdf,image/*', allowCamera: true },
   ];
 
+  // Detecta mobile — no mobile usa câmera nativa via input capture (mais confiável que WebRTC)
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
   const docUrl    = (type) => studentData ? studentData['doc_' + type + '_url']    : null;
   const docStatus = (type) => studentData ? studentData['doc_' + type + '_status'] : null;
   const docReject = (type) => studentData ? studentData['doc_' + type + '_reject'] : null;
@@ -2074,9 +2077,9 @@ export default function AreaAluno() {
 
   const STATUS_CFG = {
     approved: { color: '#10b981', bg: '#d1fae5', border: '#a7f3d0', label: 'Aprovado',    icon: 'checkmark' },
-    pending:  { color: '#d97706', bg: '#fef3c7', border: '#fde68a', label: 'Em analise',  icon: 'clock'     },
+    pending:  { color: '#d97706', bg: '#fef3c7', border: '#fde68a', label: 'Em análise',  icon: 'clock'     },
     rejected: { color: '#ef4444', bg: '#fee2e2', border: '#fca5a5', label: 'Reprovado',   icon: 'x'         },
-    missing:  { color: '#94a3b8', bg: '#f8fafc', border: '#e2e8f0', label: 'Nao enviado', icon: 'circle'    },
+    missing:  { color: '#94a3b8', bg: '#f8fafc', border: '#e2e8f0', label: 'Não enviado', icon: 'circle'    },
   };
 
   const getDocSK = (type) => {
@@ -2084,7 +2087,9 @@ export default function AreaAluno() {
     return docStatus(type) || 'pending';
   };
 
+  // Desktop: abre modal WebRTC. Mobile: usa input nativo com capture (câmera do SO).
   const openCameraForDoc = async (type) => {
+    if (isMobile) return; // no mobile o label/input com capture já faz o trabalho
     setActiveUploadType(type);
     setCameraError('');
     setShowSelfieModal(true);
@@ -2098,7 +2103,7 @@ export default function AreaAluno() {
           const s2 = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           setSelfieStream(s2);
           if (videoRef.current) videoRef.current.srcObject = s2;
-        } catch (e2) { setCameraError('Camera nao disponivel: ' + (e2.message || 'Permissao negada')); }
+        } catch (e2) { setCameraError('Câmera não disponível: ' + (e2.message || 'Permissão negada')); }
       }
     }, 150);
   };
@@ -2203,10 +2208,20 @@ export default function AreaAluno() {
                       </a>
                     )}
                     {doc.allowCamera && (
-                      <button onClick={function(){ openCameraForDoc(doc.type); }}
-                        style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: 'none', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                        📷 {url ? 'Tirar nova foto' : 'Usar câmera'}
-                      </button>
+                      isMobile ? (
+                        /* Mobile: input nativo com capture abre a câmera do SO diretamente */
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          📷 {url ? 'Tirar nova foto' : 'Usar câmera'}
+                          <input type="file" hidden accept="image/*" capture="environment"
+                            onChange={function(e){ handleFileUploadDoc(e, doc.type); e.target.value = ''; }} />
+                        </label>
+                      ) : (
+                        /* Desktop: abre modal WebRTC */
+                        <button onClick={function(){ openCameraForDoc(doc.type); }}
+                          style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: 'none', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          📷 {url ? 'Tirar nova foto' : 'Usar câmera'}
+                        </button>
+                      )
                     )}
                     <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4f46e5', background: '#ede9fe', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       📎 {url ? 'Substituir arquivo' : 'Anexar arquivo'}
