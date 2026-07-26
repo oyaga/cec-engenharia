@@ -320,6 +320,20 @@ export default function AreaAluno() {
     fetchData();
   }, [session, location.pathname]);
 
+  useEffect(() => {
+    const p = location.pathname;
+    if (p.includes('/presencial'))      setActiveTab('presencial');
+    else if (p.includes('/desempenho'))  setActiveTab('desempenho');
+    else if (p.includes('/mensagens'))   setActiveTab('mensagens');
+    else if (p.includes('/avisos'))      setActiveTab('avisos');
+    else if (p.includes('/forum'))       setActiveTab('forum');
+    else if (p.includes('/financeiro'))  setActiveTab('financeiro');
+    else if (p.includes('/documentos'))  setActiveTab('documentos');
+    else if (p.includes('/certificados'))setActiveTab('certificados');
+    else if (p.includes('/vitrine'))     setActiveTab('vitrine');
+    else                                 setActiveTab('cursos');
+  }, [location.pathname]);
+
   // Função para carregar fórum (com resiliência no localStorage)
   const loadForum = async (activeTurmaId) => {
     try {
@@ -871,6 +885,7 @@ export default function AreaAluno() {
 
   // Emitir o próprio certificado (validação de elegibilidade é do servidor)
   const [claimingCourseId, setClaimingCourseId] = useState(null);
+  const [activeTab, setActiveTab] = useState('cursos');
   const handleClaimCertificate = async (course) => {
     setClaimingCourseId(course.id);
     try {
@@ -2867,6 +2882,37 @@ export default function AreaAluno() {
   };
 
   // ═══════════════════════════════════════════
+  const renderAvisos = () => renderCursos();
+
+  const PORTAL_TABS = [
+    { id: 'cursos', label: 'Meus Cursos' },
+    { id: 'presencial', label: 'Aulas Presenciais' },
+    { id: 'desempenho', label: 'Desempenho' },
+    { id: 'mensagens', label: 'Mensagens' },
+    { id: 'avisos', label: 'Avisos' },
+    { id: 'forum', label: 'Forum' },
+    { id: 'financeiro', label: 'Financeiro' },
+    { id: 'documentos', label: 'Documentos' },
+    { id: 'certificados', label: 'Certificados' },
+    { id: 'vitrine', label: 'Vitrine' },
+  ];
+
+  const getActiveTabContent = () => {
+    switch (activeTab) {
+      case 'cursos':        return renderCursos();
+      case 'presencial':    return renderPresencial();
+      case 'desempenho':    return renderDesempenho();
+      case 'mensagens':     return renderMensagens();
+      case 'avisos':        return renderAvisos();
+      case 'forum':         return renderForum();
+      case 'financeiro':    return renderFinanceiro();
+      case 'documentos':    return renderDocumentos();
+      case 'certificados':  return renderCertificates();
+      case 'vitrine':       return renderVitrine();
+      default:              return renderCursos();
+    }
+  };
+
   // CONTROLE GERAL DA RENDERIZAÇÃO
   // ═══════════════════════════════════════════
   
