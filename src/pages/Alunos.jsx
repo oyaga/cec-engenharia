@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { studentsApi, classesApi, coursesApi } from '../services/academic'
 import { financialApi, evaluationsApi, settingsApi, auditApi } from '../services/financial'
@@ -120,6 +120,7 @@ export default function Alunos() {
     const [financingApproved, setFinancingApproved] = useState(false)
     const [authAttempts, setAuthAttempts] = useState(0)
     const [authBlockedUntil, setAuthBlockedUntil] = useState(null)
+    const [docTab, setDocTab] = useState('pending')
 
     useEffect(() => {
         if (financingApproved && showCheckoutModal && checkoutStep === 'select_method') {
@@ -975,7 +976,26 @@ export default function Alunos() {
         }
     }
 
-    const renderList = () => (
+    const renderList = () => {
+        const DOC_TYPES = ['photo', 'id', 'cpf', 'address', 'education'];
+        const DOC_LABELS = { photo: 'Foto', id: 'RG/CNH', cpf: 'CPF', address: 'Residência', education: 'Escolaridade' };
+
+        // Alunos com pelo menos 1 documento pendente de revisão (enviado mas status = pending)
+        const pendingReview = students.filter(s =>
+            DOC_TYPES.some(t => s.originalData[`doc_${t}_url`] && s.originalData[`doc_${t}_status`] !== 'approved' && s.originalData[`doc_${t}_status`] !== 'rejected')
+        );
+        // Alunos com pelo menos 1 doc reprovado
+        const rejected = students.filter(s =>
+            DOC_TYPES.some(t => s.originalData[`doc_${t}_status`] === 'rejected')
+        );
+        // Alunos sem nenhum doc enviado
+        const noDocs = students.filter(s =>
+            DOC_TYPES.every(t => !s.originalData[`doc_${t}_url`])
+        );
+
+        const docsToShow = docTab === 'pending' ? pendingReview : docTab === 'rejected' ? rejected : noDocs;
+
+      return (
         <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <div>
@@ -989,6 +1009,94 @@ export default function Alunos() {
                 }}>
                     <Plus size={24} /> Matricular Novo Aluno
                 </button>
+            </div>
+
+            {/* ── PAINEL DE REVISÃO DE DOCUMENTOS ── */}
+            <div className="card" style={{ marginBottom: '1.5rem', border: '1px solid #fde68a', background: '#fffbeb' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <FileText size={18} color="#b45309" />
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#b45309' }}>Revisão de Documentos Abendi</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                        {[
+                            { key: 'pending', label: 'Aguardando revisão', count: pendingReview.length, color: '#d97706', bg: '#fef3c7' },
+                            { key: 'rejected', label: 'Reprovados', count: rejected.length, color: '#dc2626', bg: '#fee2e2' },
+                            { key: 'nodocs', label: 'Sem envio', count: noDocs.length, color: '#64748b', bg: '#f1f5f9' },
+                        ].map(tab => (
+                            <button key={tab.key} onClick={() => setDocTab(tab.key)}
+                                style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.3rem 0.75rem', borderRadius: '99px', border: '2px solid ' + (docTab === tab.key ? tab.color : 'transparent'), background: docTab === tab.key ? tab.bg : 'white', color: tab.color, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {tab.label}
+                                <span style={{ background: tab.color, color: 'white', borderRadius: '99px', padding: '0 6px', fontSize: '0.7rem' }}>{tab.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {docsToShow.length === 0 ? (
+                    <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                        {docTab === 'pending' ? '✅ Nenhum documento aguardando revisão.' : docTab === 'rejected' ? 'Nenhum documento reprovado.' : 'Todos os alunos enviaram ao menos 1 documento.'}
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid #fde68a', color: '#92400e', fontWeight: 700 }}>
+                                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Aluno</th>
+                                    {DOC_TYPES.map(t => <th key={t} style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>{DOC_LABELS[t]}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {docsToShow.map(s => (
+                                    <tr key={s.id} style={{ borderBottom: '1px solid #fef3c7' }}>
+                                        <td style={{ padding: '0.6rem 1rem', fontWeight: 600, color: '#1e293b' }}>
+                                            <button onClick={() => setView(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem', textAlign: 'left', padding: 0 }}>
+                                                {s.name}
+                                            </button>
+                                            <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>{s.class}</span>
+                                        </td>
+                                        {DOC_TYPES.map(t => {
+                                            const url    = s.originalData[`doc_${t}_url`];
+                                            const status = s.originalData[`doc_${t}_status`];
+                                            if (!url) return <td key={t} style={{ padding: '0.4rem 0.5rem', textAlign: 'center', color: '#cbd5e1' }}>—</td>;
+                                            const isPending  = !status || status === 'pending';
+                                            const isApproved = status === 'approved';
+                                            const isRejected = status === 'rejected';
+                                            return (
+                                                <td key={t} style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                                                        <a href={url} target="_blank" rel="noreferrer"
+                                                            style={{ fontSize: '0.68rem', color: '#0369a1', fontWeight: 700 }}>Ver</a>
+                                                        {isPending && (
+                                                            <div style={{ display: 'flex', gap: '3px' }}>
+                                                                <button onClick={async () => {
+                                                                    try {
+                                                                        await studentsApi.reviewDoc(s.id, t, 'approved');
+                                                                        s.originalData[`doc_${t}_status`] = 'approved';
+                                                                        fetchStudents();
+                                                                    } catch(e) { alert(e.message); }
+                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#d1fae5', color: '#065f46', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✓</button>
+                                                                <button onClick={async () => {
+                                                                    const motivo = window.prompt('Motivo da reprovação:');
+                                                                    if (motivo === null) return;
+                                                                    try {
+                                                                        await studentsApi.reviewDoc(s.id, t, 'rejected', motivo);
+                                                                        s.originalData[`doc_${t}_status`] = 'rejected';
+                                                                        fetchStudents();
+                                                                    } catch(e) { alert(e.message); }
+                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✗</button>
+                                                            </div>
+                                                        )}
+                                                        {isApproved && <span style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 800 }}>✓ OK</span>}
+                                                        {isRejected && <span style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: 800 }}>✗ Rep.</span>}
+                                                    </div>
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             <div className="card">
@@ -1064,7 +1172,8 @@ export default function Alunos() {
                 </div>
             </div>
         </>
-    )
+      );
+    }
 
     const renderAddForm = () => (
         <div className="animate-fade-in">
