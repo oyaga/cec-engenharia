@@ -2899,7 +2899,7 @@ export default function AreaAluno() {
 
   const getActiveTabContent = () => {
     switch (activeTab) {
-      case 'cursos':        return renderCursos();
+      case 'cursos':        return renderDashboard();
       case 'presencial':    return renderPresencial();
       case 'desempenho':    return renderDesempenho();
       case 'mensagens':     return renderMensagens();
@@ -2909,7 +2909,7 @@ export default function AreaAluno() {
       case 'documentos':    return renderDocumentos();
       case 'certificados':  return renderCertificates();
       case 'vitrine':       return renderVitrine();
-      default:              return renderCursos();
+      default:              return renderDashboard();
     }
   };
 
