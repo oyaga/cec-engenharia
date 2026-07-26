@@ -131,6 +131,7 @@ export default function AreaAluno() {
   const [uploadingDoc, setUploadingDoc] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [activeUploadType, setActiveUploadType] = useState(null);
+  const [isChatFull, setIsChatFull] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
