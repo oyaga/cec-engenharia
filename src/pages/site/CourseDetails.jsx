@@ -11,39 +11,92 @@ import EditableImage from '../../components/site/EditableImage';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
-import { supabase } from '../../lib/supabase';
+import { coursesApi } from '../../services/academic';
+
+const DEFAULT_COURSE_IMAGES = [
+  'https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=1200&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1504917595217-d4dc5f566f63?q=80&w=800&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1534398079543-7ae6d016b86a?q=80&w=800&auto=format&fit=crop',
+];
 
 const CourseDetails = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { content, isEditing } = useEdit();
-  const course = content.course_details?.[slug];
+  const [dbCourse, setDbCourse] = useState(null);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const normalizeSlug = (value = '') => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const routeSlug = normalizeSlug(slug);
+  const listedCourse = (content.courses_section?.courses || []).find(item => (
+    normalizeSlug(item.slug) === routeSlug ||
+    normalizeSlug(item.title) === routeSlug ||
+    normalizeSlug(item.code) === routeSlug
+  ));
+  const savedCourseDetails = content.course_details?.[slug] || content.course_details?.[routeSlug];
+  const catalogCourse = listedCourse || dbCourse;
+  const course = savedCourseDetails || (catalogCourse ? {
+    ...catalogCourse,
+    badge: catalogCourse.badge || 'CURSO CEC',
+    target: catalogCourse.target || catalogCourse.description || 'Formação técnica para o mercado industrial.',
+    intro: catalogCourse.intro || catalogCourse.description || 'Conheça o conteúdo, a metodologia e as condições desta formação.',
+    why_title: catalogCourse.why_title || 'Por que fazer este curso?',
+    why_text: catalogCourse.why_text || catalogCourse.description || 'Capacitação desenvolvida para preparar profissionais para os desafios reais do setor.',
+    details: {
+      workload: catalogCourse.duration || catalogCourse.workload || 'Carga horária sob consulta',
+      format: catalogCourse.type || catalogCourse.modality || 'Formato sob consulta',
+      schedule: 'Consulte as próximas turmas',
+      cert: 'Certificação CEC Engenharia',
+      theory: 'Conteúdo teórico especializado',
+      practice: 'Atividades conforme o programa do curso',
+      ...(catalogCourse.details || {}),
+    },
+    investment: {
+      credit: 'Consulte condições de pagamento',
+      pix: 'Consulte o valor à vista',
+      boleto: 'Condições sob consulta',
+      tip: 'Fale com nossa equipe para conhecer as condições disponíveis.',
+      ...(catalogCourse.investment || {}),
+    },
+    outcomes: catalogCourse.outcomes || ['Capacitação técnica alinhada às necessidades do mercado industrial.'],
+    images: DEFAULT_COURSE_IMAGES.map((fallback, index) => (
+      catalogCourse.images?.[index] || (index === 0 ? catalogCourse.image : null) || fallback
+    )),
+  } : null);
 
   // Estado para preços dinâmicos vindos do Supabase
   const [dbPricing, setDbPricing] = useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (!course && !isEditing) {
-      navigate('/');
-    }
-  }, [slug, course, navigate, isEditing]);
+  }, [slug]);
 
   // Buscar preços do Supabase pelo code do curso (slug = code em lowercase)
   // Busca todos os cursos com o mesmo code e seleciona o principal (não retreinamento)
   useEffect(() => {
     const fetchPricing = async () => {
       try {
-        const codeUpper = slug.toUpperCase().replace(/-/g, '-');
-        const codeUnderscore = slug.toUpperCase().replace(/-/g, '_');
-        
-        const { data, error } = await supabase
-          .from('lms_courses')
-          .select('id, title, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments, price_notes, asaas_product_id, asaas_payment_link, retrain_teorico_days, retrain_teorico_price_day, retrain_pratico_days, retrain_pratico_price_day')
-          .or(`code.ilike.${slug},code.ilike.${slug.replace(/-/g, '_')}`)
-          .eq('is_published', true);
+        const codeA = slug.toUpperCase();
+        const codeB = slug.toUpperCase().replace(/-/g, '_');
 
-        if (!error && data && data.length > 0) {
+        const { courses } = await coursesApi.listPublic();
+        const matchingCourse = (courses || []).find(item => (
+          item.id === slug ||
+          normalizeSlug(item.slug) === routeSlug ||
+          normalizeSlug(item.code) === routeSlug ||
+          normalizeSlug(item.title) === routeSlug
+        ));
+        setDbCourse(matchingCourse || null);
+        const data = (courses || []).filter(c => {
+          const code = (c.code || '').toUpperCase();
+          return code === codeA || code === codeB;
+        });
+
+        if (data && data.length > 0) {
           // Filtrar retreinamentos — priorizar o curso principal
           const mainCourses = data.filter(c => {
             const t = (c.title || '').toLowerCase();
@@ -64,6 +117,8 @@ const CourseDetails = () => {
         }
       } catch (err) {
         console.warn('Preços dinâmicos indisponíveis, usando CMS editável');
+      } finally {
+        setCatalogLoaded(true);
       }
     };
     if (slug) fetchPricing();
@@ -82,10 +137,39 @@ const CourseDetails = () => {
     window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
   };
 
-  if (!course && !isEditing) return null;
+  if (!course && !isEditing && !catalogLoaded) {
+    return (
+      <div className="course-details-page">
+        <Navbar />
+        <main className="container" style={{ padding: '12rem 1.5rem 6rem', textAlign: 'center' }}>
+          <p>Carregando detalhes do curso...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!course && !isEditing) {
+    return (
+      <div className="course-details-page">
+        <AdminToolbar />
+        <Navbar />
+        <main className="container" style={{ padding: '12rem 1.5rem 6rem', textAlign: 'center' }}>
+          <h1>Curso não encontrado</h1>
+          <p style={{ margin: '1rem 0 2rem', color: 'var(--text-muted)' }}>
+            Este curso não está mais disponível ou o endereço acessado é inválido.
+          </p>
+          <Link to="/#cursos" className="btn-site-primary">Voltar para os cursos</Link>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   // Se estiver editando e não houver curso (novo curso), usamos um padrão
-  const data = course || {
+  const data = course ? {
+    ...course,
+    images: DEFAULT_COURSE_IMAGES.map((fallback, index) => course.images?.[index] || fallback),
+  } : {
     title: 'Título do Novo Curso',
     badge: 'NOVIDADE',
     target: 'Objetivo do curso aqui',
@@ -107,7 +191,7 @@ const CourseDetails = () => {
       tip: 'Dica de economia aqui'
     },
     outcomes: ['Benefício 1', 'Benefício 2'],
-    images: ['', '', '']
+    images: DEFAULT_COURSE_IMAGES
   };
 
   return (
@@ -568,6 +652,7 @@ const CourseDetails = () => {
         }
         .main-detail-img {
           height: 400px;
+          background: #e2e8f0;
           border-radius: 2rem;
           overflow: hidden;
           box-shadow: var(--shadow-lg);
@@ -579,9 +664,25 @@ const CourseDetails = () => {
         }
         .side-img {
           height: 200px;
+          background: #e2e8f0;
           border-radius: 1.5rem;
           overflow: hidden;
           box-shadow: var(--shadow-md);
+        }
+        .main-detail-img > .img-wrapper-fluid,
+        .side-img > .img-wrapper-fluid {
+          width: 100%;
+          height: 100%;
+          max-width: none !important;
+        }
+        .main-detail-img img,
+        .main-detail-img video,
+        .side-img img,
+        .side-img video {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
 
         .guarantee-badge {
@@ -617,6 +718,12 @@ const CourseDetails = () => {
           .course-grid-main { grid-template-columns: 1fr; }
           .images-stack { position: static; order: -1; }
           .outcomes-list ul { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 640px) {
+          .course-info-cards { grid-template-columns: 1fr; gap: 1rem; }
+          .faq-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+          .course-main-title { font-size: 2.1rem; }
+          .investment-section { padding: 1.75rem; border-radius: 1.25rem; }
         }
       `}</style>
     </div>

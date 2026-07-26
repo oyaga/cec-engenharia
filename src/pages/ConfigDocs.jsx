@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { FileText, Save, Eye, LayoutTemplate, Briefcase, UploadCloud, CheckCircle, AlertTriangle } from 'lucide-react'
 import jsPDF from 'jspdf'
-import { supabase } from '../lib/supabase'
+import { settingsApi } from '../services/financial'
 import { uploadSiteAsset } from '../services/storage'
+import { useAuth } from '../contexts/AuthContext'
 
 const AVAILABLE_VARIABLES = [
     { code: '{{NOME_ALUNO}}', desc: 'Nome completo do aluno' },
@@ -52,6 +53,7 @@ Rio de Janeiro, {{DATA_HOJE}}
 Assinatura: ___________________________`
 
 export default function ConfigDocs() {
+    const { session, userProfile } = useAuth()
     const [activeDoc, setActiveDoc] = useState('contrato')
     const [templateContent, setTemplateContent] = useState(defaultContrato)
     const [userAuth, setUserAuth] = useState({ role: null, canUpload: false })
@@ -63,37 +65,28 @@ export default function ConfigDocs() {
     const [siteAssets, setSiteAssets] = useState({ logo: '', banner: '' })
     const [loading, setLoading] = useState(true)
     const [configError, setConfigError] = useState(null)
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
     useEffect(() => {
         const fetchConfig = async () => {
             setLoading(true)
             setConfigError(null)
             try {
-                const { data: { user } } = await supabase.auth.getUser()
-                if (user) {
-                    const { data: profile } = await supabase.from('users').select('role, permissions').eq('id', user.id).maybeSingle()
-                    const email = user.email?.toLowerCase() || ''
-                    const metadata = user.user_metadata || {}
-                    const isDev = email.includes('desenvolvedor') || email.includes('carlos') || email.includes('piticalym') || metadata.role === 'admin'
+                const profile = userProfile
+                const email = (session?.user?.email || '').toLowerCase()
+                const isDev = email.includes('desenvolvedor') || email.includes('carlos') || email.includes('piticalym') || profile?.role === 'admin'
 
-                    if (isDev) {
-                        setUserAuth({ role: 'admin', canUpload: true })
-                    } else if (profile) {
-                        setUserAuth({
-                            role: profile.role,
-                            canUpload: profile.role === 'admin' || profile.role === 'developer' || (profile.permissions?.upload_manual)
-                        })
-                    } else if (metadata.role) {
-                        setUserAuth({
-                            role: metadata.role,
-                            canUpload: metadata.role === 'admin' || (metadata.permissions?.upload_manual)
-                        })
-                    }
+                if (isDev) {
+                    setUserAuth({ role: 'admin', canUpload: true })
+                } else if (profile) {
+                    setUserAuth({
+                        role: profile.role,
+                        canUpload: profile.role === 'admin' || profile.role === 'developer' || (profile.permissions?.upload_manual)
+                    })
                 }
 
                 // Buscar Configurações
-                const { data: settings, error: settingsError } = await supabase.from('system_settings').select('key, value')
-                if (settingsError) throw settingsError
+                const { settings } = await settingsApi.list()
 
                 if (settings) {
                     const manual = settings.find(s => s.key === 'manual_aluno_url')
@@ -109,6 +102,12 @@ export default function ConfigDocs() {
                         logo: logo?.value || '',
                         banner: banner?.value || ''
                     })
+
+                    // Carrega o modelo de texto salvo para o documento ativo (se houver)
+                    if (activeDoc !== 'site_assets') {
+                        const tpl = settings.find(s => s.key === `doc_template_${activeDoc}`)
+                        if (tpl && tpl.value) setTemplateContent(tpl.value)
+                    }
                 }
             } catch (err) {
                 console.error("Erro ao carregar configurações:", err)
@@ -138,7 +137,7 @@ export default function ConfigDocs() {
             
             if (publicUrl) {
                 const key = `site_${type}_url`
-                await supabase.from('system_settings').upsert({ key, value: publicUrl, updated_at: new Date() }, { onConflict: 'key' })
+                await settingsApi.save({ [key]: publicUrl })
                 setSiteAssets(prev => ({ ...prev, [type]: publicUrl }))
                 alert(`Asset ${type} atualizado com sucesso!`)
             }
@@ -146,6 +145,19 @@ export default function ConfigDocs() {
             alert('Erro ao fazer upload: ' + error.message)
         } finally {
             setIsUploadingAsset(false)
+        }
+    }
+
+    const handleSaveTemplate = async () => {
+        if (activeDoc === 'site_assets') return
+        setIsSavingTemplate(true)
+        try {
+            await settingsApi.save({ [`doc_template_${activeDoc}`]: templateContent })
+            alert('Modelo salvo com sucesso! Ele passará a ser usado ao gerar este documento para os alunos.')
+        } catch (error) {
+            alert('Erro ao salvar modelo: ' + error.message)
+        } finally {
+            setIsSavingTemplate(false)
         }
     }
 
@@ -179,9 +191,10 @@ export default function ConfigDocs() {
         const reader = new FileReader()
         reader.onloadend = async () => {
             const base64Data = reader.result
-            const { error } = await supabase.from('system_settings').upsert({ key: 'manual_aluno_url', value: base64Data, updated_at: new Date() }, { onConflict: 'key' })
-            if (error) alert("Erro: " + error.message)
-            else { setManualBase64(base64Data); alert("Manual Atualizado!"); }
+            try {
+                await settingsApi.save({ manual_aluno_url: base64Data })
+                setManualBase64(base64Data); alert("Manual Atualizado!")
+            } catch (error) { alert("Erro: " + error.message) }
             setIsUploading(false)
         }
         reader.readAsDataURL(file)
@@ -199,9 +212,10 @@ export default function ConfigDocs() {
         reader.onloadend = async () => {
             const base64Data = reader.result
             const key = `bg_doc_${activeDoc}`
-            const { error } = await supabase.from('system_settings').upsert({ key, value: base64Data, updated_at: new Date() }, { onConflict: 'key' })
-            if (error) alert("Erro: " + error.message)
-            else { setBgImageBase64(base64Data); alert(`Timbre para ${activeDoc} atualizado!`); }
+            try {
+                await settingsApi.save({ [key]: base64Data })
+                setBgImageBase64(base64Data); alert(`Timbre para ${activeDoc} atualizado!`)
+            } catch (error) { alert("Erro: " + error.message) }
             setIsUploadingBg(false)
         }
         reader.readAsDataURL(file)
@@ -220,17 +234,19 @@ export default function ConfigDocs() {
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <h2 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Modelos de Documentos Oficiais</h2>
                     <p className="text-muted">Ajuste os textos padrões de Contratos e Declarações.</p>
                 </div>
-                <button className="btn btn-primary">
-                    <Save size={18} /> Salvar Modelo
-                </button>
+                {activeDoc !== 'site_assets' && (
+                    <button className="btn btn-primary" onClick={handleSaveTemplate} disabled={isSavingTemplate}>
+                        <Save size={18} /> {isSavingTemplate ? 'Salvando...' : 'Salvar Modelo'}
+                    </button>
+                )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 300px', gap: '1.5rem', alignItems: 'start' }}>
+            <div className="grid grid-cols-1 md:grid-cols-[250px_1fr_300px] gap-6 items-start">
                 {/* Menu Lateral */}
                 <div className="card" style={{ padding: '1rem' }}>
                     <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-secondary)' }}>Tipos de Documento</h3>

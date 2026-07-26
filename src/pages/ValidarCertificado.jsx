@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { lmsApi } from '../services/lms';
 import { Award, CheckCircle, AlertTriangle, ShieldCheck, Calendar, Clock, User, BookOpen, FileText } from 'lucide-react';
 
 export default function ValidarCertificado() {
@@ -14,48 +14,17 @@ export default function ValidarCertificado() {
     setLoading(true);
     setErrorMsg('');
     try {
-      // 1. Tentar buscar na tabela public.lms_issued_certificates no Supabase Cloud
-      const { data, error } = await supabase
-        .from('lms_issued_certificates')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
+      // 1. Validar via endpoint público
+      const { certificate: data } = await lmsApi.validateCertificate(id);
 
       if (data) {
         setCertData(data);
       } else {
-        // Se for um ID de simulação/teste local, podemos fornecer dados mocks graciosos
-        if (id && id.startsWith('fbb-')) {
-          setCertData({
-            id: id,
-            student_name: 'ALUNO DE TESTE DO ERP CEC',
-            student_cpf: '111.***.***-11',
-            course_name: 'Inspetor de Controle Dimensional - Campo (CD-CL)',
-            hours: 136,
-            issued_at: new Date().toISOString()
-          });
-        } else {
-          setErrorMsg('Código de certificado não encontrado em nossos registros oficiais.');
-        }
+        setErrorMsg('Código de certificado não encontrado em nossos registros oficiais.');
       }
     } catch (err) {
-      console.warn("Erro ao buscar no banco (desviando para fallback de simulação):", err.message);
-      
-      // Fallback gracioso para testes e resiliência absoluta
-      if (id && id.startsWith('fbb-')) {
-        setCertData({
-          id: id,
-          student_name: 'ALUNO DE TESTE DO ERP CEC',
-          student_cpf: '111.***.***-11',
-          course_name: 'Inspetor de Controle Dimensional - Campo (CD-CL)',
-          hours: 136,
-          issued_at: new Date().toISOString()
-        });
-      } else {
-        setErrorMsg('Erro de conexão ao consultar autenticidade. Por favor, tente novamente.');
-      }
+      console.warn("Erro ao buscar no banco:", err.message);
+      setErrorMsg('Erro de conexão ao consultar autenticidade. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -128,7 +97,7 @@ export default function ValidarCertificado() {
               border: '3px solid rgba(14, 165, 233, 0.2)', borderTopColor: '#0ea5e9',
               animation: 'spin 1s linear infinite' 
             }} />
-            <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 500 }}>Consultando registro de autenticidade no Supabase...</span>
+            <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 500 }}>Consultando registro de autenticidade...</span>
           </div>
         ) : errorMsg ? (
           /* TELA DE ERRO / INVÁLIDO */
@@ -202,7 +171,9 @@ export default function ValidarCertificado() {
                 <div>
                   <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Aluno Diplomado</span>
                   <p style={{ margin: '1px 0 0 0', fontSize: '0.92rem', fontWeight: '750', color: '#f8fafc' }}>{certData.student_name}</p>
-                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>CPF: {certData.student_cpf}</span>
+                  {certData.student_cpf && (
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>CPF: {certData.student_cpf}</span>
+                  )}
                 </div>
               </div>
 

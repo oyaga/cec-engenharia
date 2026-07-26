@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { BookOpen, Plus, Search, Edit2, Loader2, Save, X, DollarSign, Clock, Award, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { coursesApi } from '../services/academic'
 
 const formatCurrencyBRL = (value) => {
     if (value === null || value === undefined || value === '') return '';
@@ -31,6 +33,7 @@ const maskCurrencyBRL = (value) => {
 }
 
 export default function Cursos() {
+    const navigate = useNavigate()
     const [courses, setCourses] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -51,9 +54,9 @@ export default function Cursos() {
         practical_hours: 20,
         min_attendance: 75,
         min_grade: 6.0,
-        default_value: 0.0,
+        default_value: '',
         max_instructors: 8,
-        status: 'ativo',
+        is_published: false,
         thumbnail_url: '',
         price_card: '',
         price_pix: '',
@@ -75,26 +78,22 @@ export default function Cursos() {
     const fetchCourses = async () => {
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('lms_courses')
-                .select('*')
-                .order('created_at', { ascending: false })
-            
-            if (error) throw error
+            const { courses: data } = await coursesApi.list()
 
-            // Map standard database records to rich dashboard details with default fallbacks
+            // Campos ausentes ficam como estão: inventar preço/código aqui fazia o
+            // valor fictício ser gravado no banco ao abrir e salvar o curso.
             const mapped = (data || []).map(c => ({
                 id: c.id,
                 title: c.title || '',
-                code: c.code || getFallbackCode(c.title),
+                code: c.code || '',
                 description: c.description || '',
                 min_theoretical_hours: c.min_theoretical_hours || c.theoretical_hours || 40,
                 practical_hours: c.practical_hours || 20,
                 min_attendance: c.min_attendance || 75,
                 min_grade: c.min_grade || 6.0,
-                default_value: c.default_value || 1200.00,
+                default_value: c.default_value ?? null,
                 max_instructors: c.max_instructors || 8,
-                status: c.status || 'ativo',
+                is_published: !!c.is_published,
                 thumbnail_url: c.thumbnail_url || '',
                 created_at: c.created_at,
                 price_card: c.price_card || null,
@@ -114,63 +113,10 @@ export default function Cursos() {
             setCourses(mapped)
         } catch (err) {
             console.error('Erro ao buscar cursos reais:', err)
-            // Resilient Local fallback integration
-            const localMocks = [
-                {
-                    id: 'mock-1',
-                    title: 'Líquido Penetrante (LP - PR-127)',
-                    code: 'CD-CL',
-                    description: 'Qualificação profissional técnica voltada a Ensaios Não Destrutivos (END) por Líquido Penetrante de acordo com a norma Abendi PR-127.',
-                    min_theoretical_hours: 40,
-                    practical_hours: 20,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 1450.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=500&q=80'
-                },
-                {
-                    id: 'mock-2',
-                    title: 'Medição de Espessura por Ultrassom (ME - PR-127)',
-                    code: 'CD-MC',
-                    description: 'Treinamento técnico profissional voltado à inspeção de integridade física e medição de espessura de paredes metálicas por Ultrassom.',
-                    min_theoretical_hours: 40,
-                    practical_hours: 24,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 1680.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=500&q=80'
-                },
-                {
-                    id: 'mock-3',
-                    title: 'Ensaio de Ultrassom Geral (US - Abendi)',
-                    code: 'CD-TO',
-                    description: 'Inspeção avançada por técnica técnica de Ultrassom para detecção de descontinuidades internas em juntas soldadas e peças fundidas.',
-                    min_theoretical_hours: 60,
-                    practical_hours: 30,
-                    min_attendance: 75,
-                    min_grade: 6.0,
-                    default_value: 2200.00,
-                    max_instructors: 8,
-                    status: 'ativo',
-                    thumbnail_url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=500&q=80'
-                }
-            ]
-            setCourses(localMocks)
+            setCourses([])
         } finally {
             setLoading(false)
         }
-    }
-
-    const getFallbackCode = (title) => {
-        if (!title) return 'CD-GEN'
-        if (title.toLowerCase().includes('líquido') || title.toLowerCase().includes('lp')) return 'CD-CL'
-        if (title.toLowerCase().includes('medição') || title.toLowerCase().includes('espessura') || title.toLowerCase().includes('me')) return 'CD-MC'
-        if (title.toLowerCase().includes('ultrassom') || title.toLowerCase().includes('us')) return 'CD-TO'
-        return 'CD-GEN'
     }
 
     useEffect(() => {
@@ -187,9 +133,9 @@ export default function Cursos() {
             practical_hours: 20,
             min_attendance: 75,
             min_grade: 6.0,
-            default_value: 1200.00,
+            default_value: '',
             max_instructors: 8,
-            status: 'ativo',
+            is_published: false,
             thumbnail_url: '',
             price_card: '',
             price_pix: '',
@@ -219,9 +165,9 @@ export default function Cursos() {
             practical_hours: course.practical_hours,
             min_attendance: course.min_attendance,
             min_grade: course.min_grade,
-            default_value: course.default_value,
+            default_value: course.default_value ? formatCurrencyBRL(course.default_value) : '',
             max_instructors: course.max_instructors,
-            status: course.status,
+            is_published: course.is_published,
             thumbnail_url: course.thumbnail_url,
             price_card: course.price_card ? formatCurrencyBRL(course.price_card) : '',
             price_pix: course.price_pix ? formatCurrencyBRL(course.price_pix) : '',
@@ -250,6 +196,7 @@ export default function Cursos() {
 
     const handleSave = async (e) => {
         e.preventDefault()
+        const shouldContinue = e.nativeEvent?.submitter?.value === 'continue'
         if (!form.title || !form.code) {
             setErrorMsg('Nome do curso e Código são obrigatórios.')
             return
@@ -264,105 +211,55 @@ export default function Cursos() {
         const boletoVal = parseCurrencyBRL(form.price_boleto)
         const financingVal = parseCurrencyBRL(form.price_financing)
 
-        // Calcula o default_value automaticamente baseando-se nos preços detalhados
-        const calculatedDefaultValue = pixVal || 
-                                     cardVal || 
-                                     boletoVal || 
-                                     financingVal || 
-                                     parseCurrencyBRL(form.default_value) || 
-                                     0.0
+        // Calcula o default_value automaticamente baseando-se nos preços detalhados.
+        // Sem nenhum preço informado o curso fica sem valor (null) — gravar 0.0
+        // faria um curso "sob consulta" virar um curso gratuito.
+        const calculatedDefaultValue = pixVal ||
+                                     cardVal ||
+                                     boletoVal ||
+                                     financingVal ||
+                                     parseCurrencyBRL(form.default_value) ||
+                                     null
 
         try {
-            // Mapeamento padrão seguro para o Supabase
+            let createdCourseId = null
             const payload = {
                 title: form.title,
                 description: form.description,
                 min_theoretical_hours: parseInt(form.min_theoretical_hours) || 40,
-                thumbnail_url: form.thumbnail_url
+                thumbnail_url: form.thumbnail_url,
+                code: form.code,
+                practical_hours: parseFloat(form.practical_hours) || 0,
+                min_attendance: parseFloat(form.min_attendance) || 75,
+                min_grade: parseFloat(form.min_grade) || 6.0,
+                default_value: calculatedDefaultValue,
+                max_instructors: parseInt(form.max_instructors) || 8,
+                is_published: form.is_published,
+                price_card: cardVal || null,
+                price_pix: pixVal || null,
+                price_boleto: boletoVal || null,
+                price_financing: financingVal || null,
+                max_installments: parseInt(form.max_installments) || 10,
+                financing_installments: parseInt(form.financing_installments) || 6,
+                price_notes: form.price_notes || null,
+                asaas_product_id: form.asaas_product_id || null,
+                retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
+                retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
+                retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
+                retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
             }
 
-            // Tentar salvar de forma flexível incluindo campos estendidos se o DDL já foi executado
-            let saveError
-            if (selectedCourse) {
-                // Update
-                if (selectedCourse.id.toString().startsWith('mock-')) {
-                    // Atualizar apenas na memória local para fins de teste em mocks
-                    const updated = courses.map(c => c.id === selectedCourse.id ? { ...c, ...form, default_value: calculatedDefaultValue } : c)
-                    setCourses(updated)
-                } else {
-                    // Update Supabase
-                    const { error } = await supabase
-                        .from('lms_courses')
-                        .update({
-                            ...payload,
-                            code: form.code,
-                            practical_hours: parseFloat(form.practical_hours) || 0,
-                            min_attendance: parseFloat(form.min_attendance) || 75,
-                            min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: calculatedDefaultValue,
-                            max_instructors: parseInt(form.max_instructors) || 8,
-                            status: form.status,
-                            price_card: cardVal || null,
-                            price_pix: pixVal || null,
-                            price_boleto: boletoVal || null,
-                            price_financing: financingVal || null,
-                            max_installments: parseInt(form.max_installments) || 10,
-                            financing_installments: parseInt(form.financing_installments) || 6,
-                            price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null,
-                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
-                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
-                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
-                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
-                        })
-                        .eq('id', selectedCourse.id)
-                    
-                    if (error) throw error
-                }
+            if (selectedCourse && !selectedCourse.id.toString().startsWith('mock-')) {
+                await coursesApi.update(selectedCourse.id, payload)
             } else {
-                // Create
-                if (courses.length > 0 && courses[0].id.toString().startsWith('mock-')) {
-                    // Inserir apenas na memória local para ambiente mock
-                    const mockNew = {
-                        id: 'mock-' + Date.now(),
-                        ...form,
-                        default_value: calculatedDefaultValue
-                    }
-                    setCourses([mockNew, ...courses])
-                } else {
-                    // Create Supabase
-                    const { data, error } = await supabase
-                        .from('lms_courses')
-                        .insert([{
-                            ...payload,
-                            code: form.code,
-                            practical_hours: parseFloat(form.practical_hours) || 0,
-                            min_attendance: parseFloat(form.min_attendance) || 75,
-                            min_grade: parseFloat(form.min_grade) || 6.0,
-                            default_value: calculatedDefaultValue,
-                            max_instructors: parseInt(form.max_instructors) || 8,
-                            status: form.status,
-                            price_card: cardVal || null,
-                            price_pix: pixVal || null,
-                            price_boleto: boletoVal || null,
-                            price_financing: financingVal || null,
-                            max_installments: parseInt(form.max_installments) || 10,
-                            financing_installments: parseInt(form.financing_installments) || 6,
-                            price_notes: form.price_notes || null,
-                            asaas_product_id: form.asaas_product_id || null,
-                            retrain_teorico_days: parseInt(form.retrain_teorico_days) || 1,
-                            retrain_teorico_price_day: parseCurrencyBRL(form.retrain_teorico_price_day) || null,
-                            retrain_pratico_days: parseInt(form.retrain_pratico_days) || 1,
-                            retrain_pratico_price_day: parseCurrencyBRL(form.retrain_pratico_price_day) || null
-                        }])
-                        .select()
-                    
-                    if (error) throw error
-                }
+                const { course } = await coursesApi.create(payload)
+                createdCourseId = course?.id || null
             }
 
-            fetchCourses()
+            await fetchCourses()
             setShowModal(false)
+            const contentCourseId = createdCourseId || selectedCourse?.id
+            if (shouldContinue && contentCourseId) navigate(`/secretaria/cursos/${contentCourseId}/conteudo`)
         } catch (err) {
             console.error('Erro ao salvar curso:', err)
             setErrorMsg(err.message || 'Ocorreu um erro ao salvar o curso.')
@@ -375,7 +272,8 @@ export default function Cursos() {
         const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               c.description.toLowerCase().includes(searchTerm.toLowerCase())
-        const matchesStatus = statusFilter === 'todos' || c.status === statusFilter
+        const matchesStatus = statusFilter === 'todos' ||
+                              (statusFilter === 'publicados' ? c.is_published : !c.is_published)
         return matchesSearch && matchesStatus
     })
 
@@ -448,8 +346,8 @@ export default function Cursos() {
                         }}
                     >
                         <option value="todos">Todos os Cursos</option>
-                        <option value="ativo">Apenas Ativos</option>
-                        <option value="inativo">Apenas Inativos</option>
+                        <option value="publicados">Apenas Publicados</option>
+                        <option value="nao_publicados">Apenas Não Publicados</option>
                     </select>
                 </div>
             </div>
@@ -469,7 +367,9 @@ export default function Cursos() {
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
                     {filtered.map(course => {
-                        const isAtivo = course.status === 'ativo';
+                        // "Publicado" é o que o site público, a vitrine do aluno e o
+                        // vínculo de turma realmente enxergam (is_published).
+                        const isAtivo = course.is_published;
                         return (
                             <div 
                                 key={course.id}
@@ -489,16 +389,16 @@ export default function Cursos() {
                                 onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
                             >
                                 {/* Imagem de Capa do Curso */}
-                                <div style={{ height: '150px', backgroundColor: '#0f172a', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ height: '150px', background: 'linear-gradient(135deg, #171E36 0%, #2AB0A5 100%)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                     {course.thumbnail_url ? (
                                         <img src={course.thumbnail_url} alt={course.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
-                                        <BookOpen size={48} color="white" style={{ opacity: 0.15 }} />
+                                        <BookOpen size={52} color="white" style={{ opacity: 0.35 }} />
                                     )}
                                     
                                     <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
-                                        <span style={{ fontSize: '0.7rem', fontWeight: '800', backgroundColor: 'var(--primary)', color: 'white', padding: '3px 8px', borderRadius: '4px' }}>
-                                            {course.code}
+                                        <span style={{ fontSize: '0.7rem', fontWeight: '800', backgroundColor: course.code ? 'var(--primary)' : '#94a3b8', color: 'white', padding: '3px 8px', borderRadius: '4px' }}>
+                                            {course.code || 'SEM CÓDIGO'}
                                         </span>
                                         <span style={{ 
                                             fontSize: '0.7rem', 
@@ -508,7 +408,7 @@ export default function Cursos() {
                                             padding: '3px 8px', 
                                             borderRadius: '4px' 
                                         }}>
-                                            {isAtivo ? 'ATIVO' : 'INATIVO'}
+                                            {isAtivo ? 'PUBLICADO' : 'NÃO PUBLICADO'}
                                         </span>
                                     </div>
                                 </div>
@@ -557,13 +457,26 @@ export default function Cursos() {
                                             ) : (
                                                 <>
                                                     <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', fontWeight: '600', textTransform: 'uppercase' }}>Valor Padrão</span>
-                                                    <strong style={{ fontSize: '1.15rem', color: 'var(--primary-dark)', fontWeight: '800' }}>
-                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(course.default_value)}
+                                                    <strong style={{ fontSize: '1.15rem', color: course.default_value ? 'var(--primary-dark)' : '#94a3b8', fontWeight: '800' }}>
+                                                        {course.default_value
+                                                            ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(course.default_value)
+                                                            : 'Sob consulta'}
                                                     </strong>
                                                 </>
                                             )}
                                         </div>
                                         
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                        <button
+                                            onClick={() => navigate(`/secretaria/cursos/${course.id}/conteudo`)}
+                                            style={{
+                                                padding: '0.5rem 0.75rem', backgroundColor: 'var(--primary)', color: 'white', border: 'none',
+                                                borderRadius: '8px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                            }}
+                                        >
+                                            <BookOpen size={13} /> Montar conteúdo
+                                        </button>
                                         <button
                                             onClick={() => handleOpenEdit(course)}
                                             style={{
@@ -591,6 +504,7 @@ export default function Cursos() {
                                         >
                                             <Edit2 size={12} /> Editar
                                         </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -599,12 +513,11 @@ export default function Cursos() {
                 </div>
             )}
 
-            {/* MODAL DE CADASTRO / EDIÇÃO */}
-            {showModal && (
+            {/* MODAL DE CADASTRO / EDIÇÃO — via Portal no body p/ cobrir a tela toda */}
+            {showModal && createPortal((
                 <div style={{
                     position: 'fixed', inset: 0,
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.55)',
                     zIndex: 2000,
                     display: 'flex',
                     alignItems: 'center',
@@ -625,7 +538,7 @@ export default function Cursos() {
                     }} className="animate-scale-up">
                         
                         {/* HEADER MODAL */}
-                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'white', zIndex: 3, borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <BookOpen size={20} color="var(--primary)" /> {selectedCourse ? 'Editar Curso' : 'Novo Curso Técnico'}
                             </h3>
@@ -639,6 +552,10 @@ export default function Cursos() {
 
                         {/* CORPO DO FORMULÁRIO */}
                         <form onSubmit={handleSave} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                <div style={{ padding: '0.65rem', borderRadius: '8px', background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>1. Dados, regras e valores</div>
+                                <div style={{ padding: '0.65rem', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>2. Módulos, aulas e provas</div>
+                            </div>
                             {errorMsg && (
                                 <div style={{ padding: '0.75rem 1rem', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991B1B', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <AlertTriangle size={16} /> {errorMsg}
@@ -737,14 +654,14 @@ export default function Cursos() {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Status *</label>
+                                    <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Publicação *</label>
                                     <select
-                                        value={form.status}
-                                        onChange={e => setForm(prev => ({ ...prev, status: e.target.value }))}
+                                        value={form.is_published ? 'sim' : 'nao'}
+                                        onChange={e => setForm(prev => ({ ...prev, is_published: e.target.value === 'sim' }))}
                                         style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem', backgroundColor: 'white' }}
                                     >
-                                        <option value="ativo">Ativo</option>
-                                        <option value="inativo">Inativo</option>
+                                        <option value="nao">Não publicado</option>
+                                        <option value="sim">Publicado (visível no site e para alunos)</option>
                                     </select>
                                 </div>
                             </div>
@@ -976,7 +893,7 @@ export default function Cursos() {
                             </div>
 
                             {/* BOTOES MODAL */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', paddingBottom: '0.25rem', position: 'sticky', bottom: '-1.5rem', background: 'white', marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', paddingLeft: '1.5rem', paddingRight: '1.5rem', boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.08)' }}>
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
@@ -995,6 +912,17 @@ export default function Cursos() {
                                 </button>
                                 <button
                                     type="submit"
+                                    name="save_action"
+                                    value="save"
+                                    disabled={saving}
+                                    style={{ padding: '0.6rem 1rem', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer' }}
+                                >
+                                    {selectedCourse ? 'Salvar alterações' : 'Salvar rascunho'}
+                                </button>
+                                <button
+                                    type="submit"
+                                    name="save_action"
+                                    value="continue"
                                     disabled={saving}
                                     style={{
                                         padding: '0.6rem 1.5rem',
@@ -1011,13 +939,13 @@ export default function Cursos() {
                                     }}
                                 >
                                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    {selectedCourse ? 'Salvar Alterações' : 'Cadastrar Curso'}
+                                    Próximo: Módulos e Aulas →
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

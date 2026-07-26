@@ -65,7 +65,9 @@ const AdminToolbar = () => {
   const toolbarStyle = {
     position: 'fixed',
     left: pos.x !== null ? `${pos.x}px` : '50%',
-    top: pos.y !== null ? `${pos.y}px` : '15px',
+    // Padrão: barra no rodapé (não cobre o header). Continua arrastável.
+    top: pos.y !== null ? `${pos.y}px` : 'auto',
+    bottom: pos.y !== null ? 'auto' : '24px',
     transform: pos.x !== null ? 'none' : 'translateX(-50%)',
     transition: dragging.current ? 'none' : 'all 0.3s ease-out'
   };
@@ -89,10 +91,20 @@ const AdminToolbar = () => {
 
   if (!isVisible) {
     return (
-      <button 
-        className="admin-toggle-mini" 
+      <button
+        className="admin-toggle-mini"
         onClick={() => setIsVisible(true)}
         title="Mostrar Ferramentas Admin"
+        style={{
+          position: 'fixed', bottom: '24px', left: '24px', top: 'auto', right: 'auto',
+          width: '46px', height: '46px', borderRadius: '50%', border: 'none',
+          background: 'linear-gradient(135deg, #171E36 0%, #2AB0A5 100%)',
+          color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', zIndex: 10000, boxShadow: '0 6px 18px rgba(23,30,54,0.35)',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px) rotate(25deg)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
       >
         <Settings size={20} />
       </button>
@@ -172,7 +184,7 @@ const AdminToolbar = () => {
         }
         .admin-toolbar {
           position: fixed;
-          top: 10px;
+          bottom: 20px;
           left: 50%;
           transform: translateX(-50%);
           background: #0f172a;
@@ -262,18 +274,27 @@ const AdminToolbar = () => {
 
         .admin-toggle-mini {
           position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #0f172a;
+          bottom: 24px;
+          left: 24px;
+          top: auto;
+          right: auto;
+          background: linear-gradient(135deg, #171E36 0%, #2AB0A5 100%);
           color: white;
-          width: 44px;
-          height: 44px;
+          width: 46px;
+          height: 46px;
+          border: none;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
+          cursor: pointer;
           z-index: 10000;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          box-shadow: 0 6px 18px rgba(23,30,54,0.35);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .admin-toggle-mini:hover {
+          transform: translateY(-2px) rotate(25deg);
+          box-shadow: 0 10px 26px rgba(23,30,54,0.45);
         }
         .text-accent { color: #f59e0b; }
       `}</style>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { lmsApi } from '../services/lms'
 import { useAuth } from '../contexts/AuthContext'
 import { CheckCircle, XCircle, AlertCircle, RefreshCcw, Clock } from 'lucide-react'
 
@@ -11,9 +11,14 @@ export default function ExamView() {
     
     const [quiz, setQuiz] = useState(null)
     const [questions, setQuestions] = useState([])
+    const [attemptId, setAttemptId] = useState(null)
     const [answers, setAnswers] = useState({}) // { questionId: optionIndex }
     const [status, setStatus] = useState('intro') // intro | active | result | blocked
     const [score, setScore] = useState(0)
+    const [approved, setApproved] = useState(false)
+    // Gabarito devolvido pelo servidor ao entregar a prova: { questionId: { is_correct, user_answer, correct_answer } }.
+    // Só existe logo após o envio — quem reabre a página aprovado não recebe as respostas de novo.
+    const [feedback, setFeedback] = useState(null)
     const [attemptsCount, setAttemptsCount] = useState(0)
     const [loading, setLoading] = useState(true)
     const [timeLeft, setTimeLeft] = useState(null) // em segundos
@@ -38,43 +43,47 @@ export default function ExamView() {
 
     const fetchQuizData = async () => {
         setLoading(true)
-        const { data: quizData } = await supabase.from('lms_quizzes').select('*').eq('id', quizId).single()
-        const { data: questionsData } = await supabase.from('lms_questions').select('*').eq('quiz_id', quizId)
-        
-        if (quizData) {
-            setQuiz(quizData)
-            setQuestions(questionsData || [])
-            
-            // Checar tentativas existentes
-            const { data: results } = await supabase
-                .from('lms_quiz_results')
-                .select('*')
-                .eq('quiz_id', quizId)
-                .eq('student_id', session.user.id)
-                .maybeSingle()
-            
-            if (results) {
-                setAttemptsCount(results.attempts_count)
-                setScore(results.score || 0) // Carregar score anterior
-                if (results.is_approved) setStatus('result')
-                else if (results.attempts_count >= quizData.max_attempts) setStatus('blocked')
+        try {
+            const { quiz: quizData, questions: questionsData } = await lmsApi.quiz(quizId)
+            if (quizData) {
+                setQuiz(quizData)
+                setQuestions(questionsData || [])
+
+                // Cada tentativa é uma linha; a nota exibida é a melhor delas.
+                const { results } = await lmsApi.results({ quiz_id: quizId })
+                const attempts = results || []
+                if (attempts.length > 0) {
+                    const isApproved = attempts.some(r => r.is_approved)
+                    setAttemptsCount(attempts.length)
+                    setScore(Math.max(...attempts.map(r => r.score || 0)))
+                    setApproved(isApproved)
+                    if (isApproved) setStatus('result')
+                    else if (quizData.max_attempts > 0 && attempts.length >= quizData.max_attempts) setStatus('blocked')
+                }
             }
+        } catch (err) {
+            console.error('Erro ao carregar prova:', err)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
-    const handleStartExam = () => {
+    const handleStartExam = async () => {
         if (attemptsCount >= (quiz?.max_attempts || 3)) {
             setStatus('blocked')
             return
         }
         
-        if (quiz?.time_limit_minutes > 0) {
-            setTimeLeft(quiz.time_limit_minutes * 60)
+        try {
+            const data = await lmsApi.startQuiz(quizId)
+            setAttemptId(data.attempt_id)
+            setQuestions(data.questions || [])
+            if (quiz?.time_limit_minutes > 0) setTimeLeft(quiz.time_limit_minutes * 60)
+            setStatus('active')
+            setAnswers({})
+        } catch (error) {
+            alert(error.message)
         }
-        
-        setStatus('active')
-        setAnswers({})
     }
 
     const handleSubmit = async () => {
@@ -82,38 +91,18 @@ export default function ExamView() {
         if (status === 'result') return
 
         try {
-            let correctCount = 0
-            const feedbackMap = {}
-
-            questions.forEach(q => {
-                const isCorrect = answers[q.id] === q.correct_option_index
-                if (isCorrect) correctCount++
-                feedbackMap[q.id] = {
-                    is_correct: isCorrect,
-                    user_answer: answers[q.id],
-                    correct_answer: q.correct_option_index
-                }
-            })
-            
-            const finalScore = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
-            
-            // Regra de Melhor Nota: Mantém a maior entre a atual e a anterior
-            const bestScore = Math.max(finalScore, score)
-            const approved = bestScore >= (quiz?.passing_grade || 70)
-            const newAttempts = attemptsCount + 1
-
-            const { error: upsertError } = await supabase.from('lms_quiz_results').upsert({
-                student_id: session.user.id,
+            // A correção é feita no servidor, contra o banco de questões: daqui
+            // saem apenas as alternativas escolhidas.
+            const { result, feedback: gabarito } = await lmsApi.submitResult({
                 quiz_id: quizId,
-                score: bestScore,
-                attempts_count: newAttempts,
-                is_approved: approved
-            }, { onConflict: ['student_id', 'quiz_id'] })
+                attempt_id: attemptId,
+                answers
+            })
 
-            if (upsertError) throw upsertError
-
-            setScore(finalScore)
-            setAttemptsCount(newAttempts)
+            setFeedback((quiz.quiz_type === 'exercise' || quiz.reveal_answers) ? (gabarito || {}) : null)
+            setScore(result.score)
+            setApproved(result.is_approved)
+            setAttemptsCount(result.attempts_count)
             setStatus('result')
             setTimeLeft(null)
         } catch (error) {
@@ -163,18 +152,8 @@ export default function ExamView() {
         }
     }, [status, timeLeft])
 
-    const logStudyTime = async (seconds) => {
-        if (!session?.user?.id || !quizId) return
-        try {
-            await supabase.from('lms_time_logs').insert([{
-                student_id: session.user.id,
-                course_id: quiz.course_id,
-                quiz_id: quizId,
-                duration_seconds: seconds
-            }])
-        } catch (e) {
-            console.error("Erro ao registrar heartbeat em prova:", e)
-        }
+    const logStudyTime = async (_seconds) => {
+        // TODO(LMS): registrar carga horária (lms_time_logs) quando o endpoint existir.
     }
 
     const formatTime = (seconds) => {
@@ -188,6 +167,13 @@ export default function ExamView() {
 
     return (
         <div style={{ maxWidth: '800px', margin: '2rem auto', padding: '1rem' }}>
+            <style>{`
+                @media (max-width: 768px) {
+                    .exam-options-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            `}</style>
             {status === 'intro' && (
                 <div className="card text-center" style={{ padding: '3rem' }}>
                     <AlertCircle size={48} className="text-warning" style={{ margin: '0 auto 1.5rem' }} />
@@ -196,20 +182,20 @@ export default function ExamView() {
                     </h2>
                     <p className="text-secondary" style={{ marginTop: '1rem' }}>
                         {quiz.quiz_type === 'final_exam' 
-                            ? 'Esta é a avaliação final do curso. ' 
-                            : 'Este exercício ajudará a fixar o conteúdo do módulo. '}
+                            ? 'Esta é a avaliação final do curso e define sua aprovação. '
+                            : 'Este exercício aparece após a aula, serve para fixação e mostra o gabarito ao terminar. '}
                         Para aprovação, você precisa de no mínimo <strong>{quiz.passing_grade}%</strong> de acerto.
                         <br />Você tem <strong>{quiz.max_attempts - attemptsCount}</strong> tentativas restantes.
                     </p>
                     <button className="btn btn-primary" style={{ marginTop: '2rem' }} onClick={handleStartExam}>
-                        Iniciar Prova
+                        {quiz.quiz_type === 'final_exam' ? 'Iniciar Prova Final' : 'Iniciar Exercício'}
                     </button>
                 </div>
             )}
 
             {status === 'active' && (
                 <div className="animate-fade-in">
-                    <div style={{ position: 'sticky', top: '1rem', zIndex: 100, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', marginBottom: '2rem', border: showTimeWarning ? '2px solid #ef4444' : '1px solid #e2e8f0' }}>
+                    <div style={{ position: 'sticky', top: '1rem', zIndex: 100, display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', marginBottom: '2rem', border: showTimeWarning ? '2px solid #ef4444' : '1px solid #e2e8f0' }}>
                         <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{quiz.title}</h2>
                         {timeLeft !== null && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: showTimeWarning ? '#ef4444' : 'inherit', fontWeight: 700 }}>
@@ -232,10 +218,10 @@ export default function ExamView() {
                                     <img src={q.image_url} alt="Ilustração da questão" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', marginBottom: '1rem', border: '1px solid #e2e8f0' }} />
                                 )}
                             </div>
-                            <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: q.options.length > 3 ? '1fr 1fr' : '1fr', 
-                                gap: '1rem' 
+                            <div className="exam-options-grid" style={{
+                                display: 'grid',
+                                gridTemplateColumns: q.options.length > 3 ? '1fr 1fr' : '1fr',
+                                gap: '1rem'
                             }}>
                                 {q.options.map((option, oidx) => {
                                     const hasImage = typeof option === 'object' && option.image_url;
@@ -290,7 +276,7 @@ export default function ExamView() {
             {status === 'result' && (
                 <div className="animate-fade-in">
                     <div className="card text-center" style={{ padding: '3rem', marginBottom: '2rem' }}>
-                        {score >= quiz.passing_grade ? (
+                        {approved ? (
                             <>
                                 <CheckCircle size={64} style={{ color: '#10b981', margin: '0 auto 1.5rem' }} />
                                 <h2 style={{ color: '#065f46' }}>Parabéns! Você foi aprovado!</h2>
@@ -307,8 +293,8 @@ export default function ExamView() {
                             <p style={{ fontSize: '1rem', color: '#64748b' }}>Sua nota nesta tentativa:</p>
                             <p style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)' }}>{score}%</p>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                            {score < quiz.passing_grade && attemptsCount < quiz.max_attempts && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '1rem' }}>
+                            {!approved && attemptsCount < quiz.max_attempts && (
                                 <button className="btn btn-secondary" onClick={handleStartExam}>
                                     <RefreshCcw size={16} /> Tentar Novamente
                                 </button>
@@ -319,22 +305,24 @@ export default function ExamView() {
                         </div>
                     </div>
 
+                    {feedback && (
                     <div className="card">
                         <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <CheckCircle size={20} color="var(--primary)" /> Conferência de Gabarito
                         </h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             {questions.map((q, idx) => {
-                                const isCorrect = answers[q.id] === q.correct_option_index
+                                const fb = feedback[q.id] || {}
+                                const isCorrect = fb.is_correct
                                 return (
                                     <div key={q.id} style={{ padding: '1.5rem', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: isCorrect ? '#f0fdf4' : '#fff1f2' }}>
                                         <p style={{ fontWeight: 600, marginBottom: '1rem' }}>{idx + 1}. {q.question_text}</p>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                             {q.options.map((opt, oidx) => {
                                                 const optText = typeof opt === 'object' ? opt.text : opt
-                                                const isSelected = answers[q.id] === oidx
-                                                const isCorrectOpt = q.correct_option_index === oidx
-                                                
+                                                const isSelected = fb.user_answer === oidx
+                                                const isCorrectOpt = fb.correct_answer === oidx
+
                                                 let bgColor = 'transparent'
                                                 let borderColor = '#e2e8f0'
                                                 if (isCorrectOpt) {
@@ -366,11 +354,13 @@ export default function ExamView() {
                                                 )
                                             })}
                                         </div>
+                                        {fb.explanation && <p style={{ marginTop: '1rem', padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', color: '#1e3a8a' }}><strong>Explicação:</strong> {fb.explanation}</p>}
                                     </div>
                                 )
                             })}
                         </div>
                     </div>
+                    )}
                 </div>
             )}
 

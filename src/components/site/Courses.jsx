@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { upcomingClassesApi } from '../../services/misc';
+import { coursesApi } from '../../services/academic';
 import { Clock, Monitor, ChevronRight, Plus, Trash2, X, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEdit } from '../../context/EditContext';
@@ -11,20 +12,26 @@ import DraggableInEdit from './DraggableInEdit';
 const Courses = () => {
   const { content, isEditing, addItemToList, removeItemFromList, updateContent } = useEdit();
   const courses_section = content.courses_section || {};
-  const coursesList = courses_section.courses || [];
+  const editableCourses = courses_section.courses || [];
+  const [databaseCourses, setDatabaseCourses] = useState([]);
+  const coursesList = isEditing ? editableCourses : databaseCourses;
   const [upcomingClasses, setUpcomingClasses] = useState([]);
 
   useEffect(() => {
+    coursesApi.listPublic()
+      .then(({ courses }) => setDatabaseCourses((courses || []).map(course => ({
+        ...course,
+        slug: course.code || course.id,
+        image: course.thumbnail_url,
+        duration: course.min_theoretical_hours ? `${course.min_theoretical_hours} horas` : 'Carga horária sob consulta',
+        type: course.practical_hours > 0 ? 'Online + Presencial' : 'Online',
+        category: 'CURSO CEC',
+        whatsapp_link: course.whatsapp_url,
+      }))))
+      .catch(err => console.error('Erro ao carregar cursos publicados:', err));
     const fetchUpcomingClasses = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const { data, error } = await supabase
-          .from('classes')
-          .select('course_name, start_date')
-          .gte('start_date', today)
-          .order('start_date', { ascending: true });
-          
-        if (error) throw error;
+        const { classes: data } = await upcomingClassesApi.listPublic();
         if (data) {
           setUpcomingClasses(data);
         }

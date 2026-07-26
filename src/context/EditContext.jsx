@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { siteContentApi } from '../services/misc';
+import { settingsApi } from '../services/financial';
 import initialContent from '../data/content.json';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,7 +9,7 @@ const EditContext = createContext();
 export const useEdit = () => useContext(EditContext);
 
 export const EditProvider = ({ children }) => {
-  const { userProfile } = useAuth();
+  const { userProfile, session, logout: authLogout } = useAuth();
   const [isEditing, setIsEditing] = useState(() => {
     try {
       return sessionStorage.getItem('cec_editing') === 'true';
@@ -20,15 +21,15 @@ export const EditProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState(initialContent || {});
 
-  // 1. Carregar Sessão e Dados Iniciais de forma sincronizada
+  // 1. Sincroniza usuário com a sessão do contexto de auth
+  useEffect(() => {
+    setUser(session?.user ?? null);
+  }, [session]);
+
+  // 2. Carrega o conteúdo do site na inicialização
   useEffect(() => {
     const initApp = async () => {
       try {
-        // Carregamento inicial da sessão
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
-        
-        // Buscar Conteúdo do Banco de Dados ANTES de liberar a tela
         await fetchSiteContent();
       } catch (err) {
         console.error("Erro na inicialização do app:", err);
@@ -36,16 +37,8 @@ export const EditProvider = ({ children }) => {
         setLoading(false);
       }
     };
-
     initApp();
-
-    // Monitorar Mudanças de Autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  }, [userProfile?.role]);
 
   // Deep merge: preserva defaults locais para chaves ausentes no banco
   const deepMerge = (base, override) => {
@@ -88,45 +81,44 @@ export const EditProvider = ({ children }) => {
 
   const fetchSiteContent = async () => {
     try {
-      const { data, error } = await supabase
-        .from('site_content')
-        .select('data')
-        .eq('id', 'main-content')
-        .single();
-
-      if (error) {
-        console.warn('Usando conteúdo local (tabela site_content não encontrada ou vazia).');
-      } else if (data && data.data) {
+      const { content: cms } = await siteContentApi.get();
+      const data = cms?.['main-content'];
+      if (data) {
         // Deep merge: mantém defaults locais para chaves que não existem no banco
-        const mergedContent = deepMerge(initialContent, data.data);
+        const mergedContent = deepMerge(initialContent, data);
         setContent(mergedContent);
+      } else {
+        console.warn('Usando conteúdo local (site_content vazio).');
       }
 
-      // Buscar imagens configuradas no CMS (system_settings)
-      try {
-        const { data: settings } = await supabase.from('system_settings').select('key, value').in('key', ['site_logo_url', 'site_banner_url']);
-        if (settings) {
-          const logo = settings.find(s => s.key === 'site_logo_url');
-          const banner = settings.find(s => s.key === 'site_banner_url');
-          
-          setContent(prev => {
-            const newContent = { ...prev };
+      // system_settings é uma área administrativa. Perfis de aluno e professor
+      // usam os assets públicos e não devem disparar uma requisição sem permissão.
+      if (['admin', 'coordenador'].includes(userProfile?.role)) {
+        try {
+          const { settings } = await settingsApi.list();
+          if (settings) {
+            const logo = settings.find(s => s.key === 'site_logo_url');
+            const banner = settings.find(s => s.key === 'site_banner_url');
+
+            setContent(prev => {
+              const newContent = { ...prev };
             
-            if (logo?.value) {
-              if (!newContent.navbar) newContent.navbar = {};
-              newContent.navbar.logo_img = logo.value;
-            }
+              if (logo?.value) {
+                if (!newContent.navbar) newContent.navbar = {};
+                newContent.navbar.logo_img = logo.value;
+              }
             
-            if (banner?.value) {
-              if (!newContent.hero) newContent.hero = {};
-              newContent.hero.image = banner.value;
-            }
+              if (banner?.value) {
+                if (!newContent.hero) newContent.hero = {};
+                newContent.hero.image = banner.value;
+              }
             
-            return newContent;
-          });
+              return newContent;
+            });
+          }
+        } catch (err) {
+          console.warn('Falha ao buscar assets do system_settings', err);
         }
-      } catch (err) {
-        console.warn('Falha ao buscar assets do system_settings', err);
       }
     } catch (err) {
       console.error('Erro ao buscar conteúdo:', err);
@@ -199,10 +191,7 @@ export const EditProvider = ({ children }) => {
       return;
     }
     try {
-      const { error } = await supabase
-        .from('site_content')
-        .upsert({ id: 'main-content', data: content });
-      if (error) throw error;
+      await siteContentApi.save({ 'main-content': content });
       setIsEditing(false);
       sessionStorage.setItem('cec_editing', 'false');
       alert('Site atualizado com sucesso no banco de dados!');
@@ -220,7 +209,7 @@ export const EditProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    authLogout();
     setIsEditing(false);
     sessionStorage.removeItem('cec_editing');
     window.location.href = '/';

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Megaphone, Plus, Search, Trash2, Calendar, ShieldAlert, Pin, Users, Loader2, Save, X, Eye, Edit } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { generalAnnouncementsApi } from '../services/misc'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Comunicados() {
@@ -37,52 +38,14 @@ export default function Comunicados() {
     const fetchAnnouncements = async () => {
         setLoading(true)
         try {
-            // Buscar comunicados na tabela announcements
-            const { data, error } = await supabase
-                .from('announcements')
-                .select('*, author:users!created_by(full_name)')
-                .order('created_at', { ascending: false })
-            
-            if (error) throw error
+            // Buscar comunicados
+            const { announcements: data } = await generalAnnouncementsApi.list()
             setAnnouncements(data || [])
             setUsingMocks(false)
         } catch (err) {
-            console.error('Erro ao buscar comunicados da nuvem (usando local mocks):', err)
-            // Fallback mock caso a tabela no Supabase não tenha sido migrada
-            const mockAnnouncements = [
-                {
-                    id: 'mock-1',
-                    title: '🚨 Manutenção Programada no Portal do Aluno',
-                    body: 'Prezados, informamos que no dia 05/06/2026 das 22h às 02h, a plataforma passará por uma atualização de servidores para melhoria de desempenho. Durante esse período, o player EAD poderá ficar instável.',
-                    target_roles: ['aluno', 'instrutor', 'atendente', 'coordenador'],
-                    is_pinned: true,
-                    expires_at: '2026-06-06T02:00:00Z',
-                    created_at: '2026-05-30T10:00:00Z',
-                    author: { full_name: 'Coordenação Pedagógica' }
-                },
-                {
-                    id: 'mock-2',
-                    title: '⚠️ Prazo Limite para Notas do Método CD-MC',
-                    body: 'Atenção instrutores, lembramos que o prazo limite para lançamento de notas das avaliações práticas da Turma ME-2026.2 encerra na próxima sexta-feira. A liberação de certificados depende dessas notas.',
-                    target_roles: ['instrutor', 'coordenador'],
-                    is_pinned: false,
-                    expires_at: '2026-06-07T23:59:59Z',
-                    created_at: '2026-05-29T14:20:00Z',
-                    author: { full_name: 'Diretoria Administrativa' }
-                },
-                {
-                    id: 'mock-3',
-                    title: '📢 Lançamento da Campanha de Matrículas do Inverno',
-                    body: 'A equipe de vendas e atendimento já pode acessar os novos materiais de divulgação dos cursos de Ultrassom CD-TO na pasta compartilhada. Dúvidas, procurem a coordenação comercial.',
-                    target_roles: ['atendente', 'coordenador'],
-                    is_pinned: false,
-                    expires_at: null,
-                    created_at: '2026-05-25T08:00:00Z',
-                    author: { full_name: 'Marketing C&C' }
-                }
-            ]
-            setAnnouncements(mockAnnouncements)
-            setUsingMocks(true)
+            console.error('Erro ao buscar comunicados da nuvem:', err)
+            setAnnouncements([])
+            setUsingMocks(false)
         } finally {
             setLoading(false)
         }
@@ -160,12 +123,7 @@ export default function Comunicados() {
                 if (usingMocks || editingAnnId.toString().startsWith('mock-')) {
                     setAnnouncements(prev => prev.map(a => a.id === editingAnnId ? { ...a, ...payload } : a))
                 } else {
-                    const { error } = await supabase
-                        .from('announcements')
-                        .update(payload)
-                        .eq('id', editingAnnId)
-                    
-                    if (error) throw error
+                    await generalAnnouncementsApi.update(editingAnnId, payload)
                     fetchAnnouncements()
                 }
                 alert('Comunicado atualizado com sucesso!')
@@ -180,11 +138,7 @@ export default function Comunicados() {
                     }
                     setAnnouncements([mockNew, ...announcements])
                 } else {
-                    const { error } = await supabase
-                        .from('announcements')
-                        .insert([payload])
-                    
-                    if (error) throw error
+                    await generalAnnouncementsApi.create(payload)
                     fetchAnnouncements()
                 }
                 alert('Comunicado publicado com sucesso!')
@@ -216,11 +170,7 @@ export default function Comunicados() {
             if (usingMocks || annToDelete.id.toString().startsWith('mock-')) {
                 setAnnouncements(prev => prev.filter(a => a.id !== annToDelete.id))
             } else {
-                const { error } = await supabase
-                    .from('announcements')
-                    .delete()
-                    .eq('id', annToDelete.id)
-                if (error) throw error
+                await generalAnnouncementsApi.remove(annToDelete.id)
                 fetchAnnouncements()
             }
             setShowDeleteModal(false)
@@ -418,8 +368,8 @@ export default function Comunicados() {
             )}
 
             {/* MODAL PREVIEW COMUNICADO */}
-            {showPreviewModal && selectedAnn && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showPreviewModal && selectedAnn && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '550px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
                         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
                             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
@@ -448,7 +398,7 @@ export default function Comunicados() {
                                 {selectedAnn.body}
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.8rem', color: '#64748b' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', fontSize: '0.8rem', color: '#64748b' }}>
                                 <div>
                                     Público Alvo: <strong style={{ textTransform: 'capitalize', color: '#0f172a' }}>{selectedAnn.target_roles.join(', ')}</strong>
                                 </div>
@@ -466,11 +416,11 @@ export default function Comunicados() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL CRIAR COMUNICADO */}
-            {showCreateModal && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showCreateModal && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0' }} className="animate-scale-up">
                         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -513,7 +463,7 @@ export default function Comunicados() {
                             {/* Publico Alvo Checkboxes */}
                             <div>
                                 <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.5rem' }}>Público Alvo (Destinatários) *</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
                                         <input type="checkbox" checked={form.target_aluno} onChange={e => setForm(prev => ({ ...prev, target_aluno: e.target.checked }))} style={{ width: '16px', height: '16px' }} />
                                         Alunos (Portal do Aluno)
@@ -533,7 +483,7 @@ export default function Comunicados() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                                 <div>
                                     <label style={{ display: 'block', fontWeight: '600', fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem' }}>Data de Expiração (Opcional)</label>
                                     <input 
@@ -598,11 +548,11 @@ export default function Comunicados() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL CONFIRMAÇÃO EXCLUSÃO */}
-            {showDeleteModal && annToDelete && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showDeleteModal && annToDelete && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
                         <div style={{ padding: '1.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', backgroundColor: '#fee2e2', borderRadius: '50%', color: '#ef4444' }}>
@@ -638,7 +588,7 @@ export default function Comunicados() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

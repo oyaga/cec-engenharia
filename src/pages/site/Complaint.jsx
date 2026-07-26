@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldAlert, Send, Phone, User, MessageSquare, CheckCircle, AlertTriangle, AlertCircle } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { complaintsApi } from '../../services/site';
 import EditableText from '../../components/site/EditableText';
 import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
+import { formatBrazilianPhone } from '../../utils/phone';
 
 const Complaint = () => {
   const { content } = useEdit();
@@ -27,16 +28,12 @@ const Complaint = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase
-      const { error } = await supabase
-        .from('complaints')
-        .insert([{
-          name: formData.name || 'Anônimo',
-          phone: formData.phone || 'Não informado',
-          description: formData.description
-        }]);
-
-      if (error) throw error;
+      // 1. Registrar a manifestação via API pública
+      await complaintsApi.createPublic({
+        name: formData.name || 'Anônimo',
+        phone: formData.phone || 'Não informado',
+        description: formData.description,
+      });
 
       // 3. Sucesso Anônimo
       setIsSuccess(true);
@@ -113,7 +110,9 @@ const Complaint = () => {
                         type="tel" 
                         placeholder="(00) 00000-0000"
                         value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        onChange={(e) => setFormData({...formData, phone: formatBrazilianPhone(e.target.value)})}
+                        inputMode="numeric"
+                        maxLength={15}
                       />
                     </div>
                   </div>

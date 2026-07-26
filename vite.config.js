@@ -1,18 +1,34 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
+    host: true, // aceita localhost, 127.0.0.1 e o IP da máquina
     proxy: {
-      // Todas as chamadas à API (incluindo pagamentos/Asaas) passam pelo
-      // backend Go. Não há mais proxies diretos ao Asaas no browser.
+      // API + WebSocket na mesma origem do frontend (elimina CORS no dev).
+      // Normaliza o header Origin para um valor que o backend aceita, para o
+      // dev funcionar abrindo por localhost, 127.0.0.1 ou IP da rede.
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
-        ws: true,
+        ws: true, // o WebSocket do chat vive em /api/v1/ws/chat
+        configure: (proxy) => {
+          // Normaliza a origem tanto nas requisições HTTP quanto no upgrade do
+          // WebSocket (evento separado), para o backend aceitar por qualquer host.
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
+          proxy.on('proxyReqWs', (proxyReq) => {
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
+        },
       },
+      // Asaas é inteiramente proxied pelo backend Go (/api/v1/payments/*).
+      // As rotas /asaas-sandbox e /asaas-production foram removidas — a chave
+      // da API nunca deve ir ao browser.
     }
   },
   build: {

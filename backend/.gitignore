@@ -1,0 +1,14 @@
+# Env / secrets — NUNCA commitar
+.env
+*.env
+!.env.example
+
+# Binários
+/bin/
+/tmp/
+cec-api
+cec-api.exe
+
+# Go
+*.test
+*.out

@@ -1,53 +1,21 @@
 import { useState, useEffect } from 'react'
-import { supabase, createTempClient } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { usersApi } from '../services/users'
+import { qualificationsApi } from '../services/staff'
+import { coursesApi, instructorAuthorizationsApi } from '../services/academic'
+import { useAuth } from '../contexts/AuthContext'
 import { 
   GraduationCap, Award, Calendar, ShieldCheck, Search, Plus, 
   Trash2, FileText, CheckCircle, AlertTriangle, AlertCircle, Eye, 
-  Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX 
+  Info, Loader2, X, RefreshCw, Sparkles, UserCheck2, UserX, Copy, KeyRound, Users
 } from 'lucide-react'
 
-const MOCK_QUALIFICATIONS = [
-    {
-        id: 'mock-qual-1',
-        user_id: 'mock-inst-1',
-        method: 'CD-CL',
-        qualification_type: 'snqc',
-        training_hours: 4,
-        training_date: '2026-05-10',
-        status: 'ativo',
-        valid_until: '2029-05-15',
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Dr. Carlos Mendonça', email: 'carlos.mendonca@cec.com.br', cpf: '123.456.789-00', phone: '(21) 98888-1111' }
-    },
-    {
-        id: 'mock-qual-2',
-        user_id: 'mock-inst-2',
-        method: 'CD-MC',
-        qualification_type: 'experience',
-        training_hours: 8,
-        training_date: '2026-04-12',
-        status: 'pendente_aprovacao',
-        valid_until: null,
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Prof.ª Roberta Costa', email: 'roberta.costa@cec.com.br', cpf: '987.654.321-11', phone: '(21) 97777-2222' }
-    },
-    {
-        id: 'mock-qual-3',
-        user_id: 'mock-inst-3',
-        method: 'CD-TO',
-        qualification_type: 'snqc',
-        training_hours: 4,
-        training_date: '2025-05-15',
-        status: 'vencido',
-        valid_until: '2026-05-15',
-        created_at: new Date().toISOString(),
-        users: { full_name: 'Insp. Marcos Silva', email: 'marcos.silva@cec.com.br', cpf: '456.789.123-22', phone: '(21) 96666-3333' }
-    }
-]
-
 export default function Instrutores() {
+    const { session, userProfile } = useAuth()
     const [qualifications, setQualifications] = useState([])
     const [loading, setLoading] = useState(true)
+    const [accessUsers, setAccessUsers] = useState([])
+    const [accessSearch, setAccessSearch] = useState('')
     const [showWizard, setShowWizard] = useState(false)
     const [wizardStep, setWizardStep] = useState(1)
     
@@ -88,37 +56,36 @@ export default function Instrutores() {
     const [selectedQualForApproval, setSelectedQualForApproval] = useState(null)
     const [rejectionReason, setRejectionReason] = useState('')
     const [approvalLoading, setApprovalLoading] = useState(false)
+    const [authorizationCourses, setAuthorizationCourses] = useState([])
+    const [authorizedCourseIds, setAuthorizedCourseIds] = useState([])
+    const [authorizedCategories, setAuthorizedCategories] = useState('')
+    const [savingAuthorizations, setSavingAuthorizations] = useState(false)
     
     const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
     const fetchInitialData = async () => {
         setLoading(true)
         try {
-            // Obter cargo do usuário logado
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
-                setCurrentUserProfile(profile)
-            }
+            setCurrentUserProfile(userProfile || null)
 
             // 1. Carregar as qualificações PR-127
-            const { data: qualData, error: qualError } = await supabase
-                .from('instructor_qualifications')
-                .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
-            
-            if (qualError) throw qualError
+            const [{ qualifications: qualData }, { users }] = await Promise.all([
+                qualificationsApi.list(),
+                usersApi.list(['instrutor', 'admin', 'coordenador', 'atendente'])
+            ])
+            setAccessUsers(users || [])
 
             if (qualData && qualData.length > 0) {
                 setQualifications(qualData)
                 await fetchCapacities(qualData)
             } else {
-                setQualifications(MOCK_QUALIFICATIONS)
-                await fetchCapacities(MOCK_QUALIFICATIONS)
+                setQualifications([])
+                await fetchCapacities([])
             }
         } catch (err) {
-            console.warn('Erro ao carregar qualificações (usando emulador local):', err)
-            setQualifications(MOCK_QUALIFICATIONS)
-            await fetchCapacities(MOCK_QUALIFICATIONS)
+            console.warn('Erro ao carregar qualificações:', err)
+            setQualifications([])
+            await fetchCapacities([])
         }
         setLoading(false)
     }
@@ -135,47 +102,17 @@ export default function Instrutores() {
                     }
                 })
             } else {
-                // Se não foi passado dados, fazemos a consulta no banco de dados.
-                // Mas antes, vamos verificar se ela está totalmente vazia.
-                const { count, error: countError } = await supabase
-                    .from('instructor_qualifications')
-                    .select('*', { count: 'exact', head: true })
-                
-                if (countError) throw countError
-
-                if (count > 0) {
-                    const { data, error } = await supabase
-                        .from('instructor_qualifications')
-                        .select('method')
-                        .eq('status', 'ativo')
-                    
-                    if (error) throw error
-                    
-                    if (data) {
-                        data.forEach(item => {
-                            if (counts[item.method] !== undefined) counts[item.method]++
-                        })
-                    }
-                } else {
-                    // Se a tabela está vazia, usa os mocks ativos
-                    MOCK_QUALIFICATIONS.forEach(item => {
-                        if (item.status === 'ativo' && counts[item.method] !== undefined) {
-                            counts[item.method]++
-                        }
+                const { qualifications: data } = await qualificationsApi.list({ status: 'ativo' })
+                if (data && data.length > 0) {
+                    data.forEach(item => {
+                        if (counts[item.method] !== undefined) counts[item.method]++
                     })
                 }
             }
             setCapacities(counts)
         } catch (err) {
             console.error('Erro ao buscar capacidades:', err)
-            // Fallback para capacidades dos mocks
-            const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
-            MOCK_QUALIFICATIONS.forEach(item => {
-                if (item.status === 'ativo' && counts[item.method] !== undefined) {
-                    counts[item.method]++
-                }
-            })
-            setCapacities(counts)
+            setCapacities({ 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 })
         } finally {
             setLoadingCapacities(false)
         }
@@ -268,35 +205,20 @@ export default function Instrutores() {
             const uniqueId = Date.now()
             const passwordToSave = 'CEC@inst_' + Math.floor(1000 + Math.random() * 9000)
 
-            const tempClient = createTempClient()
-            const { data: authData, error: authError } = await tempClient.auth.signUp({
-                email: prForm.email,
-                password: passwordToSave,
-                options: {
-                    data: {
-                        full_name: prForm.full_name,
-                        role: 'instrutor'
-                    }
-                }
-            })
-
-            if (!authError && authData?.user) {
-                instructorUserId = authData.user.id
-                
-                // Salvar/Atualizar em public.users (upsert evita conflito com trigger auth)
-                await supabase.from('users').upsert({
-                    id: instructorUserId,
+            try {
+                const { user } = await usersApi.create({
                     email: prForm.email,
+                    password: passwordToSave,
                     full_name: prForm.full_name,
                     role: 'instrutor',
                     cpf: prForm.cpf,
                     phone: prForm.phone,
-                    is_active: true,
                     permissions: { has_erp_access: true }
-                }, { onConflict: 'id' })
-            }
+                })
+                if (user?.id) instructorUserId = user.id
+            } catch (e) { console.warn('Login do instrutor já existe ou falhou:', e.message) }
 
-            // 2. Salvar Habilitações em instructor_qualifications do Supabase
+            // 2. Salvar habilitações PR-127
             for (const method of prForm.methods) {
                 const payload = {
                     user_id: instructorUserId,
@@ -313,12 +235,7 @@ export default function Instrutores() {
                     photo_url: prForm.photo_url,
                     status: 'pendente_aprovacao'
                 }
-
-                const { error } = await supabase
-                    .from('instructor_qualifications')
-                    .upsert(payload, { onConflict: 'user_id, method' })
-
-                if (error) throw error
+                await qualificationsApi.create(payload)
             }
 
             alert(`Instrutor cadastrado com sucesso e qualificações enviadas para aprovação!\n\nDados de Acesso Provisórios para o Portal:\nE-mail: ${prForm.email}\nSenha: ${passwordToSave}\n\nPor favor, copie e envie estas credenciais para o instrutor.`);
@@ -326,30 +243,7 @@ export default function Instrutores() {
             fetchInitialData()
         } catch (err) {
             console.error('Erro ao salvar no banco:', err)
-            
-            // Fallback Resiliente local
-            const mockId = 'mock-new-qual-' + Date.now()
-            const newMock = {
-                id: mockId,
-                user_id: 'mock-user-' + Date.now(),
-                method: prForm.methods[0] || 'CD-CL',
-                qualification_type: prForm.methodComprovations[prForm.methods[0]] || 'snqc',
-                training_hours: parseInt(prForm.training_hours),
-                training_date: prForm.training_date || new Date().toISOString().split('T')[0],
-                status: 'pendente_aprovacao',
-                valid_until: null,
-                created_at: new Date().toISOString(),
-                users: {
-                    full_name: prForm.full_name,
-                    email: prForm.email,
-                    cpf: prForm.cpf,
-                    phone: prForm.phone
-                }
-            }
-
-            setQualifications(prev => [newMock, ...prev])
-            setShowWizard(false)
-            alert('Cadastro efetuado localmente em cache para testes!')
+            alert('Erro ao cadastrar instrutor: ' + (err.message || 'tente novamente.'))
         } finally {
             setLoading(false)
         }
@@ -360,24 +254,17 @@ export default function Instrutores() {
         if (!confirm(`Aprovar a habilitação técnica no método ${qual.method} para o instrutor ${qual.users?.full_name}?`)) return
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            
             // Validade = hoje + 36 meses conforme norma PR-127
             const validUntil = new Date()
             validUntil.setMonth(validUntil.getMonth() + 36)
 
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'ativo',
-                    approved_by: user.id,
-                    approved_at: new Date(),
-                    valid_until: validUntil.toISOString().split('T')[0],
-                    rejection_reason: null
-                })
-                .eq('id', qual.id)
-
-            if (error) throw error
+            await qualificationsApi.update(qual.id, {
+                status: 'ativo',
+                approved_by: session?.user?.id,
+                approved_at: new Date().toISOString(),
+                valid_until: validUntil.toISOString().split('T')[0],
+                rejection_reason: null
+            })
 
             alert('Habilitação técnica aprovada com sucesso! Validade estendida por 36 meses.')
             setShowApprovalModal(false)
@@ -404,18 +291,11 @@ export default function Instrutores() {
         }
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'reprovado',
-                    approved_by: user.id,
-                    rejection_reason: rejectionReason
-                })
-                .eq('id', selectedQualForApproval.id)
-
-            if (error) throw error
+            await qualificationsApi.update(selectedQualForApproval.id, {
+                status: 'reprovado',
+                approved_by: session?.user?.id,
+                rejection_reason: rejectionReason
+            })
 
             alert('Habilitação reprovada. O instrutor receberá o motivo.')
             setShowApprovalModal(false)
@@ -441,6 +321,27 @@ export default function Instrutores() {
         setSelectedQualForApproval(qual)
         setRejectionReason('')
         setShowApprovalModal(true)
+    }
+
+    useEffect(() => {
+        if (!showApprovalModal || !selectedQualForApproval?.user_id) return
+        Promise.all([coursesApi.list(), instructorAuthorizationsApi.get(selectedQualForApproval.user_id)])
+            .then(([courseResponse, authResponse]) => {
+                setAuthorizationCourses(courseResponse.courses || [])
+                setAuthorizedCourseIds((authResponse.courses || []).map(c => c.id))
+                setAuthorizedCategories((authResponse.categories || []).map(c => c.category).join(', '))
+            })
+            .catch(err => console.error('Erro ao carregar autorizações:', err))
+    }, [showApprovalModal, selectedQualForApproval?.user_id])
+
+    const saveAuthorizations = async () => {
+        setSavingAuthorizations(true)
+        try {
+            const categories = authorizedCategories.split(',').map(v => v.trim()).filter(Boolean)
+            await instructorAuthorizationsApi.update(selectedQualForApproval.user_id, categories, authorizedCourseIds)
+            alert('Categorias e cursos autorizados foram salvos.')
+        } catch (err) { alert('Erro ao salvar autorizações: ' + err.message) }
+        finally { setSavingAuthorizations(false) }
     }
 
     const handleViewDocument = (base64) => {
@@ -499,6 +400,26 @@ export default function Instrutores() {
     })
 
     const isCoordenadorOrAdmin = currentUserProfile?.role === 'admin' || currentUserProfile?.role === 'coordenador'
+    const roleLabels = { instrutor: 'Professor', admin: 'Administrador', coordenador: 'Coordenação', atendente: 'Secretaria' }
+    const permissionLabels = {
+        access_dashboard: 'Painel', access_alunos: 'Alunos', access_matriculas: 'Matrículas',
+        access_leads: 'Leads', access_turmas: 'Turmas', access_cursos: 'Cursos',
+        access_financeiro: 'Financeiro', access_relatorios: 'Relatórios', access_instrutores: 'Instrutores',
+        access_certificados: 'Certificados', access_ouvidoria: 'Ouvidoria', access_equipe: 'Equipe',
+        access_lms: 'EAD', access_comunicados: 'Comunicados', access_config: 'Configurações',
+        access_config_asaas: 'Asaas', access_instrutor_portal: 'Portal do Professor'
+    }
+    const visibleAccessUsers = accessUsers.filter(user => {
+        const term = accessSearch.trim().toLowerCase()
+        return !term || user.full_name?.toLowerCase().includes(term) || user.email?.toLowerCase().includes(term) || roleLabels[user.role]?.toLowerCase().includes(term)
+    })
+
+    const copyAccess = async (user) => {
+        const path = user.role === 'instrutor' ? '/login' : '/secretaria'
+        const text = `Acesso CEC\nEndereço: ${window.location.origin}${path}\nE-mail: ${user.email}\nSenha: use sua senha pessoal ou a opção Esqueci minha senha.`
+        try { await navigator.clipboard.writeText(text); alert('Dados de acesso copiados sem expor a senha.') }
+        catch { alert(text) }
+    }
 
     return (
         <div className="animate-fade-in" style={{ paddingBottom: '4rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -522,6 +443,38 @@ export default function Instrutores() {
                         <Plus size={16} /> Novo Instrutor (PR-127)
                     </button>
                 </div>
+            </div>
+
+            {/* VISÃO DE CONTAS COM ACESSO */}
+            <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid var(--border-color)', borderRadius: '16px', background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    <div>
+                        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '.5rem' }}><Users size={19} /> Acessos de professores e Secretaria</h3>
+                        <p style={{ margin: '.25rem 0 0', color: '#64748b', fontSize: '.82rem' }}>Contas, perfis e permissões. Senhas nunca são exibidas.</p>
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={15} style={{ position: 'absolute', left: '.65rem', top: '.7rem', color: '#94a3b8' }} />
+                        <input value={accessSearch} onChange={e => setAccessSearch(e.target.value)} placeholder="Buscar nome, e-mail ou perfil" style={{ padding: '.6rem .75rem .6rem 2rem', minWidth: '260px', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                    </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.84rem' }}>
+                        <thead><tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b' }}><th style={{ padding: '.75rem', textAlign: 'left' }}>Pessoa</th><th style={{ textAlign: 'left' }}>Perfil</th><th style={{ textAlign: 'left' }}>Status</th><th style={{ textAlign: 'left' }}>Permissões</th><th style={{ textAlign: 'right' }}>Acesso</th></tr></thead>
+                        <tbody>{visibleAccessUsers.map(user => {
+                            const permissions = user.permissions && typeof user.permissions === 'object' ? user.permissions : {}
+                            const enabled = Object.entries(permissions).filter(([, value]) => value === true).map(([key]) => permissionLabels[key] || key)
+                            return <tr key={user.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '.8rem' }}><strong>{user.full_name || 'Sem nome'}</strong><span style={{ display: 'block', color: '#64748b' }}>{user.email}</span></td>
+                                <td><span style={{ padding: '3px 8px', borderRadius: '999px', background: user.role === 'instrutor' ? '#ecfeff' : '#eef2ff', color: user.role === 'instrutor' ? '#0e7490' : '#4338ca', fontWeight: 700 }}>{roleLabels[user.role] || user.role}</span></td>
+                                <td><span style={{ color: user.is_active ? '#15803d' : '#b91c1c', fontWeight: 700 }}>{user.is_active ? 'Ativo' : 'Inativo'}</span>{user.must_change_password && <small style={{ display: 'block', color: '#b45309' }}>Troca de senha pendente</small>}</td>
+                                <td style={{ maxWidth: '380px', color: '#475569' }}>{user.role === 'admin' ? 'Acesso administrativo completo' : enabled.length ? enabled.join(', ') : 'Permissões padrão do perfil'}</td>
+                                <td style={{ textAlign: 'right' }}><button className="btn btn-secondary" onClick={() => copyAccess(user)} title="Copiar endereço e e-mail"><Copy size={14} /> Copiar acesso</button></td>
+                            </tr>
+                        })}</tbody>
+                    </table>
+                    {visibleAccessUsers.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Nenhuma conta encontrada.</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginTop: '1rem', padding: '.75rem', borderRadius: '8px', background: '#fffbeb', color: '#92400e', fontSize: '.8rem' }}><KeyRound size={16} /> Para recuperar o acesso, utilize “Esqueci minha senha” ou a redefinição administrativa. A senha atual não pode ser consultada.</div>
             </div>
 
             {/* FILTROS E CAPACIDADES */}
@@ -659,11 +612,11 @@ export default function Instrutores() {
             </div>
 
             {/* MODAL 1: ASSISTENTE COMPLETO PR-127 EM 5 ABAS */}
-            {showWizard && (
+            {showWizard && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '1rem'
                 }}>
                     <div className="card animate-slide-up" style={{ maxWidth: '650px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -676,7 +629,7 @@ export default function Instrutores() {
                         </div>
 
                         {/* Barra de Progresso do Assistente */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
                             <span style={{ color: wizardStep === 1 ? 'var(--primary)' : '#64748B' }}>1. Pessoal</span>
                             <span style={{ color: wizardStep === 2 ? 'var(--primary)' : '#64748B' }}>2. Métodos</span>
                             <span style={{ color: wizardStep === 3 ? 'var(--primary)' : '#64748B' }}>3. Treinamento</span>
@@ -974,14 +927,14 @@ export default function Instrutores() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL 2: JULGAMENTO DA APROVAÇÃO TÉCNICA */}
-            {showApprovalModal && selectedQualForApproval && (
+            {showApprovalModal && selectedQualForApproval && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999, padding: '1rem'
                 }}>
                     <div className="card animate-slide-up" style={{ maxWidth: '600px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -999,6 +952,17 @@ export default function Instrutores() {
                             <div><strong>Método:</strong> <span style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', fontSize: '10px' }}>{selectedQualForApproval.method}</span></div>
                             <div><strong>Comprovação:</strong> {selectedQualForApproval.qualification_type === 'snqc' ? 'Certificado SNQC' : 'Experiência (5 anos)'}</div>
                             <div><strong>Treinamento 4h:</strong> Habilitado com carga horária de {selectedQualForApproval.training_hours}h em {new Date(selectedQualForApproval.training_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+
+                            {isCoordenadorOrAdmin && <div style={{ padding: '1rem', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                <strong style={{ display:'block', marginBottom:'0.75rem' }}>Categorias e cursos autorizados</strong>
+                                <label className="form-label">Categorias (separadas por vírgula)</label>
+                                <input className="form-control" value={authorizedCategories} onChange={e => setAuthorizedCategories(e.target.value)} placeholder="Ex.: Caldeiraria, Mecânica, Topografia" />
+                                <label className="form-label" style={{ marginTop:'0.75rem' }}>Cursos que este professor pode ministrar</label>
+                                <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:'0.5rem', maxHeight:'180px', overflowY:'auto' }}>
+                                    {authorizationCourses.map(course => <label key={course.id} style={{ display:'flex', gap:'0.5rem', alignItems:'center', padding:'0.5rem', background:'#fff', borderRadius:'6px' }}><input type="checkbox" checked={authorizedCourseIds.includes(course.id)} onChange={e => setAuthorizedCourseIds(prev => e.target.checked ? [...prev, course.id] : prev.filter(id => id !== course.id))} /> {course.title}</label>)}
+                                </div>
+                                <button className="btn btn-primary" onClick={saveAuthorizations} disabled={savingAuthorizations} style={{ marginTop:'0.75rem', width:'100%' }}>{savingAuthorizations ? 'Salvando...' : 'Salvar autorizações'}</button>
+                            </div>}
 
                             {/* Pasta digital */}
                             <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
@@ -1067,7 +1031,7 @@ export default function Instrutores() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
         </div>
     )

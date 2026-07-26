@@ -1,0 +1,93 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cec-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cec
+      POSTGRES_PASSWORD: cec_dev_password
+      POSTGRES_DB: cec
+    ports:
+      - "5432:5432"
+    volumes:
+      - cec_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cec -d cec"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: cec-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - cec_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    container_name: cec-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      HTTP_PORT: "8080"
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000"
+      # host "db" = nome do serviço na rede interna do Compose
+      DATABASE_URL: "postgres://cec:cec_dev_password@db:5432/cec?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "dev-secret-trocar-em-producao"
+      JWT_TTL_HOURS: "12"
+      SEED_DEV: "true"
+      SEED_ADMIN_EMAIL: "admin@cec.local"
+      SEED_ADMIN_PASSWORD: "admin123"
+      STORAGE_DIR: "/app/uploads"
+      # URL pública dos arquivos = origem do web (nginx faz proxy /api → api).
+      PUBLIC_URL: "http://localhost:3000"
+    volumes:
+      - cec_uploads:/app/uploads
+    ports:
+      - "8080:8080"
+
+  # Frontend (build Vite + nginx) para análise local em http://localhost:5173
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: cec-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3000}:80"
+
+  # Interface web opcional para inspecionar o banco (http://localhost:8081)
+  adminer:
+    image: adminer:latest
+    container_name: cec-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cec_pgdata:
+  cec_redisdata:
+  cec_uploads:

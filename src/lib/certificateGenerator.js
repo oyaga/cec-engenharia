@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { supabase } from './supabase';
+import { settingsApi } from '../services/financial';
 
 /**
  * Função auxiliar para buscar o QR Code como Blob e converter em Base64 Data URI
@@ -33,13 +33,13 @@ const fetchQRCodeAsBase64 = async (text) => {
  */
 export const generateCertificate = async ({ studentName, studentCpf, courseName, hours, date, issuedId }) => {
     try {
-        // 1. Buscar a configuração de texto
-        const { data: config } = await supabase
-            .from('lms_certificate_configs')
-            .select('template_text')
-            .maybeSingle();
+        // 1. Configuração/assets do sistema (settings)
+        let allSettings = [];
+        try { allSettings = (await settingsApi.list()).settings || []; } catch { /* padrão */ }
+        const settingsMap = {};
+        allSettings.forEach(s => settingsMap[s.key] = s.value);
 
-        let templateText = config?.template_text || 'Certificamos que {{nome_aluno}}, portador do CPF {{cpf_aluno}}, concluiu o curso de {{nome_curso}} com carga horária de {{carga_horaria}}h.';
+        let templateText = settingsMap['certificate_template_text'] || 'Certificamos que {{nome_aluno}}, portador do CPF {{cpf_aluno}}, concluiu o curso de {{nome_curso}} com carga horária de {{carga_horaria}}h.';
 
         // 2. Substituir variáveis
         templateText = templateText
@@ -47,15 +47,6 @@ export const generateCertificate = async ({ studentName, studentCpf, courseName,
             .replace(/\{\{cpf_aluno\}\}/g, studentCpf || 'Não informado')
             .replace(/\{\{nome_curso\}\}/g, courseName)
             .replace(/\{\{carga_horaria\}\}/g, hours);
-
-        // 3. Buscar assets visuais do sistema (background, logo)
-        const { data: settings } = await supabase
-            .from('system_settings')
-            .select('key, value')
-            .in('key', ['certificate_bg', 'site_logo']);
-        
-        const settingsMap = {};
-        settings?.forEach(s => settingsMap[s.key] = s.value);
 
         // 4. Iniciar PDF (Paisagem - A4)
         const doc = new jsPDF({

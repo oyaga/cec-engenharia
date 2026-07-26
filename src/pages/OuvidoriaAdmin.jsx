@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { complaintsApi } from '../services/site';
 import { Search, Filter, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export default function OuvidoriaAdmin() {
@@ -13,13 +13,8 @@ export default function OuvidoriaAdmin() {
 
   const fetchComplaints = async () => {
     try {
-      const { data, error } = await supabase
-        .from('complaints')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setComplaints(data || []);
+      const { complaints } = await complaintsApi.list();
+      setComplaints(complaints || []);
     } catch (error) {
       console.error('Erro ao buscar ouvidoria:', error.message);
     } finally {
@@ -66,7 +61,7 @@ export default function OuvidoriaAdmin() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {filtered.map(c => (
               <div key={c.id} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.5rem', background: '#fafafa' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
                   <div>
                     <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)' }}>{c.name || 'Anônimo'}</h3>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{c.phone || 'Sem contato'}</span>
@@ -75,7 +70,7 @@ export default function OuvidoriaAdmin() {
                     {new Date(c.created_at).toLocaleString('pt-BR')}
                   </div>
                 </div>
-                <p style={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.6 }}>{c.description}</p>
+                <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: '#334155', lineHeight: 1.6 }}>{c.description}</p>
               </div>
             ))}
           </div>

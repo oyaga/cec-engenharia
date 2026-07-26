@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldAlert, Send, Phone, User, MessageSquare, CheckCircle, AlertTriangle, AlertCircle } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
-import { supabase } from '../lib/supabaseClient';
+import { complaintsApi } from '../services/site';
 import EditableText from '../components/EditableText';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -27,16 +27,12 @@ const Complaint = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase
-      const { error } = await supabase
-        .from('complaints')
-        .insert([{
-          name: formData.name || 'Anônimo',
-          phone: formData.phone || 'Não informado',
-          description: formData.description
-        }]);
-
-      if (error) throw error;
+      // 1. Salvar via API pública
+      await complaintsApi.createPublic({
+        name: formData.name || 'Anônimo',
+        phone: formData.phone || 'Não informado',
+        description: formData.description
+      });
 
       // 2. Preparar mensagem do WhatsApp (Aviso DIRETO para Diretoria)
       const messageText = `*NOVO FEEDBACK/OUVIDORIA - CEC*%0A%0A*Nome:* ${formData.name || 'Anônimo'}%0A*Telefone:* ${formData.phone || 'Não informado'}%0A*Descrição:* ${formData.description}`;

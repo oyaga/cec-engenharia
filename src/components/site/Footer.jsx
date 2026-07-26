@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Camera, Facebook, Linkedin, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useEdit } from '../../context/EditContext';
-import { supabase } from '../../lib/supabase';
+import { leadsApi } from '../../services/site';
 import EditableText from './EditableText';
 import MapWidget from './MapWidget';
+import { formatBrazilianPhone } from '../../utils/phone';
 
 const Footer = () => {
   const { content, isEditing, updateContent } = useEdit();
@@ -21,7 +22,7 @@ const Footer = () => {
   };
 
   const handlePhoneChange = (val) => {
-    setNewsletterPhone(val);
+    setNewsletterPhone(formatBrazilianPhone(val));
     if (val.trim() || newsletterEmail.trim()) setValidationError('');
   };
 
@@ -37,17 +38,13 @@ const Footer = () => {
       const emailValue = newsletterEmail.trim() ? newsletterEmail.trim() : null;
       const phoneValue = newsletterPhone.trim() ? newsletterPhone.trim() : null;
 
-      const { error } = await supabase
-        .from('leads')
-        .upsert([{
-          name: 'Assinante Newsletter',
-          phone: phoneValue,
-          email: emailValue,
-          course_interest: 'Newsletter',
-          message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
-          status: 'novo'
-        }], { onConflict: 'phone' });
-      if (error) throw error;
+      await leadsApi.createPublic({
+        name: 'Assinante Newsletter',
+        phone: phoneValue,
+        email: emailValue,
+        course_interest: 'Newsletter',
+        message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
+      });
       setNewsletterStatus('success');
       setNewsletterEmail('');
       setNewsletterPhone('');
@@ -59,35 +56,9 @@ const Footer = () => {
     }
   };
 
+  const links_rapidos = footer.links_rapidos || [];
   const links_institucional = footer.links_institucional || [];
-
-  const routeForFooterLink = (item = {}) => {
-    const label = String(item.label || '').toLowerCase();
-    const url = String(item.url || '/').trim();
-    if (label.includes('treinamento') || label.includes('curso') || url === '/cursos') return '/#cursos';
-    if (label.includes('início') || label.includes('inicio') || label === 'home') return '/';
-    if (label.includes('sobre')) return '/sobre-nos';
-    if (label.includes('contato') || label.includes('fale')) return '/contato';
-    if (label.includes('ouvidoria')) return '/ouvidoria';
-    if (label.includes('privacidade')) return '/privacidade';
-    if (label.includes('termos')) return '/termos';
-    return url.startsWith('/') || url.startsWith('#') ? url : `/${url}`;
-  };
-
-  const handleFooterNavigation = (e, item) => {
-    const url = routeForFooterLink(item);
-    if (url === '/') window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (url.includes('#')) {
-      const targetId = url.split('#')[1];
-      const el = document.getElementById(targetId);
-      if (el) {
-        e.preventDefault();
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else if (url === window.location.pathname) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
+  const normalizeLink = (url = '/') => url === '/cursos' ? '/#cursos' : url;
 
   const handleAddLink = (key) => {
     const current = footer[key] || [];
@@ -181,8 +152,21 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={routeForFooterLink(item)}
-                    onClick={(e) => handleFooterNavigation(e, item)}
+                    to={normalizeLink(item.url)}
+                    onClick={(e) => {
+                      if (item.url === '/' || item.url === '#') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else if (normalizeLink(item.url).startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = normalizeLink(item.url).split('#')[1];
+                        const el = document.getElementById(targetId);
+                        if (el) {
+                          e.preventDefault();
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      } else if (item.url === window.location.pathname) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
                   >
                     {item.label}
                   </Link>
@@ -233,8 +217,21 @@ const Footer = () => {
                   </div>
                 ) : (
                   <Link 
-                    to={routeForFooterLink(item)}
-                    onClick={(e) => handleFooterNavigation(e, item)}
+                    to={normalizeLink(item.url)}
+                    onClick={(e) => {
+                      if (item.url === '/' || item.url === '#') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else if (normalizeLink(item.url).startsWith('/#') || item.url.startsWith('#')) {
+                        const targetId = normalizeLink(item.url).split('#')[1];
+                        const el = document.getElementById(targetId);
+                        if (el) {
+                          e.preventDefault();
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      } else if (item.url === window.location.pathname) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
                   >
                     {item.label}
                   </Link>
@@ -276,6 +273,8 @@ const Footer = () => {
                 value={newsletterPhone}
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 placeholder="WhatsApp (ou preencha o e-mail)" 
+                inputMode="numeric"
+                maxLength={15}
                 disabled={newsletterStatus === 'sending'}
                 style={{ padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1px solid var(--border)', outline: 'none', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
               />

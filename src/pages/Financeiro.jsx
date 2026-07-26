@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { studentsApi, classesApi, coursesApi } from '../services/academic'
+import { financialApi } from '../services/financial'
+import { enrollmentsApi } from '../services/site'
 import { useAuth } from '../contexts/AuthContext'
-import { asaasRequest } from '../services/asaas'
+import { searchPaymentsByRef, listAllPayments } from '../services/asaas'
 import { 
     CheckCircle, 
     Clock, 
@@ -59,9 +62,11 @@ export default function Financeiro() {
     const [receiptPreview, setReceiptPreview] = useState(null)
     const [savingExpense, setSavingExpense] = useState(false)
 
-    // Form inputs de Notas Fiscais (manter anterior)
+    // Form inputs de Notas Fiscais (registro fiscal manual)
     const [showNewNfForm, setShowNewNfForm] = useState(false)
-    const [newNf, setNewNf] = useState({ student: '', amount: '', issueDate: '' })
+    const [newNf, setNewNf] = useState({ cpf: '', name: '', class_label: '', amount: '', nf_number: '' })
+    const [invoices, setInvoices] = useState([])
+    const [savingNf, setSavingNf] = useState(false)
 
     // Modal de Zoom do Comprovante
     const [selectedReceipt, setSelectedReceipt] = useState(null)
@@ -77,13 +82,9 @@ export default function Financeiro() {
     const fetchSiteEnrollments = async () => {
         setLoadingEnrollments(true)
         try {
-            const { data, error } = await supabase
-                .from('enrollments')
-                .select('*')
-                .eq('status', 'pending_payment')
-                .order('created_at', { ascending: false })
-            if (error) throw error
-            setSiteEnrollments(data || [])
+            const { enrollments } = await enrollmentsApi.list()
+            const pending = (enrollments || []).filter(e => e.status === 'pending_payment' || e.status === 'pendente')
+            setSiteEnrollments(pending)
         } catch (err) {
             console.warn('Erro ao buscar inscrições pendentes do site:', err.message)
         } finally {
@@ -95,7 +96,7 @@ export default function Financeiro() {
         setCheckingAsaasId(enrollment.id)
         setAsaasPaymentInfo(null)
         try {
-            const response = await asaasRequest(`/payments?externalReference=${enrollment.id}`)
+            const response = await searchPaymentsByRef(enrollment.id)
             if (response && response.data && response.data.length > 0) {
                 const payment = response.data[0]
                 setAsaasPaymentInfo({
@@ -132,33 +133,8 @@ export default function Financeiro() {
 
         setProcessingEnrollmentId(enrollmentId)
         try {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-            if (!supabaseUrl) throw new Error('URL do Supabase não configurada no ambiente.')
-
-            const functionUrl = `${supabaseUrl}/functions/v1/asaas-webhook`
-
-            const payload = {
-                event: 'PAYMENT_RECEIVED',
-                payment: {
-                    externalReference: enrollmentId,
-                    id: asaasPaymentId || `manual_approve_${Date.now()}`
-                }
-            }
-
-            console.log('[Financeiro] Enviando aprovação manual para a Edge Function:', functionUrl, payload)
-
-            const response = await fetch(functionUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            })
-
-            if (!response.ok) {
-                const errorText = await response.text()
-                throw new Error(errorText || `Erro HTTP ${response.status}`)
-            }
+            // Aprovação manual: marca a inscrição como paga.
+            await enrollmentsApi.update(enrollmentId, 'paid')
 
             alert('Matrícula aprovada e processada com sucesso!')
             setShowAsaasDetailsModal(false)
@@ -204,65 +180,22 @@ export default function Financeiro() {
         try {
             // Chamar busca de inscrições pendentes em paralelo
             fetchSiteEnrollments()
-            // 1. Buscar Alunos
-            const { data: stdData } = await supabase
-                .from('students')
-                .select('*, classes(id, name, course_name)')
-                .order('created_at', { ascending: false })
-            
-            // 2. Buscar Turmas
-            const { data: clsData } = await supabase
-                .from('classes')
-                .select('*, students(count)')
+            // 1. Alunos, 2. Turmas, 3. Cursos LMS
+            const { students: stdData } = await studentsApi.list()
+            const { classes: clsData } = await classesApi.list()
+            const { courses: lmsData } = await coursesApi.list()
 
-            // 3. Buscar Cursos LMS
-            const { data: lmsData } = await supabase
-                .from('lms_courses')
-                .select('*, classes(id, students(count))')
-
-            // 4. Buscar Despesas reais da tabela expenses
-            const { data: expData, error: expErr } = await supabase
-                .from('expenses')
-                .select('*, classes(name)')
-                .order('due_date', { ascending: false })
-
-            // 5. Buscar Registros Financeiros Reais
-            const { data: finData, error: finErr } = await supabase
-                .from('financial_records')
-                .select('*, students(full_name)')
+            // 4. Despesas + 5. Registros financeiros + 6. Notas Fiscais
+            const { expenses: expData } = await financialApi.listExpenses()
+            const { records: finData } = await financialApi.listRecords()
+            const { invoices: nfData } = await financialApi.listInvoices()
 
             setClasses(clsData || [])
             setLmsCourses(lmsData || [])
-            setStudentsData(stdData || [])
+            setStudentsData((stdData || []).map(s => ({ ...s, classes: { id: s.turma_id, name: s.turma_name, course_name: s.turma_course } })))
             setFinancialRecords(finData || [])
-
-            // Se der erro ao ler despesas (tabela não criada ainda no Supabase), fazemos fallback
-            if (expErr) {
-                console.warn("Tabela expenses não encontrada ou sem acesso. Usando dados do fallback na sessão.")
-                // Fallback para despesas (tenta ler de financial_costs)
-                const { data: costsData } = await supabase
-                    .from('financial_costs')
-                    .select('*, classes(name)')
-                    .order('date_incurred', { ascending: false })
-
-                if (costsData) {
-                    const mappedExpenses = costsData.map(c => ({
-                        id: c.id,
-                        description: c.description,
-                        amount: Number(c.amount),
-                        due_date: c.date_incurred || new Date().toISOString().split('T')[0],
-                        category: 'Outros',
-                        status: c.status || 'pendente',
-                        receipt_base64: '',
-                        classes: c.classes
-                    }))
-                    setExpenses(mappedExpenses)
-                } else {
-                    setExpenses([])
-                }
-            } else {
-                setExpenses(expData || [])
-            }
+            setExpenses(expData || [])
+            setInvoices(nfData || [])
 
         } catch (error) {
             console.error("Erro geral no carregamento financeiro:", error)
@@ -276,7 +209,7 @@ export default function Financeiro() {
         setSyncing(true)
         try {
             console.log('[Financeiro] Buscando cobranças no Asaas...');
-            const response = await asaasRequest('/payments?limit=100')
+            const response = await listAllPayments()
             if (!response || !response.data) {
                 throw new Error('Formato de resposta inválido do Asaas.')
             }
@@ -286,15 +219,8 @@ export default function Financeiro() {
             let insertedCount = 0
 
             // Buscar registros locais de alunos e transações
-            const { data: localRecords, error: localErr } = await supabase
-                .from('financial_records')
-                .select('*')
-            if (localErr) throw localErr
-
-            const { data: students, error: stdErr } = await supabase
-                .from('students')
-                .select('*')
-            if (stdErr) throw stdErr
+            const { records: localRecords } = await financialApi.listRecords()
+            const { students } = await studentsApi.list()
 
             // Helper para mapear status do Asaas
             const mapStatus = (asaasStatus) => {
@@ -318,16 +244,15 @@ export default function Financeiro() {
 
                 if (existing) {
                     if (existing.status !== localStatus || existing.payment_method !== payment.billingType) {
-                        const { error: updErr } = await supabase
-                            .from('financial_records')
-                            .update({
+                        try {
+                            await financialApi.updateRecord(existing.id, {
                                 status: localStatus,
                                 payment_method: payment.billingType,
                                 amount: payment.value,
                                 total_value: payment.value
                             })
-                            .eq('id', existing.id)
-                        if (!updErr) updatedCount++
+                            updatedCount++
+                        } catch { /* ignora */ }
                     }
                 } else {
                     // Tentar achar o aluno associado pelo asaas_customer_id ou externalReference (se for o id do aluno)
@@ -339,10 +264,8 @@ export default function Financeiro() {
                     }
 
                     if (student) {
-                        // Inserir registro financeiro correspondente
-                        const { error: insErr } = await supabase
-                            .from('financial_records')
-                            .insert({
+                        try {
+                            await financialApi.createRecord({
                                 student_id: student.id,
                                 type: 'receita',
                                 category: 'matricula',
@@ -354,7 +277,8 @@ export default function Financeiro() {
                                 description: payment.description || `Cobrança do Asaas importada (${payment.billingType})`,
                                 date: payment.dateCreated || new Date().toISOString()
                             })
-                        if (!insErr) insertedCount++
+                            insertedCount++
+                        } catch { /* ignora */ }
                     }
                 }
 
@@ -371,14 +295,13 @@ export default function Financeiro() {
                     }
 
                     if (studentToUpdate.payment_status !== studentPaymentStatus || studentToUpdate.asaas_customer_id !== payment.customer) {
-                        await supabase
-                            .from('students')
-                            .update({
+                        try {
+                            await studentsApi.update(studentToUpdate.id, {
                                 payment_status: studentPaymentStatus,
                                 asaas_customer_id: payment.customer,
                                 asaas_payment_id: payment.id
                             })
-                            .eq('id', studentToUpdate.id)
+                        } catch { /* ignora */ }
                     }
                 }
             }
@@ -437,60 +360,6 @@ export default function Financeiro() {
                         originalRecord: record,
                         installmentIndex: 0
                     })
-                }
-            })
-        }
-
-        // Se o banco de dados não tem financial_records, geramos a simulação real baseada em students da tabela students
-        if (receipts.length === 0 && studentsData.length > 0) {
-            studentsData.forEach(student => {
-                const totalVal = student.base_value > 0 ? (student.base_value - (student.discount_value || 0)) : 3300
-                const paymentMethod = student.payment_method || 'PIX'
-                const courseName = student.classes?.course_name || 'Curso de Medição de Espessura (CD-MC)'
-                const className = student.classes?.name || 'Turma Presencial'
-                const dateBase = new Date(student.created_at)
-
-                // Simular 3 parcelas para PIX/Boleto e 1 parcela para Cartão à Vista
-                if (paymentMethod === 'Cartão de Crédito' || paymentMethod === 'Cartão') {
-                    receipts.push({
-                        id: `sim_${student.id}_0`,
-                        student: student.full_name,
-                        course: courseName,
-                        class: className,
-                        paymentMethod: paymentMethod,
-                        date: dateBase.toISOString().split('T')[0],
-                        amount: totalVal,
-                        status: 'pago' // Cartão compensa na hora
-                    })
-                } else {
-                    const partVal = totalVal / 3
-                    for (let idx = 0; idx < 3; idx++) {
-                        const dueDate = new Date(dateBase)
-                        dueDate.setMonth(dateBase.getMonth() + idx)
-
-                        // Mapear status coerentes baseados na data de vencimento
-                        let status = 'pendente'
-                        const today = new Date()
-                        today.setHours(0, 0, 0, 0)
-                        dueDate.setHours(0, 0, 0, 0)
-
-                        if (idx === 0) {
-                            status = 'pago' // A primeira é paga no ato da matrícula
-                        } else if (dueDate < today) {
-                            status = 'atrasado' // Vencida
-                        }
-
-                        receipts.push({
-                            id: `sim_${student.id}_${idx}`,
-                            student: student.full_name,
-                            course: courseName,
-                            class: className,
-                            paymentMethod: paymentMethod,
-                            date: dueDate.toISOString().split('T')[0],
-                            amount: partVal,
-                            status: status
-                        })
-                    }
                 }
             })
         }
@@ -624,30 +493,8 @@ export default function Financeiro() {
                 created_by: userProfile?.id || null
             }
 
-            const { data, error } = await supabase
-                .from('expenses')
-                .insert([payload])
-                .select()
-
-            if (error) {
-                console.error("Erro Supabase Expenses:", error)
-                // Se der erro por falta da tabela, salvamos em financial_costs como fallback de compatibilidade
-                const { error: costsError } = await supabase.from('financial_costs').insert([{
-                    description: newExpense.description,
-                    type: 'fixed',
-                    value: Number(newExpense.amount),
-                    amount: Number(newExpense.amount),
-                    status: 'pendente',
-                    date_incurred: newExpense.due_date,
-                    category: newExpense.category,
-                    class_id: newExpense.class_id || null
-                }])
-
-                if (costsError) throw costsError
-                alert('Despesa registrada e salva em custos gerais (fallback de banco)!')
-            } else {
-                alert('Despesa operacional registrada com sucesso na Nuvem!')
-            }
+            await financialApi.createExpense(payload)
+            alert('Despesa operacional registrada com sucesso!')
 
             // Limpar formulário e recarregar
             setNewExpense({
@@ -673,17 +520,7 @@ export default function Financeiro() {
     // Pagar despesa (Marcar Pago)
     const handlePayExpense = async (id, isFallback = false) => {
         try {
-            if (isFallback) {
-                const { error } = await supabase.from('financial_costs').update({ status: 'pago' }).eq('id', id)
-                if (error) throw error
-            } else {
-                const { error } = await supabase.from('expenses').update({ status: 'pago' }).eq('id', id)
-                if (error) {
-                    // Tenta atualizar na tabela de fallback
-                    const { error: errF } = await supabase.from('financial_costs').update({ status: 'pago' }).eq('id', id)
-                    if (errF) throw error
-                }
-            }
+            await financialApi.updateExpense(id, { status: 'pago' })
             alert('Pagamento da despesa efetivado no banco de dados!')
             fetchData()
         } catch (err) {
@@ -700,10 +537,7 @@ export default function Financeiro() {
                 const instIdx = parseInt(receipt.id.split('_')[2])
 
                 // Buscar se o aluno já tem um registro
-                const { data: records } = await supabase
-                    .from('financial_records')
-                    .select('*')
-                    .eq('student_id', studentId)
+                const { records } = await financialApi.listRecords(studentId)
 
                 if (records && records.length > 0) {
                     const record = records[0]
@@ -711,10 +545,7 @@ export default function Financeiro() {
                     if (currentInsts[instIdx]) {
                         currentInsts[instIdx].status = 'pago'
                     }
-                    await supabase
-                        .from('financial_records')
-                        .update({ installments: currentInsts })
-                        .eq('id', record.id)
+                    await financialApi.updateRecord(record.id, { installments: currentInsts })
                 } else {
                     // Criar um novo registro com as 3 parcelas, definindo a selecionada como paga
                     const studentObj = studentsData.find(s => s.id === studentId)
@@ -733,12 +564,12 @@ export default function Financeiro() {
                         })
                     }
 
-                    await supabase.from('financial_records').insert([{
+                    await financialApi.createRecord({
                         student_id: studentId,
                         total_value: totalVal,
                         payment_method: 'PIX',
                         installments: installments
-                    }])
+                    })
                 }
             } else {
                 // Registro real
@@ -748,10 +579,7 @@ export default function Financeiro() {
                 if (currentInsts[idx]) {
                     currentInsts[idx].status = 'pago'
                 }
-                await supabase
-                    .from('financial_records')
-                    .update({ installments: currentInsts })
-                    .eq('id', record.id)
+                await financialApi.updateRecord(record.id, { installments: currentInsts })
             }
 
             alert('PIX compensado e baixado no banco de dados com sucesso!')
@@ -923,7 +751,7 @@ export default function Financeiro() {
         
         return (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
                     <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid #EF4444', backgroundColor: '#FEF2F2' }}>
                         <span style={{ fontSize: '0.85rem', color: '#991B1B', fontWeight: '600' }}>Montante Total Inadimplente</span>
                         <h2 style={{ fontSize: '2rem', fontWeight: '700', color: '#991B1B', margin: '0.25rem 0' }}>{formatMoney(totalDelinquentVal)}</h2>
@@ -1005,7 +833,7 @@ export default function Financeiro() {
     // 💼 TAB 3: REGISTRO DE DESPESAS (EXPENSES)
     const renderExpensesTab = () => (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                 <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #F59E0B' }}>
                     <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: '500' }}>Despesas Pendentes (Mês)</span>
                     <h2 style={{ fontSize: '1.6rem', fontWeight: '700', color: '#F59E0B', margin: '0.2rem 0' }}>{formatMoney(expensesTotalPending)}</h2>
@@ -1421,10 +1249,39 @@ export default function Financeiro() {
         </div>
     )
 
+    // Registra uma Nota Fiscal manual, vinculando ao aluno pelo CPF quando possível.
+    const handleSaveNf = async () => {
+        if (savingNf) return
+        const amount = parseFloat(newNf.amount)
+        if (!amount || amount <= 0) { alert('Informe um valor válido para a NF.'); return }
+        setSavingNf(true)
+        try {
+            const cpfDigits = (newNf.cpf || '').replace(/\D/g, '')
+            const match = cpfDigits.length >= 11
+                ? studentsData.find(s => (s.cpf || '').replace(/\D/g, '') === cpfDigits)
+                : null
+            const payload = {
+                amount,
+                nf_number: newNf.nf_number ? String(newNf.nf_number) : null,
+                issue_date: new Date().toISOString(),
+            }
+            if (match) payload.student_id = match.id
+            await financialApi.createInvoice(payload)
+            await fetchData()
+            setNewNf({ cpf: '', name: '', class_label: '', amount: '', nf_number: '' })
+            setShowNewNfForm(false)
+            alert(`Nota Fiscal registrada com sucesso${match ? ` e vinculada ao aluno ${match.name}` : ''}.`)
+        } catch (err) {
+            alert('Erro ao registrar NF: ' + err.message)
+        } finally {
+            setSavingNf(false)
+        }
+    }
+
     // 🧾 TAB 6: NOTAS FISCAIS
     const renderNfTab = () => (
         <div className="card animate-fade-in" style={{ padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div>
                     <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Registro de Notas Fiscais</h3>
                     <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>Controle de emissões de NFs vinculadas às matrículas do CEC.</p>
@@ -1438,25 +1295,57 @@ export default function Financeiro() {
                 <div style={{ padding: '1.5rem', backgroundColor: '#FAF9F6', marginBottom: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                     <h4 style={{ marginBottom: '1rem', color: 'var(--primary)', fontSize: '0.95rem', fontWeight: '700' }}>Cadastrar Registro Fiscal Manual</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
-                        <div><label className="form-label">CPF Aluno</label><input type="text" className="form-control" placeholder="000.000.000-00" /></div>
-                        <div><label className="form-label">Nome Sacado</label><input type="text" className="form-control" /></div>
-                        <div><label className="form-label">Turma Vinculada</label><input type="text" className="form-control" /></div>
-                        <div><label className="form-label">Valor (R$)</label><input type="number" step="0.01" className="form-control" /></div>
-                        <div><label className="form-label">Número da NF</label><input type="text" className="form-control" placeholder="Ex: 2026154" /></div>
+                        <div><label className="form-label">CPF Aluno</label><input type="text" className="form-control" placeholder="000.000.000-00" value={newNf.cpf} onChange={e => setNewNf({ ...newNf, cpf: e.target.value })} /></div>
+                        <div><label className="form-label">Nome Sacado</label><input type="text" className="form-control" value={newNf.name} onChange={e => setNewNf({ ...newNf, name: e.target.value })} /></div>
+                        <div><label className="form-label">Turma Vinculada</label><input type="text" className="form-control" value={newNf.class_label} onChange={e => setNewNf({ ...newNf, class_label: e.target.value })} /></div>
+                        <div><label className="form-label">Valor (R$)</label><input type="number" step="0.01" className="form-control" value={newNf.amount} onChange={e => setNewNf({ ...newNf, amount: e.target.value })} /></div>
+                        <div><label className="form-label">Número da NF</label><input type="text" className="form-control" placeholder="Ex: 2026154" value={newNf.nf_number} onChange={e => setNewNf({ ...newNf, nf_number: e.target.value })} /></div>
                         <div>
-                            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => { alert('Nota Fiscal registrada e vinculada com sucesso no banco de dados!'); setShowNewNfForm(false) }}>
-                                Salvar NF
+                            <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={handleSaveNf} disabled={savingNf}>
+                                {savingNf ? 'Salvando...' : 'Salvar NF'}
                             </button>
                         </div>
                     </div>
+                    <p className="text-muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0 0' }}>
+                        O registro é vinculado automaticamente ao aluno quando o CPF corresponde a um cadastro existente.
+                    </p>
                 </div>
             )}
 
-            <div style={{ backgroundColor: '#eff6ff', border: '1px dashed #3B82F6', borderRadius: 'var(--radius-md)', padding: '3rem', textAlign: 'center', color: '#1E40AF' }}>
-                <Receipt size={48} style={{ opacity: 0.5, marginBottom: '1rem', margin: '0 auto' }} />
-                <p style={{ fontWeight: 600, margin: '0 0 4px 0' }}>Tudo sincronizado!</p>
-                <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>Todas as notas fiscais deste mês foram processadas automaticamente pela automação do Asaas.</p>
-            </div>
+            {invoices.length === 0 ? (
+                <div style={{ backgroundColor: '#eff6ff', border: '1px dashed #3B82F6', borderRadius: 'var(--radius-md)', padding: '3rem', textAlign: 'center', color: '#1E40AF' }}>
+                    <Receipt size={48} style={{ opacity: 0.5, marginBottom: '1rem', margin: '0 auto' }} />
+                    <p style={{ fontWeight: 600, margin: '0 0 4px 0' }}>Nenhuma nota fiscal registrada</p>
+                    <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>Use "Emitir Nova NF" para lançar um registro fiscal manual vinculado a uma matrícula.</p>
+                </div>
+            ) : (
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                <th style={{ padding: '0.75rem 1rem' }}>Nº NF</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>Aluno</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>Emissão</th>
+                                <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {invoices.map(nf => {
+                                const st = studentsData.find(s => s.id === nf.student_id)
+                                const when = nf.issue_date || nf.created_at
+                                return (
+                                    <tr key={nf.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
+                                        <td style={{ padding: '1rem', fontWeight: 500 }}>{nf.nf_number || '—'}</td>
+                                        <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{st ? st.name : 'Não vinculado'}</td>
+                                        <td style={{ padding: '1rem' }}>{when ? new Date(when).toLocaleDateString('pt-BR') : '—'}</td>
+                                        <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 600 }}>R$ {Number(nf.amount || 0).toFixed(2)}</td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     )
 
@@ -1464,7 +1353,7 @@ export default function Financeiro() {
     const renderSiteCheckoutTab = () => {
         return (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
                     <div className="card" style={{ padding: '1.5rem', borderLeft: '4px solid var(--primary)', backgroundColor: '#EFF6FF' }}>
                         <span style={{ fontSize: '0.85rem', color: '#1E40AF', fontWeight: '600' }}>Inscrições Pendentes (Site)</span>
                         <h2 style={{ fontSize: '2rem', fontWeight: '700', color: '#1E40AF', margin: '0.25rem 0' }}>{siteEnrollments.length}</h2>
@@ -1597,10 +1486,10 @@ export default function Financeiro() {
                     <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Central Financeira & BI</h2>
                     <p className="text-muted" style={{ fontSize: '0.85rem', margin: '4px 0 0 0' }}>Central de fluxo de caixa, despesas operacionais e acompanhamento tributário da C&C.</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                     {isGerencial && (
-                        <button 
-                            className="btn btn-secondary" 
+                        <button
+                            className="btn btn-secondary"
                             onClick={syncAsaasPayments}
                             disabled={syncing}
                             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
@@ -1640,9 +1529,9 @@ export default function Financeiro() {
             {activeTab === 'site_checkout' && renderSiteCheckoutTab()}
 
             {/* Modal de Zoom do Comprovante */}
-            {selectedReceipt && (
-                <div style={{ 
-                    position: 'fixed', 
+            {selectedReceipt && createPortal((
+                <div style={{
+                    position: 'fixed',
                     top: 0, 
                     left: 0, 
                     right: 0, 
@@ -1651,14 +1540,16 @@ export default function Financeiro() {
                     display: 'flex', 
                     justifyContent: 'center', 
                     alignItems: 'center', 
-                    zIndex: 9999, 
-                    padding: '2rem' 
+                    zIndex: 9999,
+                    padding: '1rem'
                 }}>
-                    <div className="card animate-scale-up" style={{ 
-                        backgroundColor: 'white', 
-                        padding: '2rem', 
-                        maxWidth: '650px', 
-                        width: '100%', 
+                    <div className="card animate-scale-up" style={{
+                        backgroundColor: 'white',
+                        padding: '2rem',
+                        maxWidth: '650px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
                         borderRadius: '12px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1733,12 +1624,12 @@ export default function Financeiro() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* Modal de Detalhes da Cobrança Asaas */}
-            {showAsaasDetailsModal && asaasPaymentInfo && (
-                <div style={{ 
-                    position: 'fixed', 
+            {showAsaasDetailsModal && asaasPaymentInfo && createPortal((
+                <div style={{
+                    position: 'fixed',
                     top: 0, 
                     left: 0, 
                     right: 0, 
@@ -1747,14 +1638,16 @@ export default function Financeiro() {
                     display: 'flex', 
                     justifyContent: 'center', 
                     alignItems: 'center', 
-                    zIndex: 9999, 
-                    padding: '2rem' 
+                    zIndex: 9999,
+                    padding: '1rem'
                 }}>
-                    <div className="card animate-scale-up" style={{ 
-                        backgroundColor: 'white', 
-                        padding: '2rem', 
-                        maxWidth: '550px', 
-                        width: '100%', 
+                    <div className="card animate-scale-up" style={{
+                        backgroundColor: 'white',
+                        padding: '2rem',
+                        maxWidth: '550px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
                         borderRadius: '12px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1939,7 +1832,7 @@ export default function Financeiro() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

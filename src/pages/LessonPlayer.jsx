@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PDFDocument, rgb, degrees } from 'pdf-lib'
-import { supabase } from '../lib/supabase'
+import { lmsApi } from '../services/lms'
+import { classesApi, studentsApi, attendanceApi } from '../services/academic'
+import { uploadFile } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import { 
     ChevronLeft, 
@@ -56,53 +59,13 @@ export default function LessonPlayer() {
     const [showNewTopicForm, setShowNewTopicForm] = useState(false)
     const [forumError, setForumError] = useState(false)
 
-    // Mocks realistas para o Fórum
+    // Fórum: sem dados fabricados (retorna vazio quando não há dados reais)
     const getMockForumData = () => {
-        return [
-            {
-                id: 'topic-1',
-                title: 'Calibração e Zeramento de Micrômetro',
-                content: 'Gostaria de saber qual o procedimento ideal para fazer o zeramento correto do micrômetro no padrão de 25mm antes de medir tubulações de alta pressão nas aulas práticas.',
-                created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-                replies_count: 2,
-                student: { full_name: 'Carlos Adriano Macias' }
-            },
-            {
-                id: 'topic-2',
-                title: 'Tolerâncias de Concentricidade - Norma Abendi PR-127',
-                content: 'Qual a tolerância de concentricidade máxima admissível para flanges de caldeiraria fina nas avaliações oficiais de homologação da Abendi?',
-                created_at: new Date(Date.now() - 3600000 * 48).toISOString(),
-                replies_count: 1,
-                student: { full_name: 'Patrícia Mendes Abreu' }
-            }
-        ]
+        return []
     }
 
-    const getMockReplies = (topicId) => {
-        if (topicId === 'topic-1') {
-            return [
-                {
-                    id: 'rep-1',
-                    content: 'Carlos, o ideal é limpar as faces de medição com um papel de precisão livre de fiapos, ajustar no padrão de calibração, travar e verificar se o traço coincidiu exatamente com a linha de referência do tambor.',
-                    created_at: new Date(Date.now() - 3600000 * 20).toISOString(),
-                    author: { full_name: 'Juliana Vieira Costa', role: 'student' }
-                },
-                {
-                    id: 'rep-2',
-                    content: 'Excelente, Juliana! Lembre-se também, Carlos, de que a calibração deve ser feita com o micrômetro fixado em um suporte isolado para evitar a dilatação térmica provocada pelo calor das mãos no arco do instrumento. Isso garante a precisão de milésimos exigida na norma Abendi PR-127.',
-                    created_at: new Date(Date.now() - 3600000 * 18).toISOString(),
-                    author: { full_name: 'Marcos Silva (Instrutor)', role: 'instrutor' }
-                }
-            ]
-        }
-        return [
-            {
-                id: 'rep-3',
-                content: 'Patrícia, as tolerâncias de concentricidade são baseadas na classe de pressão do flange (geralmente entre 0.05mm e 0.10mm). Você deve utilizar o relógio comparador fixado magneticamente na mesa de desempeno para aferir com exatidão durante a prova.',
-                created_at: new Date(Date.now() - 3600000 * 40).toISOString(),
-                author: { full_name: 'Marcos Silva (Instrutor)', role: 'instrutor' }
-            }
-        ]
+    const getMockReplies = () => {
+        return []
     }
     
     const timerRef = useRef(null)
@@ -173,135 +136,108 @@ export default function LessonPlayer() {
         if (!session?.user?.id) return
         setLoading(true)
         try {
-            // Buscar detalhes da aula atual
-            const { data: lessonData } = await supabase
-                .from('lms_lessons')
-                .select('*, lms_modules(title, course_id, lms_courses(title))')
-                .eq('id', lessonId)
-                .maybeSingle()
-            
+            // Detalhes da aula + módulo/curso
+            const { lesson: lessonData, module: mod, course: crs } = await lmsApi.lessonDetail(lessonId)
+
             if (lessonData) {
                 setLesson(lessonData)
-                setCourse(lessonData.lms_modules.lms_courses)
-                
-                // Buscar todas as aulas do curso
-                const { data: lessons } = await supabase
-                    .from('lms_lessons')
-                    .select('*, module_id')
-                    .order('order_index', { ascending: true })
-                
+                setCourse(crs || null)
+                const courseId = mod?.course_id
+
+                // Todas as aulas do curso
+                const { lessons } = await lmsApi.courseLessons(courseId)
                 setAllLessons(lessons || [])
 
-                // Buscar todos os quizzes do curso
-                const { data: qzs } = await supabase
-                    .from('lms_quizzes')
-                    .select('*')
-                    .eq('course_id', lessonData.lms_modules.course_id)
+                // Quizzes do curso
+                const { quizzes: qzs } = await lmsApi.courseQuizzesStudent(courseId)
                 setCourseQuizzes(qzs || [])
 
-                // Buscar resultados dos quizzes do aluno
-                const { data: qres } = await supabase
-                    .from('lms_quiz_results')
-                    .select('*')
-                    .eq('student_id', session.user.id)
-                
+                // Resultados dos quizzes do aluno
+                const { results: qres } = await lmsApi.results({})
                 const qMap = {}
-                qres?.forEach(r => qMap[r.quiz_id] = { 
-                    is_approved: r.is_approved, 
-                    score: r.score,
-                    attempts_count: r.attempts_count 
+                qres?.forEach(r => {
+                    const current = qMap[r.quiz_id] || { is_approved: false, score: 0, attempts_count: 0 }
+                    qMap[r.quiz_id] = {
+                        is_approved: current.is_approved || r.is_approved,
+                        score: Math.max(current.score, r.score || 0),
+                        attempts_count: Math.max(current.attempts_count, r.attempts_count || 0)
+                    }
                 })
                 setQuizStatus(qMap)
 
-                // Buscar progresso do aluno para todas as aulas do curso
-                const { data: progress } = await supabase
-                    .from('lms_student_progress')
-                    .select('*')
-                    .eq('student_id', session.user.id)
-                
+                // Progresso do aluno
+                const { progress } = await lmsApi.progress()
                 const statusMap = {}
-                progress?.forEach(p => {
-                    statusMap[p.lesson_id] = { is_completed: p.is_completed, watched_seconds: p.watched_seconds }
-                })
+                progress?.forEach(p => { statusMap[p.lesson_id] = { is_completed: p.is_completed, watched_seconds: p.watched_seconds } })
                 setLessonStatus(statusMap)
-
                 if (statusMap[lessonId]) {
                     setSecondsWatched(statusMap[lessonId]?.watched_seconds || 0)
                     setIsCompleted(statusMap[lessonId]?.is_completed || false)
                 }
 
-                // Buscar dados do estudante (turma_id e studentId) para aula presencial e upload
-                try {
-                    const { data: studentsData } = await supabase
-                        .from('students')
-                        .select('id, turma_id')
-                        .eq('user_id', session.user.id)
-                        .maybeSingle()
+                // TRAVA SEQUENCIAL (acesso direto por URL / botão "próxima"):
+                // se a aula pedida está bloqueada porque a anterior não foi
+                // concluída, redireciona para a próxima aula liberada.
+                const reqIdx = (lessons || []).findIndex(l => l.id === lessonId)
+                const previousLesson = reqIdx > 0 ? lessons[reqIdx - 1] : null
+                const previousExercise = previousLesson ? (qzs || []).find(q => q.quiz_type === 'exercise' && q.lesson_id === previousLesson.id) : null
+                const previousReady = !previousLesson || (statusMap[previousLesson.id]?.is_completed && (!previousExercise || qMap[previousExercise.id]?.attempts_count > 0))
+                if (reqIdx > 0 && !previousReady) {
+                    let allowedIdx = 0
+                    while (allowedIdx < lessons.length - 1) {
+                        const allowedLesson = lessons[allowedIdx]
+                        const exercise = (qzs || []).find(q => q.quiz_type === 'exercise' && q.lesson_id === allowedLesson.id)
+                        if (!statusMap[allowedLesson.id]?.is_completed || (exercise && !qMap[exercise.id]?.attempts_count)) break
+                        allowedIdx++
+                    }
+                    const target = lessons[allowedIdx]
+                    if (target && target.id !== lessonId && courseId) {
+                        navigate(`/curso/${courseId}/aula/${target.id}`, { replace: true })
+                        return
+                    }
+                }
 
+                // Dados do estudante (turma/prática/upload)
+                try {
+                    const { students } = await studentsApi.list({ user_id: session.user.id })
+                    const studentsData = students && students[0]
                     if (studentsData) {
                         setStudentId(studentsData.id)
                         setTurmaId(studentsData.turma_id)
-                        
-                        // Buscar histórico de presença para cálculo de frequência prática do aluno
+
                         if (studentsData.turma_id) {
-                            const { data: attData } = await supabase
-                                .from('attendance_records')
-                                .select('*')
-                                .eq('student_id', studentsData.id)
-                            
+                            const { attendance: attData } = await attendanceApi.list({ student_id: studentsData.id })
                             if (attData && attData.length > 0) {
                                 const datasUnicas = Array.from(new Set(attData.map(a => a.created_at?.split('T')[0])))
                                 const totalDadas = datasUnicas.length
-                                const presencas = attData.filter(a => 
-                                    a.class_id === studentsData.turma_id && (a.status === 'presente' || a.status === 'falta_justificada')
-                                ).length
-                                const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100
-                                setFrequenciaPratica(freq)
+                                const presencas = attData.filter(a => a.class_id === studentsData.turma_id && (a.status === 'presente' || a.status === 'falta_justificada')).length
+                                setFrequenciaPratica(totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100)
                             } else {
-                                setFrequenciaPratica(100) // Default 100% se nenhuma chamada foi lançada ainda
+                                setFrequenciaPratica(100)
                             }
                         }
-                        
-                        // Se for aula do tipo presencial, buscar os detalhes da aula prática
+
                         if (lessonData.type === 'presencial' && studentsData.turma_id) {
-                            const { data: turmaData } = await supabase
-                                .from('upcoming_classes')
-                                .select('*, lms_courses(title)')
-                                .eq('id', studentsData.turma_id)
-                                .maybeSingle()
-                            
+                            const { classes } = await classesApi.list()
+                            const turmaData = (classes || []).find(cl => cl.id === studentsData.turma_id)
                             if (turmaData) {
                                 setUpcomingPractical(turmaData)
-                                
-                                // Verificar presenca
-                                const { data: attendanceCheck } = await supabase
-                                    .from('attendance_records')
-                                    .select('id')
-                                    .eq('student_id', studentsData.id)
-                                    .eq('class_id', studentsData.turma_id)
-                                    .maybeSingle()
-                                
-                                setHasConfirmedAttendance(!!attendanceCheck)
+                                const { attendance } = await attendanceApi.list({ student_id: studentsData.id, class_id: studentsData.turma_id })
+                                setHasConfirmedAttendance(!!(attendance && attendance.length > 0))
                             }
                         }
                     }
                 } catch (stErr) {
-                    console.warn("Erro ao buscar dados do estudante, presença ou aula presencial:", stErr.message)
+                    console.warn("Erro ao buscar dados do estudante:", stErr.message)
                 }
 
-                // Se for aula do tipo tarefa, buscar se ja existe submissao
+                // Tarefa: submissão existente
                 if (lessonData.type === 'tarefa') {
                     try {
-                        const { data: submission } = await supabase
-                            .from('task_submissions')
-                            .select('*')
-                            .eq('student_id', session.user.id)
-                            .eq('lesson_id', lessonId)
-                            .maybeSingle()
-                        
+                        const { submission } = await lmsApi.taskSubmission(lessonId)
                         setTaskSubmission(submission)
                     } catch (taskErr) {
-                        console.warn("Erro ao buscar submissao da tarefa:", taskErr.message)
+                        console.warn("Erro ao buscar submissão da tarefa:", taskErr.message)
                     }
                 }
 
@@ -318,17 +254,12 @@ export default function LessonPlayer() {
         if (!studentId || !upcomingPractical) return;
         
         try {
-            const { error } = await supabase
-                .from('attendance_records')
-                .insert([{
-                    student_id: studentId,
-                    class_id: upcomingPractical.id,
-                    status: 'presente',
-                    confirmed_by_student: true,
-                    created_at: new Date().toISOString()
-                }]);
-
-            if (error) throw error;
+            await attendanceApi.create({
+                student_id: studentId,
+                class_id: upcomingPractical.id,
+                status: 'presente',
+                confirmed_by_student: true,
+            });
 
             setHasConfirmedAttendance(true);
             
@@ -351,36 +282,8 @@ export default function LessonPlayer() {
 
         setUploading(true);
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${session.user.id}_task_${lessonId}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const filePath = `tasks/${session.user.id}/${lessonId}/${fileName}`;
-
-            // Fazer upload para o bucket student_documents do Supabase
-            const { error: uploadError } = await supabase.storage
-                .from('student_documents')
-                .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
-
-            // Obter a URL pública do arquivo
-            const { data: { publicUrl } } = supabase.storage
-                .from('student_documents')
-                .getPublicUrl(filePath);
-
-            // Upsert na tabela task_submissions
-            const { data: subData, error: updateError } = await supabase
-                .from('task_submissions')
-                .upsert({
-                    student_id: session.user.id,
-                    lesson_id: lessonId,
-                    file_url: publicUrl,
-                    status: 'enviado',
-                    submitted_at: new Date().toISOString()
-                }, { onConflict: ['student_id', 'lesson_id'] })
-                .select()
-                .maybeSingle();
-
-            if (updateError) throw updateError;
+            const { url: publicUrl } = await uploadFile(file, `tasks`);
+            const { submission: subData } = await lmsApi.submitTask(lessonId, publicUrl);
 
             setTaskSubmission(subData || {
                 student_id: session.user.id,
@@ -406,30 +309,20 @@ export default function LessonPlayer() {
     }
 
     const fetchQuestions = async () => {
-        const { data } = await supabase
-            .from('lms_lesson_questions')
-            .select('*, student:users!student_id(full_name)')
-            .eq('lesson_id', lessonId)
-            .order('created_at', { ascending: false })
-        if (data) setLessonQuestions(data)
+        try {
+            const { doubts } = await lmsApi.lessonDoubts(lessonId)
+            setLessonQuestions(doubts || [])
+        } catch { setLessonQuestions([]) }
     }
 
     const handleSubmitQuestion = async () => {
         if (!newQuestion.trim()) return
-        
-        const { error } = await supabase
-            .from('lms_lesson_questions')
-            .insert([{
-                lesson_id: lessonId,
-                student_id: session.user.id,
-                question_text: newQuestion
-            }])
-        
-        if (!error) {
+        try {
+            await lmsApi.createDoubt({ lesson_id: lessonId, question_text: newQuestion })
             setNewQuestion('')
             fetchQuestions()
-        } else {
-            alert('Erro ao enviar pergunta: ' + error.message)
+        } catch (err) {
+            alert('Erro ao enviar pergunta: ' + err.message)
         }
     }
 
@@ -439,29 +332,8 @@ export default function LessonPlayer() {
         setForumLoading(true)
         setForumError(false)
         try {
-            // 1. Buscar tópicos do fórum
-            const { data: topics, error: topicsErr } = await supabase
-                .from('lms_forum_topics')
-                .select('*, student:users!student_id(id, full_name, email, role)')
-                .eq('lesson_id', lId)
-                .order('created_at', { ascending: false })
-
-            if (topicsErr) throw topicsErr
-
-            // 2. Buscar contagem de respostas de cada tópico
-            const topicsWithCount = await Promise.all((topics || []).map(async (t) => {
-                const { count, error: countErr } = await supabase
-                    .from('lms_forum_replies')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('topic_id', t.id)
-                
-                return {
-                    ...t,
-                    replies_count: count || 0
-                }
-            }))
-
-            setForumTopics(topicsWithCount)
+            const { topics } = await lmsApi.lessonForum(lId)
+            setForumTopics((topics || []).map(t => ({ ...t, replies_count: t.replies_count || 0 })))
         } catch (err) {
             console.warn("Erro ao buscar tópicos do fórum (usando fallbacks resilientes):", err.message)
             setForumTopics(getMockForumData())
@@ -475,13 +347,7 @@ export default function LessonPlayer() {
         if (!topicId) return
         setRepliesLoading(true)
         try {
-            const { data: replies, error: repErr } = await supabase
-                .from('lms_forum_replies')
-                .select('*, author:users!author_id(id, full_name, email, role)')
-                .eq('topic_id', topicId)
-                .order('created_at', { ascending: true })
-
-            if (repErr) throw repErr
+            const { replies } = await lmsApi.topicReplies(topicId)
             setTopicReplies(replies || [])
         } catch (err) {
             console.warn("Erro ao buscar respostas do fórum (usando fallbacks resilientes):", err.message)
@@ -496,19 +362,12 @@ export default function LessonPlayer() {
         if (!newTopicTitle.trim() || !newTopicContent.trim() || !session?.user?.id || !lessonId) return
 
         try {
-            const { data, error } = await supabase
-                .from('lms_forum_topics')
-                .insert([{
-                    lesson_id: lessonId,
-                    student_id: session.user.id,
-                    title: newTopicTitle.trim(),
-                    content: newTopicContent.trim(),
-                    created_at: new Date().toISOString()
-                }])
-                .select('*, student:users!student_id(id, full_name, email, role)')
-                .maybeSingle()
-
-            if (error) throw error
+            await lmsApi.createTopic({
+                lesson_id: lessonId,
+                student_id: session.user.id,
+                title: newTopicTitle.trim(),
+                content: newTopicContent.trim(),
+            })
 
             setNewTopicTitle('')
             setNewTopicContent('')
@@ -516,21 +375,8 @@ export default function LessonPlayer() {
             fetchForumTopics(lessonId)
             alert('Novo tópico de debate criado com sucesso no fórum da lição!')
         } catch (err) {
-            console.error("Erro ao criar tópico no Supabase, registrando mock local:", err)
-            // Fallback local
-            const localNewTopic = {
-                id: `topic-${Date.now()}`,
-                title: newTopicTitle.trim(),
-                content: newTopicContent.trim(),
-                created_at: new Date().toISOString(),
-                replies_count: 0,
-                student: { full_name: session?.user?.email?.split('@')[0] || 'Aluno' }
-            }
-            setForumTopics(prev => [localNewTopic, ...prev])
-            setNewTopicTitle('')
-            setNewTopicContent('')
-            setShowNewTopicForm(false)
-            alert('Tópico registrado com sucesso (Modo Resiliente ativado)!')
+            console.error("Erro ao criar tópico no fórum:", err)
+            alert('Erro ao criar tópico: ' + (err.message || 'tente novamente.'))
         }
     }
 
@@ -539,34 +385,18 @@ export default function LessonPlayer() {
         if (!newReplyContent.trim() || !selectedTopic || !session?.user?.id) return
 
         try {
-            const { data, error } = await supabase
-                .from('lms_forum_replies')
-                .insert([{
-                    topic_id: selectedTopic.id,
-                    author_id: session.user.id,
-                    content: newReplyContent.trim(),
-                    created_at: new Date().toISOString()
-                }])
-                .select('*, author:users!author_id(id, full_name, email, role)')
-                .maybeSingle()
-
-            if (error) throw error
+            await lmsApi.createReply({
+                topic_id: selectedTopic.id,
+                author_id: session.user.id,
+                content: newReplyContent.trim(),
+            })
 
             setNewReplyContent('')
             fetchTopicReplies(selectedTopic.id)
             setForumTopics(prev => prev.map(t => t.id === selectedTopic.id ? { ...t, replies_count: t.replies_count + 1 } : t))
         } catch (err) {
-            console.error("Erro ao inserir resposta no Supabase, registrando mock local:", err)
-            // Fallback local
-            const localNewReply = {
-                id: `rep-${Date.now()}`,
-                content: newReplyContent.trim(),
-                created_at: new Date().toISOString(),
-                author: { full_name: session?.user?.email?.split('@')[0] || 'Aluno', role: 'student' }
-            }
-            setTopicReplies(prev => [...prev, localNewReply])
-            setNewReplyContent('')
-            setForumTopics(prev => prev.map(t => t.id === selectedTopic.id ? { ...t, replies_count: t.replies_count + 1 } : t))
+            console.error("Erro ao inserir resposta no fórum:", err)
+            alert('Erro ao enviar resposta: ' + (err.message || 'tente novamente.'))
         }
     }
 
@@ -690,39 +520,10 @@ export default function LessonPlayer() {
 
     const saveProgress = async (seconds, completed) => {
         if (!session?.user?.id || !lessonId) return
-        
-        const { error } = await supabase
-            .from('lms_student_progress')
-            .upsert({
-                student_id: session.user.id,
-                lesson_id: lessonId,
-                watched_seconds: seconds,
-                is_completed: completed,
-                last_accessed: new Date().toISOString()
-            }, { onConflict: ['student_id', 'lesson_id'] })
-
-        // Sincronizar porcentagem de progresso real na tabela 'students'
-        if (!error && studentId && allLessons.length > 0) {
-            try {
-                const { data: currentProgress } = await supabase
-                    .from('lms_student_progress')
-                    .select('lesson_id, is_completed')
-                    .eq('student_id', session.user.id)
-                    .eq('is_completed', true)
-                
-                const completedCount = allLessons.filter(l => 
-                    (l.id === lessonId && completed) || currentProgress?.some(p => p.lesson_id === l.id)
-                ).length
-                
-                const percentage = Math.round((completedCount / allLessons.length) * 100)
-                
-                await supabase
-                    .from('students')
-                    .update({ progress_percent: percentage })
-                    .eq('id', studentId)
-            } catch (err) {
-                console.error("Erro ao sincronizar progress_percent no banco:", err)
-            }
+        try {
+            await lmsApi.saveProgress({ lesson_id: lessonId, watched_seconds: seconds, is_completed: completed })
+        } catch (err) {
+            console.error("Erro ao salvar progresso:", err)
         }
     }
 
@@ -734,12 +535,27 @@ export default function LessonPlayer() {
         timerRef.current = setInterval(() => {
             setSecondsWatched(prev => {
                 const next = prev + 1
-                const completed = lesson.min_watch_time_sec > 0 && next >= lesson.min_watch_time_sec
+                const completed = !lesson.min_watch_time_sec || next >= lesson.min_watch_time_sec
                 
                 if (completed && !isCompleted) {
                     setIsCompleted(true)
+                    setLessonStatus(current => ({
+                        ...current,
+                        [lessonId]: {
+                            ...(current[lessonId] || {}),
+                            is_completed: true,
+                            watched_seconds: next,
+                        },
+                    }))
                     saveProgress(next, true)
                 } else if (next % 10 === 0) { // Salvar progresso da aula a cada 10 segundos
+                    setLessonStatus(current => ({
+                        ...current,
+                        [lessonId]: {
+                            ...(current[lessonId] || {}),
+                            watched_seconds: next,
+                        },
+                    }))
                     saveProgress(next, isCompleted)
                 }
 
@@ -765,12 +581,7 @@ export default function LessonPlayer() {
     const logStudyTime = async (seconds) => {
         if (!session?.user?.id || !lessonId) return
         try {
-            await supabase.from('lms_time_logs').insert([{
-                student_id: session.user.id,
-                course_id: course.id,
-                lesson_id: lessonId,
-                duration_seconds: seconds
-            }])
+            await lmsApi.logTime({ course_id: course?.id || null, lesson_id: lessonId, duration_seconds: seconds })
         } catch (e) {
             console.error("Erro ao registrar heartbeat:", e)
         }
@@ -800,13 +611,17 @@ export default function LessonPlayer() {
     const isImageUrl = (url) => {
         if (!url) return false
         const cleanPath = url.split('?')[0].toLowerCase()
-        return cleanPath.endsWith('.png') || 
-               cleanPath.endsWith('.jpg') || 
-               cleanPath.endsWith('.jpeg') || 
-               cleanPath.endsWith('.webp') || 
+        return cleanPath.endsWith('.png') ||
+               cleanPath.endsWith('.jpg') ||
+               cleanPath.endsWith('.jpeg') ||
+               cleanPath.endsWith('.webp') ||
                cleanPath.endsWith('.gif') ||
                cleanPath.endsWith('.svg')
     }
+
+    // Arquivo de vídeo direto (upload local): usa <video> nativo em vez de
+    // iframe — controles, seek e fullscreen funcionam sem depender de embed.
+    const isDirectVideo = (url) => /\.(mp4|webm|ogg)(\?|$)/i.test((url || '').split('#')[0])
 
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Carregando aula...</div>
     if (!lesson) return <div style={{ padding: '2rem', textAlign: 'center' }}>Aula não encontrada.</div>
@@ -816,8 +631,18 @@ export default function LessonPlayer() {
         : 100
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', height: 'calc(100vh - 120px)', backgroundColor: '#0f172a' }}>
+        <div className="lesson-player-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', height: 'calc(100vh - 120px)', backgroundColor: '#0f172a' }}>
             <style>{`
+                @media (max-width: 768px) {
+                    .lesson-player-grid {
+                        grid-template-columns: 1fr !important;
+                        height: auto !important;
+                    }
+                    .lesson-player-sidebar {
+                        border-left: none !important;
+                        border-top: 1px solid #334155 !important;
+                    }
+                }
                 .pdf-fullscreen-container:fullscreen {
                     width: 100vw !important;
                     height: 100vh !important;
@@ -861,12 +686,22 @@ export default function LessonPlayer() {
                         <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', backgroundColor: 'black', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', border: '1px solid #1e293b' }}>
                             {lesson.video_url ? (
                                 <>
-                                    <iframe 
+                                    {isDirectVideo(lesson.video_url) ? (
+                                        <video
+                                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'black' }}
+                                            src={lesson.video_url}
+                                            controls
+                                            controlsList="nodownload"
+                                            playsInline
+                                        />
+                                    ) : (
+                                    <iframe
                                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
                                         src={formatVideoUrl(lesson.video_url)}
                                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                         allowFullScreen
                                     ></iframe>
+                                    )}
                                     
                                     {/* Marca d'água flutuante dinâmica sobre o vídeo */}
                                     <div style={{
@@ -1434,17 +1269,32 @@ export default function LessonPlayer() {
                 <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
                     <button 
                         onClick={() => {
+                            if (!isCompleted) return
+                            const lessonExercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === lessonId)
+                            if (lessonExercise && !quizStatus[lessonExercise.id]?.attempts_count) {
+                                navigate(`/exame/${lessonExercise.id}`)
+                                return
+                            }
                             const currentIndex = allLessons.findIndex(l => l.id === lessonId)
                             if (currentIndex < allLessons.length - 1) {
                                 navigate(`/curso/${courseId}/aula/${allLessons[currentIndex+1].id}`)
                             } else {
-                                setShowCompletionModal(true)
+                                const finalExam = courseQuizzes.find(q => q.quiz_type === 'final_exam')
+                                if (finalExam && !quizStatus[finalExam.id]?.is_approved) navigate(`/exame/${finalExam.id}`)
+                                else setShowCompletionModal(true)
                             }
                         }}
                         className="btn btn-primary"
-                        style={{ padding: '0.75rem 2rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        disabled={!isCompleted}
+                        title={!isCompleted ? 'Conclua o tempo mínimo desta aula para continuar.' : 'Abrir a próxima aula'}
+                        style={{ padding: '0.75rem 2rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: isCompleted ? 1 : 0.55, cursor: isCompleted ? 'pointer' : 'not-allowed' }}
                     >
-                        Próxima Aula <ChevronRight size={18} />
+                        {isCompleted
+                            ? (courseQuizzes.some(q => q.quiz_type === 'exercise' && q.lesson_id === lessonId && !quizStatus[q.id]?.attempts_count)
+                                ? 'Fazer exercício da aula'
+                                : (allLessons.findIndex(l => l.id === lessonId) === allLessons.length - 1 && courseQuizzes.some(q => q.quiz_type === 'final_exam' && !quizStatus[q.id]?.is_approved) ? 'Fazer prova final' : 'Próxima Aula'))
+                            : `Aguarde ${Math.max(0, (lesson.min_watch_time_sec || 0) - secondsWatched)}s`}
+                        <ChevronRight size={18} />
                     </button>
                 </div>
 
@@ -1574,11 +1424,12 @@ export default function LessonPlayer() {
                 </div>
 
                 {/* MODAL PREMIUM DE DISCUSSÃO (selectedTopic) */}
-                {selectedTopic && (
+                {selectedTopic && createPortal((
                     <div style={{
                         position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                        backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(5px)',
-                        display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999
+                        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999,
+                        padding: '1rem'
                     }}>
                         <div className="card animate-slide-up" style={{ 
                             maxWidth: '750px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', 
@@ -1697,11 +1548,11 @@ export default function LessonPlayer() {
                             </form>
                         </div>
                     </div>
-                )}
+                ), document.body)}
             </div>
 
             {/* BARRA LATERAL DA GRADE */}
-            <div style={{ backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
+            <div className="lesson-player-sidebar" style={{ backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '1.5rem', borderBottom: '1px solid #334155' }}>
                     <h3 style={{ color: 'white', fontSize: '0.875rem', fontWeight: 600 }}>Conteúdo do Curso</h3>
                     <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem' }}>{course?.title}</p>
@@ -1712,29 +1563,26 @@ export default function LessonPlayer() {
                         const isDone = lessonStatus[l.id]?.is_completed
                         
                         const lessonModule = l.module_id
-                        const previousModules = [...new Set(allLessons.slice(0, idx).map(al => al.module_id))]
-                            .filter(m => m !== lessonModule)
-                        
-                        let isBlockedByQuiz = false
-                        for (const modId of previousModules) {
-                            const modQuiz = courseQuizzes.find(q => q.module_id === modId)
-                            if (modQuiz) {
-                                const qStat = quizStatus[modQuiz.id]
-                                if (modQuiz.quiz_type === 'final_exam') {
-                                    if (!qStat?.is_approved) { isBlockedByQuiz = true; break; }
-                                } else {
-                                    // Exercício: LIBERA se tiver pelo menos 1 tentativa (realizado)
-                                    if (!qStat || qStat.attempts_count === 0) { isBlockedByQuiz = true; break; }
-                                }
-                            }
-                        }
+                        const previousLessons = allLessons.slice(0, idx)
+                        const isBlockedByQuiz = previousLessons.some(previousLesson => {
+                            const exercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === previousLesson.id)
+                            return exercise && !quizStatus[exercise.id]?.attempts_count
+                        })
 
-                        // AULA LIVRE (ignore lessonStatus), mas BLOQUEADA POR QUIZ anterior
-                        const isLocked = isBlockedByQuiz
+                        // TRAVA SEQUENCIAL: a aula só abre se a IMEDIATAMENTE
+                        // anterior estiver concluída (a 1ª sempre abre). Some-se a
+                        // isso o bloqueio por prova de módulo anterior.
+                        const prevLesson = idx > 0 ? allLessons[idx - 1] : null
+                        const isBlockedByPrev = !!prevLesson && !lessonStatus[prevLesson.id]?.is_completed
+                        const isLocked = !isCurrent && (isBlockedByQuiz || isBlockedByPrev)
                         
                         // Verificar se existe quiz para este módulo logo após esta aula (se for a última do módulo)
-                        const isLastInModule = idx === allLessons.length - 1 || allLessons[idx+1].module_id !== lessonModule
-                        const moduleQuiz = courseQuizzes.find(q => q.module_id === lessonModule)
+                        const lessonExercise = courseQuizzes.find(q => q.quiz_type === 'exercise' && q.lesson_id === l.id)
+                        const finalExam = idx === allLessons.length - 1 ? courseQuizzes.find(q => q.quiz_type === 'final_exam') : null
+                        const moduleQuiz = lessonExercise || finalExam
+                        const assessmentLocked = moduleQuiz?.quiz_type === 'final_exam'
+                            ? allLessons.some(item => !lessonStatus[item.id]?.is_completed)
+                            : !!moduleQuiz && !isDone
 
                         return (
                             <div key={l.id}>
@@ -1758,16 +1606,17 @@ export default function LessonPlayer() {
                                     {isLocked && <Lock size={14} style={{ color: '#64748b' }} />}
                                 </div>
                                 
-                                {isLastInModule && moduleQuiz && (
+                                {moduleQuiz && (
                                     <div 
-                                        onClick={() => navigate(`/exame/${moduleQuiz.id}`)}
+                                        onClick={() => !assessmentLocked && navigate(`/exame/${moduleQuiz.id}`)}
                                         style={{ 
                                             padding: '0.75rem 1.5rem', 
                                             backgroundColor: (moduleQuiz.quiz_type === 'final_exam' ? quizStatus[moduleQuiz.id]?.is_approved : quizStatus[moduleQuiz.id]?.attempts_count > 0)
                                                 ? (moduleQuiz.quiz_type === 'final_exam' ? '#4c1d95' : '#064e3b') 
                                                 : '#1e293b',
                                             borderBottom: '1px solid #334155',
-                                            cursor: 'pointer',
+                                            cursor: assessmentLocked ? 'not-allowed' : 'pointer',
+                                            opacity: assessmentLocked ? 0.55 : 1,
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '0.75rem',
@@ -1792,11 +1641,10 @@ export default function LessonPlayer() {
                     })}
                 </div>
             </div>
-            {showCompletionModal && (
+            {showCompletionModal && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     backgroundColor: 'rgba(15, 23, 42, 0.75)',
-                    backdropFilter: 'blur(8px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     zIndex: 20000,
                     animation: 'fadeIn 0.3s ease-out'
@@ -1823,6 +1671,8 @@ export default function LessonPlayer() {
                         padding: '3rem 2rem',
                         maxWidth: '500px',
                         width: '90%',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
                         textAlign: 'center',
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
                         animation: 'scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
@@ -1991,7 +1841,7 @@ export default function LessonPlayer() {
                         )}
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

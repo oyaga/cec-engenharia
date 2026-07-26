@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Quote, Star, MessageSquarePlus, CheckCircle2, ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../../lib/supabase';
+import { testimonialsApi } from '../../services/site';
 import { useEdit } from '../../context/EditContext';
 
 const Testimonials = () => {
@@ -25,14 +25,8 @@ const Testimonials = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const { data, error } = await supabase
-        .from('testimonials')
-        .select('*')
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false });
+      const { testimonials: data } = await testimonialsApi.listPublic();
 
-      if (error) throw error;
-      
       if (data && data.length > 0) {
         setTestimonials(data);
       } else {
@@ -57,15 +51,15 @@ const Testimonials = () => {
     e.preventDefault();
     setSubmitStatus('sending');
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .insert([{
-          ...formData,
-          status: 'pending',
-          type: 'text'
-        }]);
+      const evaluationDate = formData.evaluation_date
+        ? new Date(`${formData.evaluation_date}T12:00:00`).toISOString()
+        : new Date().toISOString();
 
-      if (error) throw error;
+      await testimonialsApi.submitPublic({
+        ...formData,
+        evaluation_date: evaluationDate,
+        type: 'text',
+      });
       setSubmitStatus('success');
       setTimeout(() => {
         setShowModal(false);
@@ -73,6 +67,7 @@ const Testimonials = () => {
         setFormData({ name: '', course: '', content: '', evaluation_date: new Date().toISOString().split('T')[0] });
       }, 3000);
     } catch (err) {
+      console.error('Erro ao enviar avaliação:', err);
       setSubmitStatus('error');
     }
   };
@@ -206,6 +201,11 @@ const Testimonials = () => {
                       {submitStatus === 'sending' ? 'Enviando...' : 'Enviar Avaliação'}
                     </button>
                   </div>
+                  {submitStatus === 'error' && (
+                    <p role="alert" style={{ color: '#dc2626', marginTop: '1rem', fontWeight: 600 }}>
+                      Não foi possível enviar sua avaliação. Confira os campos e tente novamente.
+                    </p>
+                  )}
                 </form>
               )}
             </motion.div>

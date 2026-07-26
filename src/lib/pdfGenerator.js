@@ -1,24 +1,29 @@
 // src/lib/pdfGenerator.js
 import jsPDF from 'jspdf'
-import { supabase } from './supabase'
+import { settingsApi } from '../services/financial'
 
 export const generateDocument = async (type, student, options = {}) => {
     const doc = new jsPDF()
 
-    // Buscar Plano de Fundo (Papel Timbrado) correspondente
+    // Buscar Plano de Fundo (Papel Timbrado) correspondente + settings gerais
     const bgKey = `bg_doc_${type}`
-    const { data: settings } = await supabase.from('system_settings').select('value').eq('key', bgKey).single()
-    const bgImage = settings ? settings.value : null
+    let bgImage = null
+    const settingsMap = {}
+    try {
+        const { settings } = await settingsApi.list()
+        ;(settings || []).forEach(s => { settingsMap[s.key] = s.value })
+        bgImage = settingsMap[bgKey] || null
+    } catch { /* sem timbre */ }
 
     // Global settings for ICC Docs
     doc.setFont('helvetica')
 
     if (type === 'contrato') {
-        generateContractPDF(doc, student, bgImage)
+        generateContractPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'recibo') {
-        generateReceiptPDF(doc, student, bgImage)
+        generateReceiptPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'inscrito') {
-        generateDeclarationInscritoPDF(doc, student, bgImage)
+        generateDeclarationInscritoPDF(doc, student, bgImage, settingsMap)
     } else if (type === 'termino') {
         generateDeclarationTerminoPDF(doc, student, bgImage)
     } else if (type === 'matricula') {
@@ -26,7 +31,7 @@ export const generateDocument = async (type, student, options = {}) => {
     } else if (type === 'certificado') {
         generateCertificatePDF(doc, student, bgImage)
     } else if (type === 'custom_certificate') {
-        generateCustomCertificatePDF(doc, student, options.content, bgImage)
+        await generateCustomCertificatePDF(doc, student, options, settingsMap, bgImage)
     } else if (type === 'melhorias') {
         generateImprovementPDF(doc, student, bgImage)
     } else if (type === 'relatorio_turma') {
@@ -41,36 +46,207 @@ export const generateDocument = async (type, student, options = {}) => {
     }
 }
 
-function generateCustomCertificatePDF(doc, student, content, bgImage) {
-    doc.addPage("a4", "landscape")
-    doc.setPage(2)
-
-    if (bgImage) {
-        doc.addImage(bgImage, 'JPEG', 0, 0, 297, 210)
-    } else {
-        doc.setFillColor(250, 252, 255)
-        doc.rect(0, 0, 297, 210, 'F')
-        doc.setDrawColor(30, 64, 175)
-        doc.setLineWidth(3)
-        doc.rect(10, 10, 277, 190)
+// Busca uma imagem (mesma origem ou API externa) e converte em Data URI.
+async function fetchImageAsDataURI(url) {
+    try {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const blob = await response.blob()
+        return await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result)
+            reader.readAsDataURL(blob)
+        })
+    } catch (e) {
+        console.warn(`Imagem indisponível (${url}):`, e.message)
+        return null
     }
-
-    doc.setFontSize(30)
-    doc.setFont('helvetica', 'bold')
-    doc.text('CERTIFICADO', 148, 50, { align: 'center' })
-
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'normal')
-    
-    const lines = doc.splitTextToSize(content, 220)
-    doc.text(lines, 148, 80, { align: 'center' })
-
-    doc.setFontSize(12)
-    doc.text('_________________________________', 148, 170, { align: 'center' })
-    doc.text('Diretoria e Coordenação C&C', 148, 178, { align: 'center' })
 }
 
-function generateContractPDF(doc, student) {
+async function generateCustomCertificatePDF(doc, student, options, settingsMap = {}, bgImage) {
+    const { content = '', uuid } = options
+    // O jsPDF nasce com uma página A4 retrato: cria a paisagem e apaga a 1ª
+    // (antes o PDF saía com uma página em branco na frente).
+    doc.addPage('a4', 'landscape')
+    doc.deletePage(1)
+
+    const W = doc.internal.pageSize.getWidth()   // 297
+    const H = doc.internal.pageSize.getHeight()  // 210
+    const CX = W / 2
+
+    // Paleta do design aprovado (certificado-exemplo.svg): pergaminho + navy + dourado
+    const CREAM = [250, 246, 233]
+    const NAVY = [27, 42, 74]
+    const GOLD = [190, 152, 74]
+    const SLATE = [73, 84, 100]
+    const GRAY = [135, 142, 155]
+
+    // ── Fundo pergaminho e moldura dupla navy ──
+    if (bgImage) {
+        doc.addImage(bgImage, 'JPEG', 0, 0, W, H)
+    } else {
+        doc.setFillColor(...CREAM)
+        doc.rect(0, 0, W, H, 'F')
+    }
+    doc.setDrawColor(...NAVY)
+    doc.setLineWidth(0.4)
+    doc.rect(13, 13, W - 26, H - 26, 'S')
+    doc.setLineWidth(1.4)
+    doc.rect(17, 17, W - 34, H - 34, 'S')
+    // Cantoneiras douradas sobrepostas à moldura
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(1)
+    const t = 9
+    ;[[13, 13, 1, 1], [W - 13, 13, -1, 1], [13, H - 13, 1, -1], [W - 13, H - 13, -1, -1]].forEach(([x, y, sx, sy]) => {
+        doc.line(x, y, x + t * sx, y)
+        doc.line(x, y, x, y + t * sy)
+    })
+
+    // ── Título serifado espaçado ──
+    doc.setFont('times', 'bold')
+    doc.setFontSize(40)
+    doc.setTextColor(...NAVY)
+    doc.text('CERTIFICADO', CX, 58, { align: 'center', charSpace: 3.2 })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10.5)
+    doc.setTextColor(...GOLD)
+    doc.text('C&C ENGENHARIA E CAPACITAÇÃO PROFISSIONAL', CX, 68, { align: 'center', charSpace: 1.4 })
+
+    // ── Nome do aluno ──
+    doc.setFont('times', 'italic')
+    doc.setFontSize(13)
+    doc.setTextColor(...SLATE)
+    doc.text('Conferido a', CX, 83, { align: 'center' })
+    doc.setFont('times', 'bold')
+    doc.setFontSize(28)
+    doc.setTextColor(...NAVY)
+    doc.text(String(student.name || '').toUpperCase(), CX, 95, { align: 'center', charSpace: 1.2 })
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.4)
+    doc.line(CX - 62, 100, CX + 62, 100)
+
+    // ── Corpo (template, com fallback de variáveis não substituídas) ──
+    const body = String(content)
+        .replace(/\{\{(nome_aluno|nome)\}\}/g, student.name || '')
+        .replace(/\{\{(cpf_aluno|cpf)\}\}/g, student.cpf || '')
+        .replace(/\{\{(nome_curso|curso)\}\}/g, student.class || '')
+        .replace(/\{\{carga_horaria\}\}/g, options.hours || '')
+        .replace(/\{\{nota\}\}/g, options.grade || '')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(...SLATE)
+    const lines = doc.splitTextToSize(body, 200)
+    doc.text(lines, CX, 111, { align: 'center', lineHeightFactor: 1.65 })
+
+    // ── Selo dourado central ──
+    const sealY = 157
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.8)
+    doc.circle(CX, sealY, 10.5, 'S')
+    doc.setLineWidth(0.25)
+    doc.circle(CX, sealY, 8.6, 'S')
+    doc.setFont('times', 'bold')
+    doc.setFontSize(14)
+    doc.setTextColor(...GOLD)
+    doc.text('C&C', CX, sealY - 0.5, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5)
+    doc.text('CERTIFICADO', CX, sealY + 3.5, { align: 'center', charSpace: 0.5 })
+    doc.setFontSize(9.5)
+    doc.setTextColor(...SLATE)
+    doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, CX, 177, { align: 'center' })
+
+    // ── Assinatura autorizada (direita; imagem opcional via settings) ──
+    const sigImage = settingsMap['certificate_signature_image'] || null
+    const sigName = settingsMap['certificate_signature_name'] || 'Diretoria e Coordenação C&C'
+    const sigRole = settingsMap['certificate_signature_role'] || 'Assinatura autorizada'
+    const sigX = W - 57
+    if (sigImage) {
+        try {
+            const props = doc.getImageProperties(sigImage)
+            const sh = 15
+            const sw = Math.min((props.width / props.height) * sh, 55)
+            doc.addImage(sigImage, props.fileType || 'PNG', sigX - sw / 2, 143, sw, sh)
+        } catch { /* segue só com o nome estilizado */ }
+    } else {
+        doc.setFont('times', 'bolditalic')
+        doc.setFontSize(19)
+        doc.setTextColor(...NAVY)
+        doc.text('C&C Diretoria', sigX, 156, { align: 'center' })
+    }
+    doc.setDrawColor(...SLATE)
+    doc.setLineWidth(0.35)
+    doc.line(sigX - 34, 160, sigX + 34, 160)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(...NAVY)
+    doc.text(sigName, sigX, 165.5, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(...GRAY)
+    doc.text(sigRole, sigX, 170, { align: 'center' })
+
+    // ── QR Code + código de autenticidade (esquerda) ──
+    if (uuid) {
+        const origin = (typeof window !== 'undefined' && window.location?.origin) || 'https://cursocec.com.br'
+        const validationUrl = `${origin}/validar-certificado/${uuid}`
+        const qr = await fetchImageAsDataURI(
+            `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(validationUrl)}`
+        )
+        if (qr) doc.addImage(qr, 'PNG', 27, 146, 22, 22)
+        const tx = qr ? 53 : 27
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8.5)
+        doc.setTextColor(...NAVY)
+        doc.text('CÓDIGO DE AUTENTICIDADE:', tx, 152)
+        doc.text(uuid.substring(0, 8).toUpperCase(), tx, 156)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(...GRAY)
+        doc.text('Valide apontando a câmera para o QR Code', tx, 161)
+        doc.text(`ou em ${origin.replace(/^https?:\/\//, '')}/validar-certificado`, tx, 165)
+    }
+}
+
+// Substitui as variáveis do editor de modelos ({{NOME_ALUNO}} etc.) pelos
+// dados reais do aluno. Usado quando a secretaria salva um modelo em ConfigDocs.
+function applyDocVariables(template, student) {
+    const map = {
+        '{{NOME_ALUNO}}': student.name || '',
+        '{{CPF}}': student.cpf || '',
+        '{{RG}}': student.rg || '',
+        '{{NOME_TURMA}}': student.class || student.class_name || '',
+        '{{NOME_CURSO}}': student.course || student.course_name || student.class || '',
+        '{{VALOR_CURSO}}': student.value != null ? `R$ ${Number(student.value).toFixed(2)}` : (student.valor || student.value_label || ''),
+        '{{DATA_HOJE}}': new Date().toLocaleDateString('pt-BR'),
+    }
+    let out = template
+    for (const [k, v] of Object.entries(map)) {
+        out = out.split(k).join(v)
+    }
+    return out
+}
+
+// Renderiza um modelo customizado (texto-base salvo em ConfigDocs) paginado no PDF.
+function renderTemplateBody(doc, template, student) {
+    const text = applyDocVariables(template, student)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    const lines = doc.splitTextToSize(text, 180)
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const lineH = 6
+    let y = 20
+    lines.forEach(line => {
+        if (y > pageHeight - 20) { doc.addPage(); y = 20 }
+        doc.text(line, 15, y)
+        y += lineH
+    })
+}
+
+function generateContractPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_contrato']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.text('CONTRATO DE TREINAMENTO E CAPACITAÇÃO PROFISSIONAL', 105, 20, { align: 'center' })
@@ -112,7 +288,10 @@ A modalidade PIX PARCELADO está sujeita à verificação de compensação mensa
     doc.text('Assinatura do Aluno Contratante', 105, 190, { align: 'center' })
 }
 
-function generateReceiptPDF(doc, student) {
+function generateReceiptPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_recibo']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(18)
     doc.text('RECIBO DE PAGAMENTO', 105, 30, { align: 'center' })
     doc.setFontSize(12)
@@ -122,7 +301,10 @@ function generateReceiptPDF(doc, student) {
     doc.text(`Rio de Janeiro, ${new Date().toLocaleDateString('pt-BR')}`, 15, 140)
 }
 
-function generateDeclarationInscritoPDF(doc, student) {
+function generateDeclarationInscritoPDF(doc, student, bgImage, settingsMap = {}) {
+    const custom = settingsMap['doc_template_declaracao']
+    if (custom && custom.trim()) { renderTemplateBody(doc, custom, student); return }
+
     doc.setFontSize(18)
     doc.setFont('helvetica', 'bold')
     doc.text('DECLARAÇÃO DE INSCRITO', 105, 40, { align: 'center' })
@@ -292,7 +474,7 @@ function generateClassReportPDF(doc, classData) {
     yPos += 10
 
     if (!students || students.length === 0) {
-        doc.setFontStyle('italic')
+        doc.setFont('helvetica', 'italic')
         doc.text('Nenhum aluno registrado/vinculado a esta turma.', 15, yPos)
         return
     }

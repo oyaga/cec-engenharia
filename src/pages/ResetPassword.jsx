@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { authApi } from '../lib/api'
 import { Lock, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -10,54 +10,33 @@ export default function ResetPassword() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const navigate = useNavigate()
-    const { session } = useAuth()
+    const { userProfile, refresh } = useAuth()
 
     const handleUpdatePassword = async (e) => {
         e.preventDefault()
         if (password !== confirmPassword) return setError('As senhas não coincidem')
-        if (password.length < 6) return setError('A senha deve ter pelo menos 6 caracteres')
+        if (password.length < 8) return setError('A senha deve ter pelo menos 8 caracteres')
 
         setLoading(true)
         setError(null)
 
         try {
-            // 1. Atualizar senha no Supabase Auth
-            const { error: authError } = await supabase.auth.updateUser({
-                password: password
-            })
-            if (authError) throw authError
-
-            // 2. Marcar que não precisa mais trocar senha
-            await supabase
-                .from('users')
-                .update({ must_change_password: false })
-                .eq('id', session.user.id)
-
-            const { error: dbError } = await supabase
-                .from('students')
-                .update({ requires_password_change: false })
-                .eq('user_id', session.user.id)
-            
-            if (dbError && dbError.code !== 'PGRST116') console.error("Erro ao atualizar aluno:", dbError)
-
-            // 3. Buscar papel do usuário para redirecionar corretamente
-            const { data: profile } = await supabase
-                .from('users')
-                .select('role')
-                .eq('id', session.user.id)
-                .maybeSingle()
+            // Define a senha definitiva (backend Go) e limpa must_change_password.
+            await authApi.setInitialPassword(password)
+            await refresh()
 
             alert('Senha atualizada com sucesso! Bem-vindo ao portal.')
-            
-            if (profile?.role === 'aluno') {
+
+            const role = userProfile?.role
+            if (role === 'aluno') {
                 window.location.replace('/meus-cursos')
-            } else if (['admin', 'coordenador', 'atendente'].includes(profile?.role)) {
+            } else if (['admin', 'coordenador', 'atendente'].includes(role)) {
                 window.location.replace('/dashboard')
             } else {
                 navigate('/')
             }
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Falha ao atualizar senha.')
         } finally {
             setLoading(false)
         }

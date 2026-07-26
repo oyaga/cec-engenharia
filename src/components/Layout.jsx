@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
+import ProfessorLayout from './professor/ProfessorLayout'
 
 export default function Layout() {
-    const { userProfile } = useAuth()
+    const { userProfile, logout } = useAuth()
     const navigate = useNavigate()
+    const location = useLocation()
     const [menuOpen, setMenuOpen] = useState(false)
     const menuRef = useRef(null)
 
@@ -22,11 +23,13 @@ export default function Layout() {
     }, [])
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut()
+        logout()
         navigate('/login')
     }
 
     const userInitial = userProfile?.full_name ? userProfile.full_name.charAt(0).toUpperCase() : (userProfile?.email ? userProfile.email.charAt(0).toUpperCase() : 'U');
+
+    if (location.pathname.startsWith('/professor')) return <ProfessorLayout />
 
     return (
         <div className="app-layout">

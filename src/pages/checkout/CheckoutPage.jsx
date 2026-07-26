@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
-import { asaas } from '../../services/asaas';
-import { n8n } from '../../services/n8n';
+import { coursesApi } from '../../services/academic';
+import { publicCheckout } from '../../services/asaas';
 import CheckoutForm from './components/CheckoutForm';
 import PixDisplay from './components/PixDisplay';
 import BoletoDisplay from './components/BoletoDisplay';
@@ -25,19 +24,11 @@ export default function CheckoutPage() {
 
   const fetchCourse = async () => {
     try {
-      const { data, error } = await supabase
-        .from('vw_course_info')
-        .select('*')
-        .eq('id', courseId)
-        .single();
-        
-      if (error) throw error;
+      const { courses } = await coursesApi.listPublic();
+      const data = (courses || []).find(c => c.id === courseId) || null;
       setCourse(data);
     } catch (err) {
       console.error('Erro ao buscar curso:', err);
-      // Fallback pra buscar direto na tabela caso a view falhe
-      const { data } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
-      setCourse(data);
     } finally {
       setLoading(false);
     }
@@ -46,72 +37,26 @@ export default function CheckoutPage() {
   const handleCheckoutSubmit = async (formData) => {
     setProcessing(true);
     try {
-      // 1. Criar/Buscar Cliente no Asaas
-      const customerRes = await asaas.createCustomer({
+      // Checkout server-side: a chave do Asaas nunca vai ao browser e o preço é
+      // calculado no servidor. Redireciona para a fatura hospedada do Asaas.
+      const result = await publicCheckout({
         name: formData.name,
         cpf: formData.cpf,
         email: formData.email,
-        phone: formData.phone
-      });
-      
-      const customerId = customerRes.id;
-
-      // 2. Criar Pagamento no Asaas
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 3); // Vence em 3 dias
-
-      const paymentRes = await asaas.createPayment({
-        customer: customerId,
-        billingType: formData.paymentMethod.toUpperCase(),
-        value: course.price,
-        dueDate: dueDate.toISOString().split('T')[0],
-        description: `Matrícula - ${course.title}`
-      });
-
-      // 3. Obter PIX se aplicável
-      let pixData = null;
-      if (formData.paymentMethod === 'pix') {
-        pixData = await asaas.getPixQrCode(paymentRes.id);
-      }
-
-      // 4. Salvar Pedido no Supabase
-      const { error: orderError } = await supabase.from('orders').insert({
-        student_id: formData.studentId, // Em um fluxo real, pega da sessão logada ou cadastra aluno
-        course_id: course.id,
-        amount: course.price,
+        phone: formData.phone,
+        course_id: course?.id || courseId,
+        course_name: course?.title,
         payment_method: formData.paymentMethod,
-        status: 'pending',
-        asaas_payment_id: paymentRes.id,
-        asaas_customer_id: customerId,
-        pix_qr_code: pixData?.encodedImage,
-        pix_copy_paste: pixData?.payload,
-        boleto_url: paymentRes.bankSlipUrl,
-        due_date: paymentRes.dueDate
       });
 
-      if (orderError) throw orderError;
-
-      // 5. Notificar via N8N
-      await n8n.triggerWebhook('/webhook/nova-matricula', {
-        student: formData.name,
-        course: course.title,
-        value: course.price,
-        method: formData.paymentMethod
-      });
-
-      // 6. Atualizar UI
-      setPaymentData({
-        ...paymentRes,
-        pixData
-      });
-
-      if (formData.paymentMethod === 'pix') setStep('pix');
-      else if (formData.paymentMethod === 'boleto') setStep('boleto');
-      else setStep('success'); // Cartão já cobrado via token (simplificado)
-
+      if (result?.invoiceUrl) {
+        window.location.href = result.invoiceUrl;
+        return;
+      }
+      throw new Error('Não foi possível obter a URL de pagamento.');
     } catch (err) {
       console.error('Erro no checkout:', err);
-      alert('Houve um erro ao processar seu pagamento. Tente novamente.');
+      alert('Houve um erro ao processar seu pagamento: ' + (err.message || 'tente novamente.'));
     } finally {
       setProcessing(false);
     }

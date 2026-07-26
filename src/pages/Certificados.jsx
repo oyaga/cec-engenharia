@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Award, Search, Filter, Eye, Printer, Award as AwardIcon, Settings, Download, Loader2, Save, X, CheckCircle, AlertCircle, FileText, CheckCircle2, ChevronRight } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { coursesApi, classesApi, studentsApi } from '../services/academic'
+import { lmsApi } from '../services/lms'
+import { settingsApi } from '../services/financial'
 import { generateDocument } from '../lib/pdfGenerator'
 
 export default function Certificados() {
@@ -35,126 +37,59 @@ export default function Certificados() {
     const fetchData = async () => {
         setLoading(true)
         try {
-            // 1. Buscar Cursos e Turmas
-            const { data: crsData } = await supabase.from('lms_courses').select('id, title, code')
-            if (crsData) setCourses(crsData)
-            const { data: clsData } = await supabase.from('classes').select('id, name, course_name')
-            if (clsData) setClasses(clsData)
+            // 1. Cursos e Turmas
+            const { courses: crsData } = await coursesApi.list()
+            setCourses(crsData || [])
+            const { classes: clsData } = await classesApi.list()
+            setClasses(clsData || [])
 
-            // 2. Buscar Emissões reais da tabela lms_issued_certificates
-            const { data: emsData, error: emsErr } = await supabase
-                .from('lms_issued_certificates')
-                .select('*, students(full_name, cpf, rg, id), classes(name)')
-                .order('issued_at', { ascending: false })
-            
-            if (emsErr) throw emsErr
-
-            const formattedEmissoes = (emsData || []).map(e => ({
-                id: e.id,
-                student_name: e.student_name || e.students?.full_name || 'Aluno CEC',
-                cpf: e.students?.cpf || ' --- ',
-                course_name: e.course_title || 'Curso Técnico',
-                class_name: e.class_name || e.classes?.name || 'Turma',
-                issued_at: e.issued_at,
-                certificate_code: e.certificate_code || e.id,
-                grade: e.grade || 0,
-                hours: e.hours || 40,
-                status: 'Emitido ✅',
-                originalData: e
-            }))
+            // 2. Emissões (denormalizadas em metadata)
+            const { certificates: emsData } = await lmsApi.certificates({ all: true })
+            const formattedEmissoes = (emsData || []).map(e => {
+                const m = e.metadata || {}
+                return {
+                    id: e.id,
+                    student_name: m.student_name || 'Aluno CEC',
+                    cpf: m.cpf || ' --- ',
+                    course_name: m.course_title || 'Curso Técnico',
+                    class_name: m.class_name || 'Turma',
+                    issued_at: e.issued_at,
+                    certificate_code: e.code || e.id,
+                    grade: m.grade || 0,
+                    hours: m.hours || 40,
+                    status: 'Emitido ✅',
+                    originalData: e
+                }
+            })
             setEmissoes(formattedEmissoes)
 
-            // 3. Buscar alunos que concluíram (pendentes de emissão)
-            // Um aluno é elegível quando nota >= 6.0 ou progresso_percent = 100 e não tem certificado
-            const { data: stdData } = await supabase
-                .from('students')
-                .select('*, classes(id, name, course_name, lms_course_id)')
-            
-            // Filtrar na mão quem já tem emissão de certificado
+            // 3. Alunos elegíveis (sem certificado ainda)
+            const { students: stdData } = await studentsApi.list()
             const issuedIds = new Set((emsData || []).map(e => e.student_id))
             const formattedPendentes = (stdData || [])
                 .filter(s => !issuedIds.has(s.id))
-                .map(s => {
-                    const isEadCompleted = s.progress_percent === 100 || s.has_lms_access
-                    return {
-                        id: s.id,
-                        full_name: s.full_name || 'Estudante',
-                        cpf: s.cpf || '',
-                        class_name: s.classes?.name || 'Sem Turma',
-                        class_id: s.classes?.id || '',
-                        course_name: s.classes?.course_name || 'Sem Curso',
-                        course_id: s.classes?.lms_course_id || '',
-                        base_value: s.base_value || 0,
-                        discount_value: s.discount_value || 0,
-                        status_frequencia: 'Aprovada (>= 75%) ✅',
-                        status_nota: 'Aprovada (>= 6.0) ✅',
-                        created_at: s.created_at
-                    }
-                })
+                .map(s => ({
+                    id: s.id,
+                    full_name: s.full_name || 'Estudante',
+                    cpf: s.cpf || '',
+                    class_name: s.turma_name || 'Sem Turma',
+                    class_id: s.turma_id || '',
+                    course_name: s.turma_course || 'Sem Curso',
+                    course_id: '',
+                    base_value: 0,
+                    discount_value: 0,
+                    status_frequencia: 'Aprovada (>= 75%) ✅',
+                    status_nota: 'Aprovada (>= 6.0) ✅',
+                    created_at: s.created_at
+                }))
             setPendentes(formattedPendentes)
 
-            // 4. Buscar primeiro template config para pré-preencher aba 2
-            if (crsData && crsData.length > 0) {
-                fetchTemplate(crsData[0].id, 'conclusao')
-            }
+            // 4. Template padrão (aba 2)
+            fetchTemplate('todos', 'conclusao')
         } catch (err) {
-            console.error('Erro ao buscar certificados, carregando mocks locais:', err)
-            // Fallback mock
-            const mockEmissoes = [
-                {
-                    id: 'ems-mock-1',
-                    student_name: 'Marcos Vinícius Silva',
-                    cpf: '482.019.283-99',
-                    course_name: 'Líquido Penetrante (LP - PR-127)',
-                    class_name: 'Turma LP-2026.1',
-                    issued_at: '2026-05-18T10:00:00Z',
-                    certificate_code: '45ef92a1-cf08-4e8c-89a3-5c8e49b2c3d1',
-                    grade: 8.5,
-                    hours: 60,
-                    status: 'Emitido ✅'
-                },
-                {
-                    id: 'ems-mock-2',
-                    student_name: 'Gabriela Vasconcelos',
-                    cpf: '382.910.472-88',
-                    course_name: 'Medição de Espessura por Ultrassom (ME - PR-127)',
-                    class_name: 'Turma ME-2025.2',
-                    issued_at: '2025-12-15T15:30:00Z',
-                    certificate_code: '82de294c-ab28-10cd-e92a-3c4820dc84bf',
-                    grade: 9.0,
-                    hours: 64,
-                    status: 'Emitido ✅'
-                }
-            ]
-            setEmissoes(mockEmissoes)
-
-            const mockPendentes = [
-                {
-                    id: 'std-mock-1',
-                    full_name: 'Ana Júlia de Souza',
-                    cpf: '124.582.930-44',
-                    class_name: 'Turma LP-2026.1',
-                    class_id: 'c1',
-                    course_name: 'Líquido Penetrante (LP - PR-127)',
-                    course_id: 'course-1',
-                    status_frequencia: 'Aprovada (>= 75%) ✅',
-                    status_nota: 'Aprovada (>= 6.0) ✅',
-                    created_at: '2026-05-20T14:30:00Z'
-                },
-                {
-                    id: 'std-mock-2',
-                    full_name: 'Carlos Henrique Lima',
-                    cpf: '382.910.472-11',
-                    class_name: 'Turma ME-2026.2',
-                    class_id: 'c2',
-                    course_name: 'Medição de Espessura por Ultrassom (ME - PR-127)',
-                    course_id: 'course-2',
-                    status_frequencia: 'Aprovada (>= 75%) ✅',
-                    status_nota: 'Aprovada (>= 6.0) ✅',
-                    created_at: '2026-05-28T09:15:00Z'
-                }
-            ]
-            setPendentes(mockPendentes)
+            console.error('Erro ao buscar certificados:', err)
+            setEmissoes([])
+            setPendentes([])
         } finally {
             setLoading(false)
         }
@@ -162,22 +97,13 @@ export default function Certificados() {
 
     const fetchTemplate = async (courseId, type) => {
         try {
-            const { data, error } = await supabase
-                .from('lms_certificate_configs')
-                .select('*')
-                .eq('type', type)
-                .single()
-            
-            if (data) {
-                setTemplateText(data.template_text || '')
-                setSignatureUrl(data.signature_url || '')
-            } else {
-                setTemplateText(getDefaultTemplateText(type))
-                setSignatureUrl('https://images.unsplash.com/photo-1598257006458-087169a1f08d?w=200&q=80')
-            }
+            const { settings } = await settingsApi.list()
+            const byKey = Object.fromEntries((settings || []).map(s => [s.key, s.value]))
+            setTemplateText(byKey[`cert_template_${type}`] || getDefaultTemplateText(type))
+            setSignatureUrl(byKey['cert_signature_url'] || '')
         } catch (err) {
             setTemplateText(getDefaultTemplateText(type))
-            setSignatureUrl('https://images.unsplash.com/photo-1598257006458-087169a1f08d?w=200&q=80')
+            setSignatureUrl('')
         }
     }
 
@@ -198,23 +124,14 @@ export default function Certificados() {
         setFeedback({ type: '', message: '' })
 
         try {
-            const payload = {
-                type: templateType,
-                template_text: templateText,
-                signature_url: signatureUrl,
-                updated_at: new Date().toISOString()
-            }
-
-            const { error } = await supabase
-                .from('lms_certificate_configs')
-                .upsert(payload, { onConflict: 'type' })
-            
-            if (error) throw error
+            await settingsApi.save({
+                [`cert_template_${templateType}`]: templateText,
+                cert_signature_url: signatureUrl,
+            })
             setFeedback({ type: 'success', message: 'Template de certificado atualizado com sucesso!' })
         } catch (err) {
             console.error('Erro ao salvar template:', err)
-            // Emulação local se a tabela de configurações estiver pendente de criação real
-            setFeedback({ type: 'success', message: 'Template de certificado atualizado localmente (Ambiente de Testes).' })
+            setFeedback({ type: 'error', message: 'Erro ao salvar o template.' })
         } finally {
             setSavingTemplate(false)
         }
@@ -240,43 +157,17 @@ export default function Certificados() {
 
         try {
             const uuidCode = crypto.randomUUID()
-            const payload = {
-                student_id: p.id,
-                course_id: p.course_id || null,
-                class_id: p.class_id || null,
-                certificate_code: uuidCode,
-                student_name: p.full_name,
-                course_title: p.course_name,
-                class_name: p.class_name,
-                grade: 8.0,
-                hours: 60,
-                issue_type: 'conclusao',
-                issued_at: new Date().toISOString()
+            if (!p.id.toString().startsWith('mock-')) {
+                await lmsApi.issueCertificate({
+                    student_id: p.id,
+                    course_id: p.course_id || null,
+                    code: uuidCode,
+                    metadata: {
+                        student_name: p.full_name, cpf: p.cpf, course_title: p.course_name,
+                        class_name: p.class_name, grade: 8.0, hours: 60, issue_type: 'conclusao',
+                    },
+                })
             }
-
-            if (p.id.toString().startsWith('mock-')) {
-                const mockNew = {
-                    id: 'ems-mock-' + Date.now(),
-                    student_name: p.full_name,
-                    cpf: p.cpf,
-                    course_name: p.course_name,
-                    class_name: p.class_name,
-                    issued_at: payload.issued_at,
-                    certificate_code: uuidCode,
-                    grade: 8.0,
-                    hours: 60,
-                    status: 'Emitido ✅'
-                }
-                setEmissoes([mockNew, ...emissoes])
-                setPendentes(prev => prev.filter(x => x.id !== p.id))
-            } else {
-                const { error } = await supabase
-                    .from('lms_issued_certificates')
-                    .insert([payload])
-                
-                if (error) throw error
-            }
-
             alert(`Certificado gerado com sucesso! Código de validação: ${uuidCode}`)
             fetchData()
         } catch (err) {
@@ -293,39 +184,16 @@ export default function Certificados() {
         try {
             for (const id of selectedPendentes) {
                 const p = pendentes.find(x => x.id === id)
-                if (p) {
-                    const uuidCode = crypto.randomUUID()
-                    const payload = {
+                if (p && !p.id.toString().startsWith('mock-')) {
+                    await lmsApi.issueCertificate({
                         student_id: p.id,
                         course_id: p.course_id || null,
-                        class_id: p.class_id || null,
-                        certificate_code: uuidCode,
-                        student_name: p.full_name,
-                        course_title: p.course_name,
-                        class_name: p.class_name,
-                        grade: 8.2,
-                        hours: 60,
-                        issue_type: 'conclusao',
-                        issued_at: new Date().toISOString()
-                    }
-
-                    if (p.id.toString().startsWith('mock-')) {
-                        const mockNew = {
-                            id: 'ems-mock-' + Date.now() + Math.random(),
-                            student_name: p.full_name,
-                            cpf: p.cpf,
-                            course_name: p.course_name,
-                            class_name: p.class_name,
-                            issued_at: payload.issued_at,
-                            certificate_code: uuidCode,
-                            grade: 8.2,
-                            hours: 60,
-                            status: 'Emitido ✅'
-                        }
-                        setEmissoes(prev => [mockNew, ...prev])
-                    } else {
-                        await supabase.from('lms_issued_certificates').insert([payload])
-                    }
+                        code: crypto.randomUUID(),
+                        metadata: {
+                            student_name: p.full_name, cpf: p.cpf, course_title: p.course_name,
+                            class_name: p.class_name, grade: 8.2, hours: 60, issue_type: 'conclusao',
+                        },
+                    })
                 }
             }
 
@@ -589,7 +457,7 @@ export default function Certificados() {
                             )}
 
                             <form onSubmit={handleSaveTemplate} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: '#475569', marginBottom: '0.35rem' }}>Curso / Método</label>
                                         <select
@@ -636,7 +504,7 @@ export default function Certificados() {
                                     />
                                 </div>
 
-                                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem', marginTop: '0.5rem' }}>
+                                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem', marginTop: '0.5rem' }}>
                                     <button
                                         type="button"
                                         onClick={handlePreviewTemplate}

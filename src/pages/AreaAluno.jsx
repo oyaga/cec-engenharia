@@ -1,5 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
+import { lmsApi } from '../services/lms';
+import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi, upcomingClassesApi } from '../services/misc';
+import { connectSocket, onSocketMessage, onSocketStatus, isSocketConnected } from '../lib/socket';
+import ChatPanel from '../components/ChatPanel';
+import { financialApi, evaluationsApi } from '../services/financial';
+import { uploadFile } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   BookOpen, 
@@ -39,7 +46,7 @@ import { generateDocument } from '../lib/pdfGenerator';
 export default function AreaAluno() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session } = useAuth();
+  const { session, userProfile } = useAuth();
 
   // Estados principais
   const [userName, setUserName] = useState('');
@@ -58,6 +65,8 @@ export default function AreaAluno() {
   const [technicalEvals, setTechnicalEvals] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
+  const [inPersonModules, setInPersonModules] = useState([]);
+  const [confirmingModuleId, setConfirmingModuleId] = useState(null);
   const [certificatesCount, setCertificatesCount] = useState(0);
   const [issuedCertificates, setIssuedCertificates] = useState([]);
   const [financialRecord, setFinancialRecord] = useState(null);
@@ -65,37 +74,14 @@ export default function AreaAluno() {
 
   useEffect(() => {
     if (studentData && studentData.id) {
-      const loadSignedUrls = async () => {
-        const urls = {};
-        const docsToSign = [
-          { key: 'photo', url: studentData.doc_photo_url },
-          { key: 'id', url: studentData.doc_id_url },
-          { key: 'cpf', url: studentData.doc_cpf_url },
-          { key: 'address', url: studentData.doc_address_url },
-          { key: 'education', url: studentData.doc_education_url }
-        ];
-
-        for (const doc of docsToSign) {
-          if (doc.url) {
-            const parts = doc.url.split('/object/public/student_documents/');
-            const filePath = parts.length > 1 ? parts[1] : null;
-            if (filePath) {
-              try {
-                const { data, error } = await supabase.storage
-                  .from('student_documents')
-                  .createSignedUrl(filePath, 900); // 15 minutos
-                if (!error && data) {
-                  urls[doc.key] = data.signedUrl;
-                }
-              } catch (e) {
-                console.warn('[Segurança] Falha ao assinar URL para o aluno:', e);
-              }
-            }
-          }
-        }
-        setSignedUrls(urls);
-      };
-      loadSignedUrls();
+      // Storage do backend serve os arquivos por URL direta (sem assinatura).
+      setSignedUrls({
+        photo: studentData.doc_photo_url,
+        id: studentData.doc_id_url,
+        cpf: studentData.doc_cpf_url,
+        address: studentData.doc_address_url,
+        education: studentData.doc_education_url,
+      });
     } else {
       setSignedUrls({});
     }
@@ -124,18 +110,30 @@ export default function AreaAluno() {
   const [chatMessages, setChatMessages] = useState([]);
   const [newChatMessage, setNewChatMessage] = useState('');
   const messagesEndRef = useRef(null);
+  // Chat: contatos por categoria, presença online, não-lidos e status do WS.
+  const [contacts, setContacts] = useState({ professores: [], secretaria: [], alunos: [] });
+  const [contactTab, setContactTab] = useState('professores');
+  const [onlineIds, setOnlineIds] = useState([]);
+  const [unreadBy, setUnreadBy] = useState({});
+  const [wsConnected, setWsConnected] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
+  const selectedContactRef = useRef(null);
 
   // Estados para Agendamento Prático (Fase 20.1)
   const [availablePracticalClasses, setAvailablePracticalClasses] = useState([]);
   const [schedulingActionLoading, setSchedulingActionLoading] = useState(null);
 
-  // Estados para Modal de Selfie / Captura de Câmera
+  // Estados para Modal de Câmera / Upload de Documentos
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [selfieStream, setSelfieStream] = useState(null);
   const [cameraError, setCameraError] = useState('');
+  const [documentNotice, setDocumentNotice] = useState(null);
+  const [uploadingDoc, setUploadingDoc] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [activeUploadType, setActiveUploadType] = useState(null);
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [uploadingDoc, setUploadingDoc] = useState(null); // docType em upload ou null
 
   // Efeito para a saudação baseada no horário
   useEffect(() => {
@@ -150,220 +148,164 @@ export default function AreaAluno() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, selectedInstructor]);
 
+  // Mantém uma ref do contato aberto (evita closure velha no WebSocket).
+  useEffect(() => { selectedContactRef.current = selectedInstructor; }, [selectedInstructor]);
+
+  // Chat em tempo real: conecta ao WebSocket e entrega mensagens ao vivo.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    connectSocket();
+    setWsConnected(isSocketConnected());
+    const offMsg = onSocketMessage((data) => {
+      if (data?.type !== 'message' || !data.message) return;
+      const msg = data.message;
+      const myId = session.user.id;
+      const partnerId = msg.sender_id === myId ? msg.receiver_id : msg.sender_id;
+      if (selectedContactRef.current?.id === partnerId) {
+        setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+      } else if (msg.sender_id !== myId) {
+        setUnreadBy(prev => ({ ...prev, [partnerId]: (prev[partnerId] || 0) + 1 }));
+      }
+    });
+    const offStatus = onSocketStatus(setWsConnected);
+    // Mantém o socket vivo entre telas (não desconecta ao trocar de aba).
+    return () => { offMsg(); offStatus(); };
+  }, [session?.user?.id]);
+
   // Carregamento geral de dados do Supabase
   const fetchData = async () => {
     if (!session?.user?.id) return;
     setLoading(true);
 
     try {
-      // 1. Buscar Perfil do Usuário
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', session.user.id)
-        .single();
-      
-      const fullName = profile?.full_name || session.user.email.split('@')[0];
+      // 1. Perfil (via contexto)
+      const fullName = userProfile?.full_name || session.user.email.split('@')[0];
       setUserName(fullName);
 
-      // 2. Buscar Cadastro do Aluno
-      const { data: student, error: stError } = await supabase
-        .from('students')
-        .select('*, classes:classes!turma_id(name, course_name), practical_class:classes!practical_class_id(name, course_name, start_date, address)')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
+      // 2. Cadastro do aluno
+      const { students } = await studentsApi.list({ user_id: session.user.id });
+      const student = students && students[0];
 
       let activeStudentId = null;
       let activeTurmaId = null;
+      const { classes: allClasses } = await classesApi.list();
 
-      if (!stError && student) {
+      if (student) {
         activeStudentId = student.id;
         activeTurmaId = student.turma_id;
         setStudentId(student.id);
         setTurmaId(student.turma_id);
         setStudentData(student);
-        
-        // Verificar pendência Abendi
-        const hasMissing = !student.doc_photo_url || 
-                           !student.doc_id_url || 
-                           !student.doc_cpf_url || 
-                           !student.doc_address_url || 
-                           !student.doc_education_url;
+        const hasMissing = !student.doc_photo_url || !student.doc_id_url || !student.doc_cpf_url || !student.doc_address_url || !student.doc_education_url;
         setMissingDocs(hasMissing);
       }
 
-      // 3. Buscar Cursos e calcular progresso real
-      const { data: lessonsData } = await supabase
-        .from('lms_lessons')
-        .select('id, module_id, lms_modules(course_id)');
-
-      const { data: progressData } = await supabase
-        .from('lms_student_progress')
-        .select('lesson_id, is_completed')
-        .eq('student_id', session.user.id)
-        .eq('is_completed', true);
-
-      const { data: enrollments } = await supabase
-        .from('students')
-        .select('has_lms_access, classes(lms_course_id)')
-        .eq('user_id', session.user.id);
-
-      const courseIds = enrollments
-        ?.filter(e => e.has_lms_access)
-        .map(e => e.classes?.lms_course_id)
-        .filter(Boolean) || [];
-
-      if (courseIds.length > 0) {
-        const { data: courses } = await supabase
-          .from('lms_courses')
-          .select('*')
-          .in('id', courseIds)
-          .eq('is_published', true);
-
-        if (courses) {
-          const coursesWithProgress = courses.map(course => {
-            const courseLessons = lessonsData?.filter(l => l.lms_modules?.course_id === course.id) || [];
-            const courseCompleted = courseLessons.filter(l => 
-              progressData?.some(p => p.lesson_id === l.id)
-            ).length;
-
-            const percentage = courseLessons.length > 0 
-              ? Math.round((courseCompleted / courseLessons.length) * 100) 
-              : 0;
-
-            return {
-              ...course,
-              progress_percent: percentage
-            };
-          });
-          setMyCourses(coursesWithProgress);
+      // 3. Cursos matriculados (EAD) + progresso — vários cursos por aluno.
+      const { progress: progressData } = await lmsApi.progress();
+      const turma = (allClasses || []).find(c => c.id === activeTurmaId);
+      try {
+        const { courses } = await lmsApi.myCourses();
+        const enrolledCourses = courses || [];
+        setMyCourses(enrolledCourses);
+        const structures = await Promise.all(enrolledCourses.map(async course => {
+          try {
+            const { modules } = await lmsApi.structure(course.id);
+            return (modules || []).filter(module => module.is_in_person).map(module => ({ ...module, course_title: course.title }));
+          } catch { return []; }
+        }));
+        const presencial = structures.flat();
+        if (activeTurmaId) {
+          await Promise.all(presencial.map(async module => {
+            try {
+              const { attendance } = await attendanceApi.moduleList(activeTurmaId, module.id);
+              const own = (attendance || []).find(row => row.student_id === activeStudentId);
+              module.attendance = own || null;
+            } catch { module.attendance = null; }
+          }));
+        }
+        setInPersonModules(presencial);
+      } catch {
+        // Fallback (backend antigo sem /my-courses): usa o curso da turma.
+        const lmsCourseId = turma?.lms_course_id;
+        if (student?.has_lms_access && lmsCourseId) {
+          try {
+            const { course } = await coursesApi.get(lmsCourseId);
+            if (course && course.is_published) {
+              const { lessons: courseLessons } = await lmsApi.courseLessons(lmsCourseId);
+              const done = (courseLessons || []).filter(l => (progressData || []).some(p => p.lesson_id === l.id && p.is_completed)).length;
+              const percentage = courseLessons?.length ? Math.round((done / courseLessons.length) * 100) : 0;
+              setMyCourses([{ ...course, progress_percent: percentage }]);
+            }
+          } catch { /* sem curso liberado */ }
         }
       }
 
-      // 4. Buscar Próxima Aula Prática Presencial
+      // 4. Próxima aula prática presencial
       if (activeTurmaId) {
-        const { data: upcoming } = await supabase
-          .from('upcoming_classes')
-          .select('*, lms_courses(title)')
-          .eq('id', activeTurmaId)
-          .maybeSingle();
-
+        const { classes: uc } = await upcomingClassesApi.list(activeTurmaId);
+        const upcoming = uc && uc[0];
         if (upcoming) {
           setUpcomingPractical(upcoming);
-
-          // Verificar confirmação de presença do aluno
           if (activeStudentId) {
-            const { data: attendanceCheck } = await supabase
-              .from('attendance_records')
-              .select('id')
-              .eq('student_id', activeStudentId)
-              .eq('class_id', activeTurmaId)
-              .eq('status', 'presente')
-              .maybeSingle();
-            
-            setHasConfirmedAttendance(!!attendanceCheck);
+            const { attendance } = await attendanceApi.list({ student_id: activeStudentId, class_id: activeTurmaId });
+            setHasConfirmedAttendance(!!(attendance && attendance.some(a => a.status === 'presente')));
           }
         }
       }
 
-      // 5. Histórico de Chamadas e Frequência Presencial
-      if (activeStudentId && activeTurmaId) {
-        const { data: attData } = await supabase
-          .from('attendance_records')
-          .select('*, classes(name)')
-          .eq('student_id', activeStudentId)
-          .order('created_at', { ascending: false });
-
+      // 5. Histórico de presença
+      if (activeStudentId) {
+        const { attendance: attData } = await attendanceApi.list({ student_id: activeStudentId });
         setAttendanceHistory(attData || []);
       }
 
-      // 6. Buscar Notas de Provas Online (Quizzes) e Presenciais
-      const { data: qResults } = await supabase
-        .from('lms_quiz_results')
-        .select('*, lms_quizzes(title, quiz_type)')
-        .eq('student_id', session.user.id)
-        .order('updated_at', { ascending: false });
+      // 6. Notas de provas + avaliações técnicas
+      const { results: qResults } = await lmsApi.results({});
       if (qResults) setQuizResults(qResults);
-
       if (activeStudentId) {
-        const { data: evals } = await supabase
-          .from('student_evaluations')
-          .select('*, classes(name, course_name)')
-          .eq('student_id', activeStudentId)
-          .order('date', { ascending: false });
-        if (evals) setTechnicalEvals(evals);
+        const { evaluations } = await evaluationsApi.list(activeStudentId);
+        if (evaluations) setTechnicalEvals(evaluations);
       }
 
-      // 7. Mural de Comunicados Reativo
-      const { data: annData } = await supabase
-        .from('announcements')
-        .select('*, author:users!created_by(full_name)')
-        .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false });
-
+      // 7. Mural de comunicados
+      const { announcements: annData } = await generalAnnouncementsApi.list();
       if (annData) {
-        const activeAnn = annData.filter(a => 
-          a.target_roles?.includes('aluno') && 
-          (!a.expires_at || new Date(a.expires_at) >= new Date())
-        );
-        setAnnouncements(activeAnn);
+        const activeAnn = annData.filter(a => {
+          const roles = Array.isArray(a.target_roles) ? a.target_roles : [];
+          return roles.includes('aluno');
+        });
+        setAnnouncements(activeAnn.length ? activeAnn : annData);
       }
 
-      // 8. Buscar Certificados Emitidos
+      // 8. Certificados
       if (activeStudentId) {
-        const { data: certs } = await supabase
-          .from('lms_issued_certificates')
-          .select('*')
-          .eq('student_id', activeStudentId);
-        
-        setIssuedCertificates(certs || []);
-        setCertificatesCount(certs?.length || 0);
+        const { certificates } = await lmsApi.certificates({ student_id: activeStudentId });
+        setIssuedCertificates(certificates || []);
+        setCertificatesCount(certificates?.length || 0);
       }
 
-      // 9. Buscar Financeiro (Receitas / Parcelas)
+      // 9. Financeiro
       if (activeStudentId) {
-        const { data: finData } = await supabase
-          .from('financial_records')
-          .select('*')
-          .eq('student_id', activeStudentId)
-          .maybeSingle();
-        setFinancialRecord(finData);
+        const { records } = await financialApi.listRecords(activeStudentId);
+        setFinancialRecord(records && records[0] ? records[0] : null);
       }
 
-      // 10. Carregar Fórum e Instrutores para Chat
+      // 10. Fórum, instrutores, vitrine
       loadForum(activeTurmaId);
-      loadInstructors(activeTurmaId);
+      // Contatos/mensagens agora são geridos pelo componente ChatPanel.
       loadAvailableCourses();
 
-      // 11. Carregar Aulas Práticas de Final de Semana Disponíveis (Fase 20.1)
-      if (student) {
-        const courseName = student.classes?.course_name;
-        if (courseName) {
-          const { data: practicals, error: prError } = await supabase
-            .from('classes')
-            .select(`
-              id, name, course_name, start_date, max_capacity, schedule, address,
-              practical_students:students!practical_class_id(id, practical_class_status)
-            `)
-            .eq('schedule', 'Aula prática - Final de semana')
-            .eq('course_name', courseName)
-            .gte('start_date', new Date().toISOString().split('T')[0])
-            .order('start_date', { ascending: true });
-
-          if (!prError && practicals) {
-            const mappedPracticals = practicals.map(p => {
-              const confirmedCount = p.practical_students?.filter(s => s.practical_class_status === 'confirmado').length || 0;
-              const pendingCount = p.practical_students?.filter(s => s.practical_class_status === 'pendente').length || 0;
-              return {
-                ...p,
-                confirmedCount,
-                pendingCount,
-                availableVacancies: Math.max(0, (p.max_capacity || 10) - confirmedCount)
-              };
-            });
-            setAvailablePracticalClasses(mappedPracticals);
-          }
-        }
+      // 11. Aulas práticas de fim de semana disponíveis
+      const courseName = turma?.course_name;
+      if (courseName) {
+        const practicals = (allClasses || []).filter(p => p.schedule === 'Aula prática - Final de semana' && p.course_name === courseName);
+        const mappedPracticals = practicals.map(p => ({
+          ...p,
+          confirmedCount: p.practical_confirmed || 0,
+          pendingCount: p.practical_pending || 0,
+          availableVacancies: Math.max(0, (p.max_capacity || 10) - (p.practical_confirmed || 0))
+        }));
+        setAvailablePracticalClasses(mappedPracticals);
       }
 
     } catch (err) {
@@ -380,25 +322,15 @@ export default function AreaAluno() {
   // Função para carregar fórum (com resiliência no localStorage)
   const loadForum = async (activeTurmaId) => {
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_topics')
-        .select('*, student:users!student_id(full_name)')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setForumTopics(data || []);
+      const { topics } = await lmsApi.allForumTopics();
+      setForumTopics((topics || []).map(t => ({ ...t, student: { full_name: t.student_name } })));
     } catch (err) {
       console.warn("Fórum: Usando fallback resiliente do localStorage");
       const localForum = localStorage.getItem('local_forum_topics');
       if (localForum) {
         setForumTopics(JSON.parse(localForum));
       } else {
-        const initialMock = [
-          { id: 'f-1', title: 'Dúvida sobre o ensaio de Líquido Penetrante', content: 'Quantas demãos de revelador são ideais no ensaio?', student: { full_name: 'Ana Maria Silva' }, created_at: new Date().toISOString() },
-          { id: 'f-2', title: 'Diferença entre CD e CL no Ultrassom', content: 'Gostaria de entender melhor a diferença conceitual das ondas.', student: { full_name: 'Bruno Lima' }, created_at: new Date().toISOString() }
-        ];
-        setForumTopics(initialMock);
-        localStorage.setItem('local_forum_topics', JSON.stringify(initialMock));
+        setForumTopics([]);
       }
     }
   };
@@ -406,22 +338,16 @@ export default function AreaAluno() {
   // Carregar cursos disponíveis para matrícula (Vitrine integrada ao CMS)
   const loadAvailableCourses = async () => {
     try {
-      // 1. Carregar cursos do LMS
-      const { data: lmsCourses } = await supabase
-        .from('lms_courses')
-        .select('id, title, description, thumbnail_url, code, price_card, price_pix, price_boleto, price_financing, max_installments, financing_installments')
-        .eq('is_published', true);
+      // 1. Cursos do LMS (catálogo público)
+      const { courses: lmsCourses } = await coursesApi.listPublic();
 
-      // 2. Carregar CMS do site público (site_content)
-      const { data: siteData, error: siteError } = await supabase
-        .from('site_content')
-        .select('data')
-        .eq('id', 'main-content')
-        .maybeSingle();
+      // 2. CMS do site (site_content)
+      let siteContent = {};
+      try {
+        const { content } = await siteContentApi.get();
+        siteContent = content?.['main-content'] || content || {};
+      } catch { siteContent = {}; }
 
-      if (siteError) throw siteError;
-
-      const siteContent = siteData?.data || {};
       const cmsCourses = siteContent.courses_section?.courses || [];
       const courseDetails = siteContent.course_details || {};
 
@@ -486,8 +412,10 @@ export default function AreaAluno() {
           description: c.description || lmsMatch?.description,
           thumbnail_url: c.image || lmsMatch?.thumbnail_url,
           code: lmsMatch?.code || slug?.toUpperCase(),
-          price_card: priceCard || 3000,
-          price_pix: pricePix || 2500,
+          // Curso sem preço cadastrado fica sem preço: os valores fictícios que
+          // ficavam aqui eram indistinguíveis dos reais para o aluno.
+          price_card: priceCard || null,
+          price_pix: pricePix || null,
           max_installments: maxInstallments,
           modality: (c.type?.toLowerCase().includes('hibrido') || c.type?.toLowerCase().includes('híbrido')) ? 'hibrido' : (c.type?.toLowerCase().includes('presencial') ? 'presencial' : 'hibrido'),
           category: slug.startsWith('nr') ? 'NR' : 'END',
@@ -506,17 +434,23 @@ export default function AreaAluno() {
         const details = courseDetails[c.slug] || {};
         const investment = details.investment || {};
         
-        let pricePix = 2500;
-        let priceCard = 3000;
+        // Fallback offline: só o texto do CMS local. Não há tabela de preços
+        // embutida aqui — valores congelados no código não acompanham reajuste
+        // e chegavam ao aluno como se fossem os preços vigentes.
+        let pricePix = null;
+        let priceCard = null;
         let maxInstallments = 10;
-        
-        if (c.slug === 'cd-cl') { pricePix = 3300; priceCard = 3800; maxInstallments = 10; }
-        else if (c.slug === 'cd-et') { pricePix = 4800; priceCard = 5200; maxInstallments = 10; }
-        else if (c.slug === 'cd-mc') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
-        else if (c.slug === 'cd-to') { pricePix = 4400; priceCard = 4700; maxInstallments = 10; }
-        else if (c.slug === 'laser-tracker-caldeiraria') { pricePix = 5300; priceCard = 5900; maxInstallments = 10; }
-        else if (c.slug === 'retreinamento-teorico-cd-cl') { pricePix = 1550; priceCard = 1800; maxInstallments = 10; }
-        else if (c.slug === 'retreinamento-pratico-cd-cl') { pricePix = 2100; priceCard = 2400; maxInstallments = 10; }
+
+        if (investment.pix) {
+          const match = investment.pix.match(/R\$\s*([0-9.,]+)/);
+          if (match) pricePix = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+        }
+        if (investment.credit) {
+          const match = investment.credit.match(/R\$\s*([0-9.,]+)/);
+          if (match) priceCard = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+          const matchInstallments = investment.credit.match(/([0-9]+)\s*x/i);
+          if (matchInstallments) maxInstallments = parseInt(matchInstallments[1], 10);
+        }
 
         return {
           id: c.slug || `cms-local-${index}`,
@@ -565,22 +499,26 @@ export default function AreaAluno() {
   };
 
   // Carregar instrutores da turma do aluno para o Chat
-  const loadInstructors = async (activeTurmaId) => {
+  // Carrega os contatos do chat (professores, secretaria, colegas) + presença.
+  const loadContacts = async () => {
     try {
-      if (activeTurmaId) {
-        const { data } = await supabase
-          .from('class_instructors')
-          .select('*, user:users(id, full_name, email)')
-          .eq('class_id', activeTurmaId);
-
-        if (data && data.length > 0) {
-          setInstructors(data.map(i => i.user).filter(Boolean));
-          return;
-        }
-      }
-      setInstructors([]);
-    } catch (err) {
-      setInstructors([]);
+      const data = await messagesApi.contacts();
+      const next = {
+        professores: data.professores || [],
+        secretaria: data.secretaria || [],
+        alunos: data.alunos || [],
+      };
+      setContacts(next);
+      setOnlineIds(data.online || []);
+      // Abre na primeira categoria que tiver alguém e já seleciona o 1º contato.
+      const firstTab = next.professores.length ? 'professores'
+        : next.secretaria.length ? 'secretaria'
+        : next.alunos.length ? 'alunos' : 'professores';
+      setContactTab(firstTab);
+      const first = next[firstTab]?.[0];
+      if (first && !selectedContactRef.current) handleSelectInstructorChat(first);
+    } catch {
+      setContacts({ professores: [], secretaria: [], alunos: [] });
     }
   };
 
@@ -597,13 +535,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_topics')
-        .insert([topicPayload])
-        .select('*, student:users!student_id(full_name)');
-
-      if (error) throw error;
-      setForumTopics(prev => [data[0], ...prev]);
+      const { topic } = await lmsApi.createTopic(topicPayload);
+      setForumTopics(prev => [{ ...topic, student: { full_name: userName } }, ...prev]);
     } catch (err) {
       // Fallback localstorage
       const newLocalTopic = {
@@ -628,14 +561,8 @@ export default function AreaAluno() {
     setSelectedTopic(topic);
     setTopicReplies([]);
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_replies')
-        .select('*, author:users!author_id(full_name, role)')
-        .eq('topic_id', topic.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setTopicReplies(data || []);
+      const { replies } = await lmsApi.topicReplies(topic.id);
+      setTopicReplies(replies || []);
     } catch (err) {
       // Fallback localstorage para respostas
       const localReplies = localStorage.getItem(`replies_${topic.id}`);
@@ -664,13 +591,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('lms_forum_replies')
-        .insert([replyPayload])
-        .select('*, author:users!author_id(full_name, role)');
-
-      if (error) throw error;
-      setTopicReplies(prev => [...prev, data[0]]);
+      const { reply } = await lmsApi.createReply(replyPayload);
+      setTopicReplies(prev => [...prev, { ...reply, author: { full_name: userName, role: 'aluno' } }]);
     } catch (err) {
       const newLocalReply = {
         id: 'r-' + Date.now(),
@@ -690,26 +612,12 @@ export default function AreaAluno() {
   const handleSelectInstructorChat = async (inst) => {
     setSelectedInstructor(inst);
     setChatMessages([]);
+    setUnreadBy(prev => ({ ...prev, [inst.id]: 0 }));
     if (!session?.user?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${inst.id}),and(sender_id.eq.${inst.id},receiver_id.eq.${session.user.id})`)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setChatMessages(data || []);
-      
-      // Marcar mensagens recebidas como lidas
-      await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('sender_id', inst.id)
-        .eq('receiver_id', session.user.id)
-        .eq('is_read', false);
-
+      const { messages } = await messagesApi.list(inst.id);
+      setChatMessages(messages || []);
     } catch (err) {
       // Fallback localstorage para chat
       const localChat = localStorage.getItem(`chat_${inst.id}`);
@@ -739,13 +647,8 @@ export default function AreaAluno() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([payload])
-        .select();
-
-      if (error) throw error;
-      setChatMessages(prev => [...prev, data[0]]);
+      const { message } = await messagesApi.create({ receiver_id: selectedInstructor.id, content: newChatMessage.trim() });
+      setChatMessages(prev => [...prev, message]);
     } catch (err) {
       const newLocalMsg = {
         id: 'm-' + Date.now(),
@@ -764,17 +667,12 @@ export default function AreaAluno() {
     if (!studentId || !upcomingPractical) return;
     
     try {
-      const { error } = await supabase
-        .from('attendance_records')
-        .insert([{
-          student_id: studentId,
-          class_id: upcomingPractical.id,
-          status: 'presente',
-          confirmed_by_student: true,
-          created_at: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
+      await attendanceApi.create({
+        student_id: studentId,
+        class_id: upcomingPractical.id,
+        status: 'presente',
+        confirmed_by_student: true,
+      });
 
       setHasConfirmedAttendance(true);
       setUpcomingPractical(prev => ({
@@ -790,26 +688,61 @@ export default function AreaAluno() {
     }
   };
 
-  const startCamera = async () => {
+  const handleConfirmModuleAttendance = async (moduleId) => {
+    setConfirmingModuleId(moduleId);
     try {
-      setCameraError('');
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera não suportada neste navegador');
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: 640, height: 480 } 
-      });
-      setSelfieStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      const { attendance } = await attendanceApi.confirmAsStudent(moduleId);
+      setInPersonModules(current => current.map(module => module.id === moduleId
+        ? { ...module, attendance: { ...(module.attendance || {}), ...(attendance || {}), confirmed_by_student: true } }
+        : module));
+      alert('Participação na aula presencial confirmada. O professor fará a chamada definitiva.');
     } catch (err) {
-      setCameraError('Não foi possível acessar a câmera. Autorize o navegador ou envie um arquivo de imagem.');
+      alert('Não foi possível confirmar: ' + err.message);
+    } finally {
+      setConfirmingModuleId(null);
+    }
+  };
+
+  const startCameraLegacy = async () => {
+    setCameraError('');
+    try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('CAMERA_UNAVAILABLE');
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          },
+          audio: false
+        });
+      } catch (constraintError) {
+        if (constraintError?.name === 'NotAllowedError' || constraintError?.name === 'SecurityError') {
+          throw constraintError;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      setSelfieStream(stream);
+      window.setTimeout(() => {
+        if (!videoRef.current) return;
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }, 0);
+    } catch (err) {
+      const message = err?.message === 'CAMERA_UNAVAILABLE'
+        ? 'A câmera não está disponível neste navegador. Abra o portal pelo Chrome/Safari usando HTTPS ou use a câmera nativa do celular.'
+        : err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
+          ? 'O acesso à câmera foi bloqueado. Libere a permissão nas configurações do navegador e tente novamente.'
+          : 'Não foi possível iniciar a câmera. Tente novamente ou use a câmera nativa do celular.';
+      setCameraError(message);
       console.error("Erro ao acessar a câmera:", err);
     }
   };
 
-  const stopCamera = () => {
+  const stopCameraLegacy = () => {
     if (selfieStream) {
       selfieStream.getTracks().forEach(track => track.stop());
       setSelfieStream(null);
@@ -817,11 +750,12 @@ export default function AreaAluno() {
   };
 
   const captureSelfie = () => {
-    if (!videoRef.current?.videoWidth) {
-      setCameraError('A câmera ainda não está pronta. Aguarde um instante ou envie um arquivo.');
+    if (!videoRef.current || !selfieStream) return;
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      setCameraError('A câmera ainda está carregando. Aguarde um instante e tente novamente.');
       return;
     }
-    const video = videoRef.current;
     
     const size = Math.min(video.videoWidth, video.videoHeight);
     const canvas = document.createElement('canvas');
@@ -839,28 +773,25 @@ export default function AreaAluno() {
     
     ctx.drawImage(video, sx, sy, size, size, 0, 0, 400, 400);
     
-    canvas.toBlob(async (blob) => {
+    canvas.toBlob((blob) => {
       if (blob) {
         const file = new File([blob], `selfie-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        const ok = await handleFileUpload(file, 'photo');
-        if (ok) {
-          setShowSelfieModal(false);
-          stopCamera();
-        }
+        handleFileUpload(file, 'photo');
+        setShowSelfieModal(false);
+        stopCamera();
       }
     }, 'image/jpeg', 0.9);
   };
 
   const handleSelectLocalFile = async (e) => {
     if (e.target.files && e.target.files[0]) {
-      const ok = await handleFileUpload(e.target.files[0], 'photo');
-      if (ok) {
+      const uploaded = await handleFileUpload(e.target.files[0], 'photo');
+      if (uploaded) {
         setShowSelfieModal(false);
         stopCamera();
       }
+      e.target.value = '';
     }
-    // Permite selecionar novamente o mesmo arquivo caso o envio precise ser repetido.
-    e.target.value = '';
   };
 
   // Upload de Documentos Abendi
@@ -871,61 +802,35 @@ export default function AreaAluno() {
     } else {
       file = e; // se passarmos o objeto File diretamente
     }
+    if (!file || !studentId) return;
 
-    if (!file) {
-      alert('Nenhum arquivo foi selecionado.');
-      return false;
+    if (docType === 'photo') {
+      const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!acceptedImageTypes.includes(file.type)) {
+        setDocumentNotice({ type: 'error', title: 'Formato não aceito', message: 'Escolha uma foto nos formatos JPG, PNG ou WEBP.' });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setDocumentNotice({ type: 'error', title: 'Foto muito grande', message: 'A foto deve ter no máximo 10 MB. Reduza o tamanho do arquivo e tente novamente.' });
+        return false;
+      }
     }
 
-    if (!studentId) {
-      console.error('[UPLOAD] studentId está null — aluno sem cadastro na tabela students para user_id:', session?.user?.id);
-      alert('Erro: seu cadastro de aluno não foi localizado no sistema. Por favor, entre em contato com a secretaria.');
-      return false;
-    }
-
-    setUploadingDoc(docType);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${studentId}_${docType}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${studentId}/${fileName}`;
+      const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`);
+      await studentsApi.update(studentId, { [`doc_${docType}_url`]: publicUrl });
 
-      console.log(`[UPLOAD] Iniciando upload: bucket=student_documents path=${filePath} size=${file.size}`);
-
-      const { error: uploadError } = await supabase.storage
-        .from('student_documents')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        console.error('[UPLOAD] Falha no storage.upload:', uploadError);
-        throw uploadError;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('student_documents')
-        .getPublicUrl(filePath);
-
-      console.log(`[UPLOAD] Upload OK. Atualizando students.doc_${docType}_url...`);
-
-      const { error: updateError } = await supabase
-        .from('students')
-        .update({ [`doc_${docType}_url`]: publicUrl })
-        .eq('id', studentId);
-
-      if (updateError) {
-        console.error('[UPLOAD] Falha no update da tabela students:', updateError);
-        throw updateError;
-      }
-
-      alert(`Documento (${docType.toUpperCase()}) enviado com sucesso!`);
+      setDocumentNotice({
+        type: 'success',
+        title: docType === 'photo' ? 'Foto enviada' : 'Documento enviado',
+        message: docType === 'photo' ? 'Sua foto foi salva e enviada para auditoria.' : 'O documento foi enviado para auditoria com sucesso.'
+      });
       fetchData();
       return true;
     } catch (error) {
-      console.error('[UPLOAD] Erro completo:', error);
-      const msg = error?.message || error?.error_description || 'Erro desconhecido';
-      alert(`Falha ao enviar documento (${docType}): ${msg}. Verifique sua conexão e tente novamente.`);
+      console.error('Erro no upload de documento:', error);
+      setDocumentNotice({ type: 'error', title: 'Falha no envio', message: 'Não foi possível enviar o arquivo. Verifique sua conexão e tente novamente.' });
       return false;
-    } finally {
-      setUploadingDoc(null);
     }
   };
 
@@ -934,12 +839,7 @@ export default function AreaAluno() {
     if (!studentId) return;
 
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({ terms_accepted: true })
-        .eq('id', studentId);
-
-      if (error) throw error;
+      await studentsApi.update(studentId, { terms_accepted: true });
 
       // Atualiza o estado local para fechar o modal imediatamente
       setStudentData(prev => prev ? { ...prev, terms_accepted: true } : null);
@@ -951,53 +851,47 @@ export default function AreaAluno() {
   };
 
   // Baixar Certificado Conquistado (Gera PDF Client-side)
-  const handleDownloadPDF = (cert) => {
+  const handleDownloadPDF = async (cert) => {
+    // O backend guarda os dados da emissão em cert.metadata e o código em cert.code
+    const meta = cert.metadata || {};
     const studentObj = {
-      name: cert.student_name || userName,
-      cpf: studentData?.cpf || ' --- ',
-      class: cert.class_name || 'Turma CEC'
+      name: meta.student_name || cert.student_name || userName,
+      cpf: meta.cpf || studentData?.cpf || ' --- ',
+      class: meta.course_title || cert.course_title || 'Curso CEC'
     };
-    generateDocument('custom_certificate', studentObj, {
-      content: `Certificamos que o aluno ${studentObj.name}, portador do CPF ${studentObj.cpf}, concluiu com êxito o treinamento técnico de ${cert.course_title}, com aproveitamento de nota média ${cert.grade || '8.0'}, cumprindo todos os requisitos teóricos e práticos de qualificação.`,
-      uuid: cert.certificate_code
+    const grade = meta.grade || cert.grade;
+    const hours = meta.hours || cert.hours;
+    await generateDocument('custom_certificate', studentObj, {
+      content: `Certificamos que ${studentObj.name}, portador(a) do CPF ${studentObj.cpf}, concluiu com aproveitamento o curso de ${studentObj.class}${hours ? `, com carga horária de ${hours} horas` : ''}${grade ? `, obtendo nota média ${String(grade).replace('.', ',')}` : ''}.`,
+      uuid: cert.code || cert.certificate_code,
+      grade, hours
     });
-    alert(`Certificado digital baixado com sucesso!`);
+  };
+
+  // Emitir o próprio certificado (validação de elegibilidade é do servidor)
+  const [claimingCourseId, setClaimingCourseId] = useState(null);
+  const handleClaimCertificate = async (course) => {
+    setClaimingCourseId(course.id);
+    try {
+      const { certificate } = await lmsApi.claimCertificate(course.id);
+      setIssuedCertificates(prev => [certificate, ...prev.filter(c => c.id !== certificate.id)]);
+      setCertificatesCount(prev => prev + 1);
+      alert(`Certificado emitido com sucesso! Código de autenticidade: ${certificate.code.substring(0, 8).toUpperCase()}`);
+    } catch (err) {
+      alert(err.message || 'Não foi possível emitir o certificado.');
+    } finally {
+      setClaimingCourseId(null);
+    }
   };
 
   // Redireciona o aluno para a primeira aula do curso EAD
   const handleStartCourse = async (courseId) => {
     try {
-      // Buscar módulos do curso ordenados
-      const { data: modules, error: modError } = await supabase
-        .from('lms_modules')
-        .select('id')
-        .eq('course_id', courseId)
-        .order('order_index', { ascending: true });
-
-      if (modError) throw modError;
-
-      if (!modules || modules.length === 0) {
-        alert('Este curso ainda não possui módulos teóricos EAD cadastrados.');
-        return;
-      }
-
-      // Buscar a primeira aula do primeiro módulo
-      const moduleIds = modules.map(m => m.id);
-      const { data: lessons, error: lesError } = await supabase
-        .from('lms_lessons')
-        .select('id')
-        .in('module_id', moduleIds)
-        .order('order_index', { ascending: true })
-        .limit(1);
-
-      if (lesError) throw lesError;
-
+      const { lessons } = await lmsApi.courseLessons(courseId);
       if (!lessons || lessons.length === 0) {
         alert('Este curso ainda não possui aulas teóricas EAD cadastradas.');
         return;
       }
-
-      // Navegar para a rota da lição
       navigate(`/curso/${courseId}/aula/${lessons[0].id}`);
     } catch (err) {
       console.error('Erro ao acessar o player do curso:', err);
@@ -1052,6 +946,32 @@ export default function AreaAluno() {
         </p>
       </div>
 
+      {/* BANNER: documentos pendentes ou reprovados */}
+      {studentData && (() => {
+        const docTypes = ['photo','id','cpf','address','education'];
+        const pendentes = docTypes.filter(t => !studentData['doc_' + t + '_url']);
+        const reprovados = docTypes.filter(t => studentData['doc_' + t + '_status'] === 'rejected');
+        if (pendentes.length === 0 && reprovados.length === 0) return null;
+        const isReprov = reprovados.length > 0;
+        return (
+          <div style={{ padding: '1rem 1.25rem', borderRadius: '12px', background: isReprov ? '#fee2e2' : '#fef3c7', border: '1px solid ' + (isReprov ? '#fca5a5' : '#fde68a'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <AlertCircle size={18} color={isReprov ? '#b91c1c' : '#b45309'} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isReprov ? '#b91c1c' : '#92400e' }}>
+                {isReprov
+                  ? reprovados.length + ' documento(s) reprovado(s) — revise e reenvie para liberar seu certificado.'
+                  : pendentes.length + ' documento(s) pendente(s) — envie para manter conformidade Abendi.'}
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveTab('documentos')}
+              style={{ fontSize: '0.8rem', fontWeight: 700, padding: '0.4rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', background: isReprov ? '#b91c1c' : '#b45309', color: 'white', whiteSpace: 'nowrap' }}>
+              Enviar agora
+            </button>
+          </div>
+        );
+      })()}
+
       {/* CARDS DE KPIS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: 'white' }}>
@@ -1091,7 +1011,7 @@ export default function AreaAluno() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* CURSOS EM ANDAMENTO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1305,7 +1225,7 @@ export default function AreaAluno() {
   const renderCursos = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--primary-dark)' }}>Meus Cursos Matriculados</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
         {myCourses.map(course => {
           const isEligible = course.progress_percent === 100 && freqReal >= 75;
           const hasCert = issuedCertificates.some(c => c.course_id === course.id);
@@ -1444,13 +1364,8 @@ export default function AreaAluno() {
     if (!studentData?.id) return;
     setSchedulingActionLoading(classId);
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({
-          practical_class_id: classId,
-          practical_class_status: 'pendente'
-        })
-        .eq('id', studentData.id);
+      await studentsApi.update(studentData.id, { practical_class_id: classId, practical_class_status: 'pendente' });
+      const error = null;
 
       if (error) throw error;
 
@@ -1483,13 +1398,8 @@ export default function AreaAluno() {
 
     setSchedulingActionLoading(practicalClass.id);
     try {
-      const { error } = await supabase
-        .from('students')
-        .update({
-          practical_class_id: null,
-          practical_class_status: null
-        })
-        .eq('id', studentData.id);
+      await studentsApi.update(studentData.id, { practical_class_id: null, practical_class_status: null });
+      const error = null;
 
       if (error) throw error;
 
@@ -1505,7 +1415,7 @@ export default function AreaAluno() {
   // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
   const renderPresencial = () => {
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* HISTÓRICO DE PRESENÇAS */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Frequência e Chamadas Presenciais</h3>
@@ -1550,7 +1460,8 @@ export default function AreaAluno() {
 
           <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1rem' }}>Lista de Chamadas Realizadas</h4>
           <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '480px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
                   <th style={{ padding: '1rem' }}>Data da Aula</th>
@@ -1587,12 +1498,35 @@ export default function AreaAluno() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
         {/* CARD PRESENCIAL DO FINAL DE SEMANA */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Cronograma Presencial</h3>
+          {inPersonModules.map(module => {
+            const address = [module.street, module.address_number, module.address_complement, module.neighborhood, module.city, module.state, module.cep].filter(Boolean).join(', ');
+            const confirmed = module.attendance?.confirmed_by_student;
+            return (
+              <div key={module.id} className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid #0f766e' }}>
+                <strong style={{ display: 'block', marginBottom: '.25rem' }}>{module.title}</strong>
+                <span style={{ fontSize: '.8rem', color: '#64748b' }}>{module.course_title}</span>
+                <div style={{ display: 'grid', gap: '.45rem', marginTop: '.8rem', fontSize: '.84rem' }}>
+                  {module.in_person_date && <span><Calendar size={14} style={{ verticalAlign: 'middle' }} /> {new Date(module.in_person_date).toLocaleDateString('pt-BR')} · {module.start_time?.slice(0, 5)}–{module.end_time?.slice(0, 5)}</span>}
+                  {address && <span><MapPin size={14} style={{ verticalAlign: 'middle' }} /> {address}</span>}
+                  <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+                    {address && <a className="btn btn-secondary" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">Ver no Maps</a>}
+                    {module.whatsapp_url && <a className="btn btn-secondary" href={module.whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a>}
+                    <button className="btn" disabled={confirmed || confirmingModuleId === module.id} onClick={() => handleConfirmModuleAttendance(module.id)} style={{ background: confirmed ? '#dcfce7' : '#0f766e', color: confirmed ? '#166534' : 'white' }}>
+                      {confirmed ? 'Participação confirmada' : confirmingModuleId === module.id ? 'Confirmando...' : 'Confirmar participação'}
+                    </button>
+                  </div>
+                  {module.attendance?.status && <small>Chamada do professor: <strong>{module.attendance.status}</strong></small>}
+                </div>
+              </div>
+            );
+          })}
           {upcomingPractical ? (
             <div className="card" style={{ backgroundColor: '#FFFBEB', borderColor: '#FCD34D', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '5px', background: '#F59E0B' }}></div>
@@ -1858,7 +1792,7 @@ export default function AreaAluno() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Histórico de Notas e Desempenho</h3>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '2rem' }}>
         {/* Provas Online (EAD) */}
         <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
           <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provas Online (LMS)</h4>
@@ -1936,7 +1870,7 @@ export default function AreaAluno() {
 
   // ABA 5: FÓRUM DE DÚVIDAS
   const renderForum = () => (
-    <div style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
+    <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
       {/* TÓPICOS DO FÓRUM */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -2084,204 +2018,255 @@ export default function AreaAluno() {
   );
 
   // ABA 6: CHAT COM INSTRUTOR
-  const renderMensagens = () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem', height: '70vh', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '16px', overflow: 'hidden' }}>
-      {/* LISTA DE CONTATOS */}
-      <div style={{ borderRight: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc' }}>
-          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary-dark)' }}>Instrutores & Suporte</h4>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {instructors.map(inst => (
-            <div 
-              key={inst.id} 
-              onClick={() => handleSelectInstructorChat(inst)}
-              style={{ 
-                padding: '0.85rem 1rem', 
-                borderBottom: '1px solid #f1f5f9', 
-                cursor: 'pointer',
-                backgroundColor: selectedInstructor?.id === inst.id ? 'var(--primary-light)' : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                transition: 'all 0.2s'
-              }}
-            >
-              <div style={{ 
-                width: '32px', height: '32px', borderRadius: '50%', 
-                backgroundColor: 'var(--primary)', color: 'white', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                fontWeight: 'bold', fontSize: '0.8rem' 
-              }}>
-                {inst.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.full_name}</div>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inst.email}</div>
-              </div>
-            </div>
-          ))}
-          {instructors.length === 0 && (
-            <p style={{ fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>Carregando contatos...</p>
-          )}
-        </div>
+  const renderMensagens = () => createPortal((
+    <div className="aa-chat-window"><ChatPanel /></div>
+  ), document.body);
+
+  // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
+  const DOC_DEFS = [
+    { type: 'photo',     label: 'Foto de Rosto',               hint: 'Selfie frontal, fundo claro, sem óculos ou boné.',              accept: 'image/*',      allowCamera: true },
+    { type: 'id',        label: 'RG ou CNH (frente e verso)',   hint: 'Documento oficial com foto. PDF ou imagem nítida.',             accept: '.pdf,image/*', allowCamera: true },
+    { type: 'cpf',       label: 'CPF',                          hint: 'Cartão CPF físico ou comprovante da Receita Federal.',          accept: '.pdf,image/*', allowCamera: true },
+    { type: 'address',   label: 'Comprovante de Residência',    hint: 'Conta de luz, água ou telefone com menos de 90 dias.',         accept: '.pdf,image/*', allowCamera: true },
+    { type: 'education', label: 'Comprovante de Escolaridade',  hint: 'Diploma, certificado ou histórico escolar.',                   accept: '.pdf,image/*', allowCamera: true },
+  ];
+
+  const docUrl    = (type) => studentData ? studentData['doc_' + type + '_url']    : null;
+  const docStatus = (type) => studentData ? studentData['doc_' + type + '_status'] : null;
+  const docReject = (type) => studentData ? studentData['doc_' + type + '_reject'] : null;
+
+  const docsTotal      = DOC_DEFS.length;
+  const docsEnviados   = DOC_DEFS.filter(d => !!docUrl(d.type)).length;
+  const docsAprovados  = DOC_DEFS.filter(d => docStatus(d.type) === 'approved').length;
+  const docsRejeitados = DOC_DEFS.filter(d => docStatus(d.type) === 'rejected').length;
+
+  const STATUS_CFG = {
+    approved: { color: '#10b981', bg: '#d1fae5', border: '#a7f3d0', label: 'Aprovado',    icon: 'checkmark' },
+    pending:  { color: '#d97706', bg: '#fef3c7', border: '#fde68a', label: 'Em analise',  icon: 'clock'     },
+    rejected: { color: '#ef4444', bg: '#fee2e2', border: '#fca5a5', label: 'Reprovado',   icon: 'x'         },
+    missing:  { color: '#94a3b8', bg: '#f8fafc', border: '#e2e8f0', label: 'Nao enviado', icon: 'circle'    },
+  };
+
+  const getDocSK = (type) => {
+    if (!docUrl(type)) return 'missing';
+    return docStatus(type) || 'pending';
+  };
+
+  const openCameraForDoc = async (type) => {
+    setActiveUploadType(type);
+    setCameraError('');
+    setShowSelfieModal(true);
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        setSelfieStream(stream);
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      } catch {
+        try {
+          const s2 = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          setSelfieStream(s2);
+          if (videoRef.current) videoRef.current.srcObject = s2;
+        } catch (e2) { setCameraError('Camera nao disponivel: ' + (e2.message || 'Permissao negada')); }
+      }
+    }, 150);
+  };
+
+  const stopCamera = () => {
+    if (selfieStream) selfieStream.getTracks().forEach(t => t.stop());
+    setSelfieStream(null);
+    setShowSelfieModal(false);
+    setActiveUploadType(null);
+    setCameraError('');
+  };
+
+  const captureFromCamera = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const v = videoRef.current, c = canvasRef.current;
+    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+    c.getContext('2d').drawImage(v, 0, 0);
+    c.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], 'doc_' + activeUploadType + '_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+      stopCamera();
+      await handleFileUploadDoc({ target: { files: [file] } }, activeUploadType);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const handleFileUploadDoc = async (e, type) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !studentId) return;
+    if (file.size > 5 * 1024 * 1024) { setUploadError('Arquivo muito grande. Maximo 5 MB.'); return; }
+    setUploadingDoc(type);
+    setUploadError(null);
+    try {
+      const res = await uploadFile(file, 'students/' + studentId);
+      const url = res.url;
+      const patch = {};
+      patch['doc_' + type + '_url']    = url;
+      patch['doc_' + type + '_status'] = 'pending';
+      patch['doc_' + type + '_reject'] = null;
+      await studentsApi.update(studentId, patch);
+      setStudentData(prev => ({ ...prev, ...patch }));
+    } catch (err) {
+      setUploadError('Falha ao enviar: ' + (err.message || 'tente novamente'));
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
+  const renderDocumentos = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 4px' }}>Secretaria Digital - Documentos</h3>
+        <p style={{ fontSize: '0.83rem', color: '#64748b', margin: 0 }}>Envie seus documentos para manter conformidade com a Abendi e liberar seu certificado.</p>
       </div>
 
-      {/* ÁREA DE MENSAGENS */}
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {selectedInstructor ? (
-          <>
-            {/* Header do Chat */}
-            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #cbd5e1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                {selectedInstructor.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: '800', color: 'var(--primary-dark)' }}>{selectedInstructor.full_name}</h4>
-                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700' }}>● Online</span>
-              </div>
-            </div>
-
-            {/* Listagem de Mensagens */}
-            <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem', backgroundColor: '#f8fafc' }}>
-              {chatMessages.map(msg => {
-                const isMe = msg.sender_id === session?.user?.id;
-                return (
-                  <div 
-                    key={msg.id}
-                    style={{ 
-                      alignSelf: isMe ? 'flex-end' : 'flex-start',
-                      backgroundColor: isMe ? 'var(--primary)' : 'white',
-                      color: isMe ? 'white' : '#1e293b',
-                      padding: '0.6rem 0.85rem',
-                      borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
-                      maxWidth: '70%',
-                      fontSize: '0.82rem',
-                      lineHeight: '1.4',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                      border: isMe ? 'none' : '1px solid #e2e8f0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
-                    }}
-                  >
-                    <span>{msg.content}</span>
-                    <span style={{ fontSize: '0.6rem', alignSelf: 'flex-end', opacity: 0.65, marginTop: '2px' }}>
-                      {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Form */}
-            <form onSubmit={handleSendChatMessage} style={{ padding: '1rem', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '0.5rem', backgroundColor: 'white' }}>
-              <input 
-                type="text" 
-                placeholder="Digite sua mensagem pedagógica..."
-                value={newChatMessage}
-                onChange={e => setNewChatMessage(e.target.value)}
-                style={{ flex: 1, padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Send size={16} />
-              </button>
-            </form>
-          </>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', padding: '2rem' }}>
-            <MessageCircle size={48} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
-            <h4 style={{ margin: 0, fontWeight: 700 }}>Chat Pedagógico</h4>
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0 0', textAlign: 'center' }}>Selecione um instrutor na barra lateral para iniciar sua conversa em tempo real.</p>
+      <div className="card" style={{ padding: '1.25rem', background: 'white' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>Progresso da documentacao</span>
+          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>{docsAprovados} aprovado(s) de {docsTotal}</span>
+        </div>
+        <div style={{ height: '10px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: Math.round((docsAprovados / docsTotal) * 100) + '%', background: 'linear-gradient(90deg,#10b981,#059669)', borderRadius: '99px', transition: 'width .4s' }} />
+        </div>
+        {docsRejeitados > 0 && (
+          <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '0.78rem', color: '#b91c1c', fontWeight: 600 }}>
+            {docsRejeitados} documento(s) reprovado(s) - veja o motivo e reenvie.
+          </div>
+        )}
+        {uploadError && (
+          <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '0.78rem', color: '#b91c1c', fontWeight: 600 }}>
+            {uploadError}
           </div>
         )}
       </div>
-    </div>
-  );
 
-  // ABA 7: SECRETARIA E DOCUMENTOS (Abendi Compliance)
-  const renderDocumentos = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Secretaria Digital - Envio de Documentos</h3>
-        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Conclua o upload de seus documentos para manter sua matrícula em conformidade com as regras da **Abendi** e garantir a emissão de certificados.</p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
-        {/* Formulário de Upload */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {[
-            { type: 'photo', label: 'Foto de Rosto (Foto / Selfie)', field: studentData?.doc_photo_url, signedField: signedUrls.photo },
-            { type: 'id', label: 'Documento de Identidade Oficial (RG ou CNH)', field: studentData?.doc_id_url, signedField: signedUrls.id },
-            { type: 'cpf', label: 'Cadastro de Pessoa Física (CPF)', field: studentData?.doc_cpf_url, signedField: signedUrls.cpf },
-            { type: 'address', label: 'Comprovante de Residência recente', field: studentData?.doc_address_url, signedField: signedUrls.address },
-            { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: studentData?.doc_education_url, signedField: signedUrls.education }
-          ].map(doc => (
-            <div key={doc.type} className="card" style={{ padding: '1.25rem', backgroundColor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <span style={{ fontWeight: '750', fontSize: '0.88rem', color: 'var(--primary-dark)', display: 'block' }}>{doc.label}</span>
-                <span style={{ fontSize: '0.72rem', color: doc.field ? '#10b981' : '#f59e0b', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px', marginTop: '2px' }}>
-                  {doc.field ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                  {doc.field ? 'Enviado para Auditoria' : 'Pendente de Upload'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                {doc.field && (
-                  <a href={doc.signedField || doc.field} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', textDecoration: 'none' }}>
-                    Visualizar
-                  </a>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        {DOC_DEFS.map(function(doc) {
+          var sk   = getDocSK(doc.type);
+          var sc   = STATUS_CFG[sk];
+          var url  = docUrl(doc.type);
+          var note = docReject(doc.type);
+          var busy = uploadingDoc === doc.type;
+          return (
+            <div key={doc.type} className="card" style={{ padding: '1rem 1.25rem', background: 'white', borderLeft: '4px solid ' + sc.border, display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 750, fontSize: '0.9rem', color: '#1e293b' }}>{doc.label}</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: sc.color, background: sc.bg, border: '1px solid ' + sc.border, padding: '1px 8px', borderRadius: '99px' }}>{sc.label}</span>
+                </div>
+                <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748b' }}>{doc.hint}</p>
+                {sk === 'rejected' && note && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#b91c1c', background: '#fee2e2', borderRadius: '6px', padding: '0.35rem 0.6rem', fontWeight: 600 }}>Motivo: {note}</div>
                 )}
-                {doc.type === 'photo' ? (
-                  <>
-                    <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                      {doc.field ? 'Reenviar arquivo' : 'Enviar arquivo'}
-                      <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} />
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
-                      style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold' }}
-                    >
-                      Usar câmera
-                    </button>
-                  </>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end', flexShrink: 0 }}>
+                {busy ? (
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Enviando...</span>
                 ) : (
-                  <label className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.78rem', cursor: 'pointer', margin: 0, borderRadius: '8px' }}>
-                    {doc.field ? 'Re-enviar' : 'Fazer Upload'}
-                    <input 
-                      type="file" 
-                      hidden 
-                      accept=".pdf,image/*" 
-                      onChange={(e) => handleFileUpload(e, doc.type)} 
-                    />
-                  </label>
+                  <React.Fragment>
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none', background: 'var(--primary-light)', padding: '0.3rem 0.75rem', borderRadius: '6px' }}>
+                        Ver arquivo
+                      </a>
+                    )}
+                    {doc.allowCamera && (
+                      <button onClick={function(){ openCameraForDoc(doc.type); }}
+                        style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: 'none', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        📷 {url ? 'Tirar nova foto' : 'Usar câmera'}
+                      </button>
+                    )}
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4f46e5', background: '#ede9fe', padding: '0.3rem 0.75rem', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      📎 {url ? 'Substituir arquivo' : 'Anexar arquivo'}
+                      <input type="file" hidden accept={doc.accept} onChange={function(e){ handleFileUploadDoc(e, doc.type); e.target.value = ''; }} />
+                    </label>
+                  </React.Fragment>
                 )}
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Status e Orientações Abendi */}
-        <div>
-          <div className="card" style={{ backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0369a1', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <FileCheck size={18} /> Diretrizes de Auditoria Abendi
-            </h4>
-            <ul style={{ fontSize: '0.8rem', color: '#0369a1', paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: 1.4 }}>
-              <li>Os arquivos devem estar legíveis e sem cortes nas bordas.</li>
-              <li>A foto de rosto deve ser frontal, com fundo claro e sem óculos de sol ou boné.</li>
-              <li>Formatos aceitos: PDF, PNG, JPG e JPEG de até 5MB.</li>
-              <li>Certificados de conclusão dependem de 100% dos documentos aprovados.</li>
-            </ul>
-          </div>
-        </div>
+          );
+        })}
       </div>
+
+      <div className="card" style={{ padding: '1.25rem', background: '#f0f9ff', borderColor: '#bae6fd' }}>
+        <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0369a1', margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <FileCheck size={16} /> Diretrizes Abendi
+        </h4>
+        <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.78rem', color: '#0369a1', display: 'flex', flexDirection: 'column', gap: '4px', lineHeight: 1.5 }}>
+          <li>Arquivos legíveis, sem cortes nas bordas.</li>
+          <li>Foto frontal, fundo claro, sem adereços.</li>
+          <li>PDF, PNG, JPG — maximo 5 MB por arquivo.</li>
+          <li>Certificado bloqueado ate todos os documentos serem aprovados.</li>
+        </ul>
+      </div>
+
+      {showSelfieModal && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '20px', padding: '1.5rem', maxWidth: '500px', width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>
+                  📷 {DOC_DEFS.find(function(d){ return d.type === activeUploadType; })?.label || 'Documento'}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>Posicione o documento na frente da câmera e capture.</p>
+              </div>
+              <button onClick={stopCamera}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', fontSize: '1.1rem', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                ✕
+              </button>
+            </div>
+
+            {cameraError ? (
+              /* Câmera indisponível — oferecer upload de arquivo como fallback */
+              <div style={{ padding: '1.25rem', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fde68a', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ fontSize: '2rem' }}>📵</div>
+                <p style={{ margin: 0, fontSize: '0.83rem', color: '#92400e', fontWeight: 600 }}>{cameraError}</p>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#92400e' }}>Você ainda pode enviar uma foto ou PDF do arquivo:</p>
+                <label style={{ fontWeight: 700, color: 'white', background: '#4f46e5', padding: '0.65rem 1.25rem', borderRadius: '10px', cursor: 'pointer', display: 'inline-block' }}>
+                  📎 Escolher arquivo do dispositivo
+                  <input type="file" hidden accept="image/*,.pdf"
+                    onChange={function(e){ stopCamera(); handleFileUploadDoc(e, activeUploadType); e.target.value = ''; }} />
+                </label>
+              </div>
+            ) : (
+              <React.Fragment>
+                {/* Preview da câmera */}
+                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}>
+                  <video ref={videoRef} autoPlay playsInline muted
+                    style={{ width: '100%', display: 'block', maxHeight: '320px', objectFit: 'cover' }} />
+                  {/* Guia de enquadramento */}
+                  <div style={{ position: 'absolute', inset: '10%', border: '2px dashed rgba(255,255,255,0.4)', borderRadius: '8px', pointerEvents: 'none' }} />
+                </div>
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <button onClick={stopCamera}
+                    style={{ padding: '0.7rem', background: '#f1f5f9', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', color: '#475569', fontSize: '0.85rem' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={captureFromCamera}
+                    style={{ padding: '0.7rem', background: '#2563eb', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', color: 'white', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    📸 Capturar
+                  </button>
+                </div>
+                {/* Alternativa: subir arquivo */}
+                <div style={{ textAlign: 'center', paddingTop: '0.25rem', borderTop: '1px solid #f1f5f9' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#64748b', cursor: 'pointer', fontWeight: 600 }}>
+                    ou prefere <span style={{ color: '#4f46e5', textDecoration: 'underline' }}>escolher um arquivo</span>
+                    <input type="file" hidden accept="image/*,.pdf"
+                      onChange={function(e){ stopCamera(); handleFileUploadDoc(e, activeUploadType); e.target.value = ''; }} />
+                  </label>
+                </div>
+              </React.Fragment>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
-
   // ABA 8: MEUS CERTIFICADOS
   const renderCertificates = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -2290,7 +2275,7 @@ export default function AreaAluno() {
         <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Visualize e baixe seus certificados digitais emitidos pela C&C Engenharia e Capacitação.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
         {issuedCertificates.map(cert => (
           <div key={cert.id} className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', gap: '1rem', alignItems: 'center', borderLeft: '5px solid #10b981' }}>
             <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', color: '#10b981', padding: '1rem', borderRadius: '12px' }}>
@@ -2298,8 +2283,8 @@ export default function AreaAluno() {
             </div>
             
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.course_title}</h4>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')}</span>
+              <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cert.metadata?.course_title || cert.course_title || 'Curso CEC'}</h4>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>Emitido em: {new Date(cert.issued_at).toLocaleDateString('pt-BR')} · Código {(cert.code || '').substring(0, 8).toUpperCase()}</span>
               
               <button 
                 className="btn btn-primary"
@@ -2323,13 +2308,15 @@ export default function AreaAluno() {
               
               <div style={{ flex: 1 }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{course.title}</h4>
-                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Aguardando homologação da Secretaria</span>
-                
-                <button 
-                  disabled
-                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', background: '#f1f5f9', color: '#94a3b8', border: '1px solid #cbd5e1', cursor: 'not-allowed' }}
+                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Elegível · Requisitos concluídos 🎉</span>
+
+                <button
+                  className="btn btn-primary"
+                  disabled={claimingCourseId === course.id}
+                  onClick={() => handleClaimCertificate(course)}
+                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', borderRadius: '6px', fontWeight: '750', display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: claimingCourseId === course.id ? 0.6 : 1 }}
                 >
-                  Pendente de Emissão
+                  <Award size={14} /> {claimingCourseId === course.id ? 'Emitindo...' : 'Emitir meu certificado'}
                 </button>
               </div>
             </div>
@@ -2351,13 +2338,14 @@ export default function AreaAluno() {
     const installments = financialRecord?.installments || [];
     
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* PARCELAS */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.25rem' }}>Mensalidades e Faturas</h3>
           
           <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '560px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
                   <th style={{ padding: '1rem' }}>Parcela</th>
@@ -2413,6 +2401,7 @@ export default function AreaAluno() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -2606,7 +2595,7 @@ export default function AreaAluno() {
             <p style={{ color: '#94a3b8', fontWeight: '600', margin: 0 }}>Nenhum curso encontrado para "{vitrineSearch}".</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))', gap: '1.5rem' }}>
             {filtered.map((course, idx) => {
               const inWishlist = wishlist.includes(course.id);
               const alreadyEnrolled = enrolledIds.has(course.id);
@@ -2926,124 +2915,44 @@ export default function AreaAluno() {
     );
   }
 
-  // Se houver pendência Abendi, exibe bloqueio amigável
-  // Mantém o modal disponível também na tela de pendências obrigatórias.
-  // Antes deste ajuste, o return abaixo ocultava o modal e impedia o envio da foto.
-  if (missingDocs && !showSelfieModal) {
-    return (
-      <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '4rem auto', padding: '0 1.5rem' }}>
-        <div className="card text-center" style={{ padding: '3.5rem 2rem', border: '2px solid #FCD34D', backgroundColor: '#FFFBEB', borderRadius: '24px' }}>
-          <AlertCircle size={48} color="#b45309" style={{ margin: '0 auto 1rem' }} />
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem', color: '#92400E' }}>Falta pouco para acessar suas aulas!</h2>
-          <p style={{ color: '#B45309', marginBottom: '2.5rem', fontSize: '1.05rem', lineHeight: '1.6', maxWidth: '600px', margin: '0 auto 2.5rem' }}>
-            Por exigência da certificação nacional **Abendi**, precisamos que você conclua o envio dos seus documentos obrigatórios antes de liberar o acesso completo à plataforma LMS.
-          </p>
-          
-          <div style={{ display: 'grid', gap: '1.25rem', textAlign: 'left', maxWidth: '550px', margin: '0 auto' }}>
-            {[
-              { type: 'photo', label: 'Foto de Rosto (Você pode tirar uma selfie agora)', field: 'doc_photo_url' },
-              { type: 'id', label: 'Documento de Identidade com Foto (RG ou CNH)', field: 'doc_id_url' },
-              { type: 'cpf', label: 'CPF', field: 'doc_cpf_url' },
-              { type: 'address', label: 'Comprovante de Residência atualizado', field: 'doc_address_url' },
-              { type: 'education', label: 'Comprovante de Escolaridade (Diploma ou Histórico)', field: 'doc_education_url' }
-            ].map((doc) => {
-              const isUploading = uploadingDoc === doc.type;
-              const alreadySent = studentData?.[doc.field];
-              return (
-                <div key={doc.type} style={{ padding: '1.25rem', backgroundColor: alreadySent ? '#f0fdf4' : 'white', borderRadius: '14px', border: `1px solid ${alreadySent ? '#86efac' : '#FDE68A'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', transition: 'all 0.3s ease' }}>
-                  <span style={{ fontWeight: '700', fontSize: '0.88rem', color: 'var(--primary-dark)', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {alreadySent && <CheckCircle size={16} color="#16a34a" />}
-                    {doc.label}
-                    {alreadySent && <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>✓ Enviado</span>}
-                  </span>
-                  {doc.type === 'photo' ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'wait' : 'pointer', margin: 0, borderRadius: '8px', opacity: isUploading ? 0.6 : 1 }}>
-                        {isUploading ? 'Enviando...' : (alreadySent ? 'Reenviar arquivo' : 'Enviar arquivo')}
-                        <input type="file" hidden accept="image/*" onChange={handleSelectLocalFile} disabled={isUploading} />
-                      </label>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => { setCameraError(''); setShowSelfieModal(true); }}
-                        disabled={isUploading}
-                        style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'not-allowed' : 'pointer', margin: 0, borderRadius: '8px', fontWeight: 'bold', opacity: isUploading ? 0.6 : 1 }}
-                      >
-                        Usar câmera
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem', cursor: isUploading ? 'wait' : 'pointer', margin: 0, borderRadius: '8px', opacity: isUploading ? 0.6 : 1 }}>
-                      {isUploading ? 'Enviando...' : (alreadySent ? 'Reenviar Arquivo' : 'Selecionar Arquivo')}
-                      <input 
-                        type="file" 
-                        hidden 
-                        accept=".pdf,image/*" 
-                        onChange={(e) => handleFileUpload(e, doc.type)}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  )}
-              </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Roteamento condicional baseado na rota ativa
-  const getActiveTabContent = () => {
-    const path = location.pathname;
-    
-    if (path === '/area-aluno/cursos') {
-      return renderCursos();
-    } else if (path === '/area-aluno/ead') {
-      return renderCursos(); // Aulas EAD também lista e direciona para player
-    } else if (path === '/area-aluno/presencial') {
-      return renderPresencial();
-    } else if (path === '/area-aluno/desempenho') {
-      return renderDesempenho();
-    } else if (path === '/area-aluno/forum') {
-      return renderForum();
-    } else if (path === '/area-aluno/mensagens') {
-      return renderMensagens();
-    } else if (path === '/area-aluno/documentos') {
-      return renderDocumentos();
-    } else if (path === '/area-aluno/certificados') {
-      return renderCertificates();
-    } else if (path === '/area-aluno/financeiro') {
-      return renderFinanceiro();
-    } else if (path === '/area-aluno/vitrine') {
-      return renderVitrine();
-    } else if (path === '/area-aluno/avisos') {
-      return renderQuadroAvisos();
-    } else {
-      return renderDashboard();
-    }
-  };
-
+  // Banner de onboarding: mostra aviso inline (nao bloqueia mais a tela inteira)
+  // O aluno pode fechar o aviso e ir direto para a aba Documentos.
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="animate-fade-in" style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .aa-stack { grid-template-columns: 1fr !important; }
+        }
+        /* Chat como JANELA: preenche a area a direita do menu, abaixo do topo. */
+        .aa-chat-window {
+          position: fixed;
+          top: 70px; left: 260px; right: 0; bottom: 0;
+          background: #ffffff;
+          z-index: 20;
+          display: flex;
+        }
+        @media (max-width: 768px) {
+          .aa-chat-window { left: 0; top: 71px; }
+        }
+      `}</style>
       {getActiveTabContent()}
 
       {/* MODAL DE CAPTURA DE SELFIE INTERATIVA COM MÁSCARA REDONDA DE PRIVACIDADE */}
-      {showSelfieModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+      {showSelfieModal && createPortal((
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '440px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid #e2e8f0', textAlign: 'center', boxSizing: 'border-box' }} className="animate-scale-up">
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)' }}>
-              Capturar Selfie
+              Enviar foto de identificação
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 1.5rem 0', lineHeight: 1.4 }}>
-              Posicione seu rosto no centro da bola para encaixar a foto. A imagem será recortada em círculo para sua total privacidade.
+              Use a câmera ou escolha uma foto JPG, PNG ou WEBP já salva no seu dispositivo.
             </p>
 
             {/* Vídeo com a Câmera */}
             <div style={{
               position: 'relative',
-              width: '280px',
-              height: '280px',
+              width: 'min(280px, 70vw)',
+              height: 'min(280px, 70vw)',
               borderRadius: '50%',
               overflow: 'hidden',
               border: '4px solid var(--primary)',
@@ -3072,24 +2981,16 @@ export default function AreaAluno() {
               }} />
             </div>
 
+            {cameraError && (
+              <div role="alert" style={{ margin: '-0.5rem 0 1rem', padding: '0.75rem', borderRadius: '10px', background: '#fff7ed', color: '#9a3412', fontSize: '0.8rem', lineHeight: 1.4 }}>
+                {cameraError}
+              </div>
+            )}
+
             {/* Ações do Modal */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {cameraError && (
-                <div role="alert" style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem', lineHeight: 1.4 }}>
-                  {cameraError}
-                </div>
-              )}
-              {!selfieStream && (
-                <button
-                  onClick={startCamera}
-                  style={{ width: '100%', padding: '0.85rem', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer' }}
-                >
-                  Usar camera para selfie
-                </button>
-              )}
               <button 
                 onClick={captureSelfie}
-                disabled={!selfieStream}
                 style={{
                   width: '100%',
                   padding: '0.85rem',
@@ -3099,8 +3000,7 @@ export default function AreaAluno() {
                   borderRadius: '12px',
                   fontWeight: 'bold',
                   fontSize: '0.9rem',
-                  cursor: selfieStream ? 'pointer' : 'not-allowed',
-                  opacity: selfieStream ? 1 : 0.55,
+                  cursor: 'pointer',
                   boxShadow: '0 4px 12px rgba(0, 75, 73, 0.2)',
                   display: 'flex',
                   alignItems: 'center',
@@ -3146,7 +3046,7 @@ export default function AreaAluno() {
                     cursor: 'pointer'
                   }}
                 >
-                  Enviar Arquivo
+                  Escolher foto salva
                 </button>
               </div>
             </div>
@@ -3156,12 +3056,27 @@ export default function AreaAluno() {
               type="file" 
               ref={fileInputRef} 
               hidden 
-              accept="image/*" 
+              accept="image/jpeg,image/png,image/webp"
               onChange={handleSelectLocalFile}
             />
           </div>
         </div>
-      )}
+      ), document.body)}
+
+      {documentNotice && createPortal((
+        <div role="dialog" aria-modal="true" aria-labelledby="document-notice-title" style={{ position: 'fixed', inset: 0, zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(15, 23, 42, 0.72)' }}>
+          <div style={{ width: 'min(430px, 100%)', padding: '1.75rem', borderRadius: '20px', background: '#fff', boxShadow: '0 24px 60px rgba(15,23,42,.32)', textAlign: 'center' }}>
+            <div style={{ width: 58, height: 58, margin: '0 auto 1rem', borderRadius: '50%', display: 'grid', placeItems: 'center', background: documentNotice.type === 'success' ? '#ecfdf5' : '#fef2f2', color: documentNotice.type === 'success' ? '#059669' : '#dc2626' }}>
+              {documentNotice.type === 'success' ? <CheckCircle size={32} /> : <AlertCircle size={32} />}
+            </div>
+            <h3 id="document-notice-title" style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem' }}>{documentNotice.title}</h3>
+            <p style={{ margin: '0.75rem 0 0', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.55 }}>{documentNotice.message}</p>
+            <button type="button" autoFocus className="btn btn-primary" onClick={() => setDocumentNotice(null)} style={{ width: '100%', marginTop: '1.4rem', minHeight: 44 }}>
+              Entendi
+            </button>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }

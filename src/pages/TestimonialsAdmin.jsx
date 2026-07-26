@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { testimonialsApi } from '../services/site'
 import { CheckCircle, XCircle, Clock, Star, User, Trash2, RefreshCw, Plus } from 'lucide-react'
 
 export default function TestimonialsAdmin() {
   const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
+  const [loadError, setLoadError] = useState('')
 
   // Estados para depoimento manual (Zap / E-mail)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -21,19 +22,15 @@ export default function TestimonialsAdmin() {
     e.preventDefault()
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .insert([{
-          name: formName,
-          course: formCourse,
-          rating: parseInt(formRating),
-          content: formContent,
-          status: 'approved', // Depoimentos manuais já entram aprovados
-          type: 'text',
-          evaluation_date: new Date().toISOString().split('T')[0]
-        }])
-
-      if (error) throw error
+      await testimonialsApi.create({
+        name: formName,
+        course: formCourse,
+        rating: parseInt(formRating),
+        content: formContent,
+        status: 'approved', // Depoimentos manuais já entram aprovados
+        type: 'text',
+        evaluation_date: new Date().toISOString(),
+      })
 
       setFormName('')
       setFormCourse('')
@@ -52,62 +49,49 @@ export default function TestimonialsAdmin() {
 
   const fetchAll = async () => {
     setLoading(true)
-    let query = supabase.from('testimonials').select('*').order('created_at', { ascending: false })
-    
-    if (filter === 'pending') {
-      query = query.eq('status', 'pending')
-    } else if (filter === 'approved') {
-      query = query.eq('status', 'approved')
-    } else if (filter === 'rejected') {
-      query = query.eq('status', 'rejected')
+    setLoadError('')
+    try {
+      const { testimonials } = await testimonialsApi.list(filter === 'all' ? undefined : filter)
+      setTestimonials(testimonials || [])
+    } catch (err) {
+      console.error('Erro ao buscar depoimentos:', err)
+      setTestimonials([])
+      setLoadError(err.message || 'Não foi possível carregar os depoimentos.')
+    } finally {
+      setLoading(false)
     }
-    
-    const { data, error } = await query
-    if (error) {
-      console.error('Erro ao buscar depoimentos:', error)
-    }
-    setTestimonials(data || [])
-    setLoading(false)
   }
 
   const approve = async (id) => {
-    const { error } = await supabase.from('testimonials').update({ status: 'approved' }).eq('id', id)
-    if (error) {
-      console.error('Erro ao aprovar depoimento:', error)
-      alert('Erro ao aprovar o depoimento: ' + error.message)
-    } else {
+    try {
+      await testimonialsApi.update(id, { status: 'approved' })
       fetchAll()
+    } catch (err) {
+      alert('Erro ao aprovar o depoimento: ' + err.message)
     }
   }
 
   const reject = async (id) => {
-    const { error } = await supabase.from('testimonials').update({ status: 'rejected' }).eq('id', id)
-    if (error) {
-      console.error('Erro ao rejeitar depoimento:', error)
-      alert('Erro ao rejeitar o depoimento: ' + error.message)
-    } else {
+    try {
+      await testimonialsApi.update(id, { status: 'rejected' })
       fetchAll()
+    } catch (err) {
+      alert('Erro ao rejeitar o depoimento: ' + err.message)
     }
   }
 
   const remove = async (id) => {
     if (!confirm('Excluir este depoimento?')) return
-    const { error } = await supabase.from('testimonials').delete().eq('id', id)
-    if (error) {
-      console.error('Erro ao excluir depoimento:', error)
-      alert('Erro ao excluir o depoimento: ' + error.message)
-    } else {
+    try {
+      await testimonialsApi.remove(id)
       fetchAll()
+    } catch (err) {
+      alert('Erro ao excluir o depoimento: ' + err.message)
     }
   }
 
-  const filterCounts = async () => {
-    const { data: pending } = await supabase.from('testimonials').select('id', { count: 'exact' }).eq('status', 'pending')
-    return pending?.length || 0
-  }
-
   return (
-    <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto' }}>
+    <div style={{ padding: 'clamp(1rem, 4vw, 2rem)', maxWidth: '900px', width: '100%', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: 'var(--text-color)', margin: 0 }}>
@@ -169,7 +153,7 @@ export default function TestimonialsAdmin() {
             ✍️ Inserir Depoimento Recebido (WhatsApp / E-mail)
           </h3>
           <form onSubmit={handleAddSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)' }}>Nome do Aluno</label>
                 <input 
@@ -250,7 +234,7 @@ export default function TestimonialsAdmin() {
       )}
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         {[
           { key: 'pending', label: '⏳ Pendentes', color: '#f59e0b' },
           { key: 'approved', label: '✅ Aprovados', color: '#10b981' },
@@ -276,7 +260,12 @@ export default function TestimonialsAdmin() {
         ))}
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <div role="alert" className="card" style={{ textAlign: 'center', padding: '2rem', color: '#dc2626' }}>
+          <p style={{ margin: '0 0 1rem', fontWeight: 700 }}>{loadError}</p>
+          <button type="button" onClick={fetchAll} className="btn btn-secondary">Tentar novamente</button>
+        </div>
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Carregando...</div>
       ) : testimonials.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
@@ -291,8 +280,8 @@ export default function TestimonialsAdmin() {
               padding: '1.25rem',
               borderLeft: `4px solid ${t.status === 'approved' ? '#10b981' : t.status === 'rejected' ? '#ef4444' : '#f59e0b'}`
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '220px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                     <div style={{
                       width: '36px', height: '36px', borderRadius: '50%',
@@ -311,7 +300,7 @@ export default function TestimonialsAdmin() {
                       ))}
                     </div>
                   </div>
-                  <p style={{ margin: 0, color: 'var(--text-color)', lineHeight: '1.6', fontStyle: 'italic' }}>
+                  <p style={{ margin: 0, color: 'var(--text-color)', lineHeight: '1.6', fontStyle: 'italic', overflowWrap: 'anywhere' }}>
                     "{t.content || t.text || t.message}"
                   </p>
                 </div>

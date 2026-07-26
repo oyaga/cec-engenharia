@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, Trash2, Plus, Image as ImageIcon, CheckCircle, Clock } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { testimonialsApi } from '../services/site';
+import { uploadFile } from '../lib/api';
 import AdminToolbar from '../components/AdminToolbar';
 
 const ManageTestimonials = () => {
@@ -24,25 +25,7 @@ const ManageTestimonials = () => {
 
   const fetchTestimonials = async () => {
     try {
-      // Tenta com order_position (pode não existir ainda no banco)
-      let { data, error } = await supabase
-        .from('testimonials')
-        .select('*')
-        .order('order_position', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false });
-
-      // Se falhar (coluna não existe), tenta sem order_position
-      if (error) {
-        console.warn('order_position não existe ainda, usando fallback:', error.message);
-        const fallback = await supabase
-          .from('testimonials')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (fallback.error) throw fallback.error;
-        data = fallback.data;
-      }
-
+      const { testimonials: data } = await testimonialsApi.list();
       setTestimonials(data || []);
     } catch (err) {
       console.error('Erro ao carregar depoimentos:', err);
@@ -61,8 +44,8 @@ const ManageTestimonials = () => {
     [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
 
     // Atualizar order_position de todos
-    const updates = reordered.map((t, i) => 
-      supabase.from('testimonials').update({ order_position: i + 1 }).eq('id', t.id)
+    const updates = reordered.map((t, i) =>
+      testimonialsApi.update(t.id, { order_position: i + 1 })
     );
     await Promise.all(updates);
     setTestimonials(reordered);
@@ -70,12 +53,7 @@ const ManageTestimonials = () => {
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .update({ status: newStatus })
-        .eq('id', id);
-
-      if (error) throw error;
+      await testimonialsApi.update(id, { status: newStatus });
       fetchTestimonials();
     } catch (err) {
       alert('Erro ao atualizar status');
@@ -85,12 +63,7 @@ const ManageTestimonials = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este depoimento?')) return;
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await testimonialsApi.remove(id);
       fetchTestimonials();
     } catch (err) {
       alert('Erro ao excluir');
@@ -103,23 +76,10 @@ const ManageTestimonials = () => {
 
     setUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `prints/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('testimonials_images')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('testimonials_images')
-        .getPublicUrl(filePath);
-
+      const { url: publicUrl } = await uploadFile(file, 'testimonials');
       setNewTestimonial({ ...newTestimonial, image_url: publicUrl });
     } catch (error) {
-      alert('Erro no upload da imagem. Certifique-se que o bucket "testimonials_images" existe.');
+      alert('Erro no upload da imagem: ' + error.message);
     } finally {
       setUploading(false);
     }
@@ -128,15 +88,11 @@ const ManageTestimonials = () => {
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     try {
-      const { error } = await supabase
-        .from('testimonials')
-        .insert([{
-          ...newTestimonial,
-          status: 'approved',
-          evaluation_date: new Date().toISOString().split('T')[0]
-        }]);
-
-      if (error) throw error;
+      await testimonialsApi.create({
+        ...newTestimonial,
+        status: 'approved',
+        evaluation_date: new Date().toISOString().split('T')[0]
+      });
       setShowAddForm(false);
       setNewTestimonial({ name: 'CEC Engenharia', course: 'Depoimento Verificado', admin_description: '', type: 'screenshot', image_url: '' });
       fetchTestimonials();
@@ -293,8 +249,8 @@ const ManageTestimonials = () => {
         .custom-file-upload input { display: none; }
         .upload-success { color: #25d366; font-size: 0.8rem; font-weight: 700; margin-top: 0.5rem; display: block; }
 
-        .admin-table-container { background: white; border-radius: 1.5rem; overflow: hidden; border: 1px solid #e2e8f0; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; }
+        .admin-table-container { background: white; border-radius: 1.5rem; overflow-x: auto; border: 1px solid #e2e8f0; }
+        .admin-table { width: 100%; border-collapse: collapse; text-align: left; min-width: 640px; }
         .admin-table th, .admin-table td { padding: 1.5rem; border-bottom: 1px solid #f1f5f9; }
         .admin-table th { background: #f8fafc; font-weight: 700; color: var(--primary-dark); }
         .user-cell { display: flex; flex-direction: column; gap: 0.25rem; }
@@ -321,6 +277,8 @@ const ManageTestimonials = () => {
 
         @media (max-width: 768px) {
           .admin-grid { grid-template-columns: 1fr; }
+          .add-testimonial-form { padding: 1.25rem; }
+          .admin-table th, .admin-table td { padding: 1rem; }
         }
       `}</style>
     </div>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, Phone, User, Mail, MessageSquare, CheckCircle, MapPin } from 'lucide-react';
 import { useEdit } from '../context/EditContext';
-import { supabase } from '../lib/supabaseClient';
+import { leadsApi } from '../services/site';
 import EditableText from '../components/EditableText';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -27,17 +27,12 @@ const Contact = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Salvar no Supabase (Upsert para evitar erros caso o telefone já exista)
-      const { error } = await supabase
-        .from('leads')
-        .upsert([{
-          name: formData.name,
-          phone: formData.phone,
-          message: formData.message,
-          status: 'novo'
-        }], { onConflict: 'phone' });
-
-      if (error) throw error;
+      // 1. Salvar via API pública
+      await leadsApi.createPublic({
+        name: formData.name,
+        phone: formData.phone,
+        message: formData.message,
+      });
 
       // 2. Preparar mensagem do WhatsApp (Aviso Diretoria)
       const messageText = `*NOVA DÚVIDA/CONTATO - CEC*%0A%0A*Nome:* ${formData.name}%0A*Telefone:* ${formData.phone}%0A*Dúvida:* ${formData.message}`;

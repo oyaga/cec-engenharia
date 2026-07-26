@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { classesApi, studentsApi, coursesApi } from '../services/academic'
+import { uploadFile } from '../lib/api'
 import { BookOpen, Users, LogIn, LineChart, Calendar as CalendarIcon, Clock, X, Printer, FileText, Edit, Trash2, UploadCloud, GraduationCap, UserPlus, UserMinus } from 'lucide-react'
 import { generateDocument } from '../lib/pdfGenerator'
 import { useAuth } from '../contexts/AuthContext'
@@ -25,7 +27,7 @@ export default function Turmas() {
     const [isEditing, setIsEditing] = useState(false)
     const [editingId, setEditingId] = useState(null)
     const [showPast, setShowPast] = useState(false)
-    const { session } = useAuth()
+    const { session, userProfile: authProfile } = useAuth()
 
     // Estados do modal de instrutores
     const [instructorModal, setInstructorModal] = useState(null) // turma selecionada
@@ -48,12 +50,20 @@ export default function Turmas() {
         instructor_payment_value: 0,
         create_lms_integration: false,
         address: '',
+        has_in_person: false,
+        in_person_sessions: 0,
+        cep: '',
+        address_number: '',
+        address_complement: '',
+        card_installments: 10,
+        boleto_installments: 1,
         max_capacity: 10,
         is_past_class: false,
         actual_start_date: '',
         actual_end_date: ''
     })
     const [lmsCourses, setLmsCourses] = useState([])
+    const [cepLoading, setCepLoading] = useState(false)
 
     // Modal de Data Universal
     const [showDateModal, setShowDateModal] = useState(false)
@@ -61,8 +71,12 @@ export default function Turmas() {
     const [modalDateValue, setModalDateValue] = useState('')
 
     const fetchLmsCourses = async () => {
-        const { data } = await supabase.from('lms_courses').select('id, title').eq('is_published', true)
-        if (data) setLmsCourses(data)
+        try {
+            const { courses } = await coursesApi.list()
+            setLmsCourses(courses || [])
+        } catch {
+            setLmsCourses([])
+        }
     }
 
     const detectMethodFromCourseName = (courseName) => {
@@ -78,45 +92,18 @@ export default function Turmas() {
             const courseName = turma?.course || '';
             const requiredMethod = detectMethodFromCourseName(courseName);
 
-            // Buscar instrutores ativos e homologados na norma PR-127 para este método
-            const { data: activeQuals } = await supabase
-                .from('instructor_qualifications')
-                .select('user_id')
-                .eq('method', requiredMethod)
-                .eq('status', 'ativo');
-
-            const activeIds = activeQuals ? activeQuals.map(q => q.user_id) : [];
-
-            const { data } = await supabase
-                .from('users')
-                .select('id, full_name, role')
-                .eq('is_active', true)
-                .eq('role', 'instrutor')
-                .order('full_name');
-
-            if (data) {
-                // Filtrar para aceitar apenas instrutores com habilitação ativa
-                const filtered = data.filter(u => activeIds.includes(u.id));
-
-                if (filtered.length > 0) {
-                    setAvailableInstructors(filtered);
-                } else {
-                    // Fallback reativo amigável com indicação visual para auditoria de testes
-                    setAvailableInstructors(data.map(u => ({
-                        ...u,
-                        full_name: `⚠️ ${u.full_name} (Sem Habilitação Ativa para ${requiredMethod})`
-                    })));
-                }
-            }
+            // Backend marca quem tem habilitação PR-127 ativa no método (qualified).
+            const { instructors } = await classesApi.availableInstructors(requiredMethod);
+            const mapped = (instructors || []).map(u => ({
+                id: u.id,
+                full_name: u.qualified
+                    ? u.full_name
+                    : `⚠️ ${u.full_name} (Sem Habilitação Ativa para ${requiredMethod})`,
+            }));
+            setAvailableInstructors(mapped);
         } catch (err) {
             console.error('Erro ao buscar instrutores PR-127:', err);
-            const { data } = await supabase
-                .from('users')
-                .select('id, full_name, role')
-                .eq('is_active', true)
-                .eq('role', 'instrutor')
-                .order('full_name');
-            if (data) setAvailableInstructors(data);
+            setAvailableInstructors([]);
         }
     }
 
@@ -126,21 +113,22 @@ export default function Turmas() {
         setNewInstructorRole('titular')
         setInstructorModalLoading(true)
         await fetchAvailableInstructors(turma)
-        const { data } = await supabase
-            .from('class_instructors')
-            .select('id, role, user:users(id, full_name)')
-            .eq('class_id', turma.id)
-            .order('role')
-        setClassInstructors(data || [])
+        try {
+            const { instructors } = await classesApi.listInstructors(turma.id)
+            setClassInstructors(instructors || [])
+        } catch {
+            setClassInstructors([])
+        }
         setInstructorModalLoading(false)
     }
 
     const handleAddInstructor = async () => {
         if (!newInstructorId) { alert('Selecione um instrutor.'); return }
-        const { error } = await supabase
-            .from('class_instructors')
-            .insert([{ class_id: instructorModal.id, user_id: newInstructorId, role: newInstructorRole }])
-        if (error) { alert('Erro: ' + (error.code === '23505' ? 'Este instrutor já está vinculado à turma.' : error.message)); return }
+        try {
+            await classesApi.addInstructor(instructorModal.id, newInstructorId, newInstructorRole)
+        } catch (err) {
+            alert('Erro: ' + (err.status === 409 ? 'Este instrutor já está vinculado à turma.' : err.message)); return
+        }
         setNewInstructorId('')
         await openInstructorModal(instructorModal)
         fetchClasses()
@@ -148,8 +136,9 @@ export default function Turmas() {
 
     const handleRemoveInstructor = async (linkId) => {
         if (!confirm('Remover este instrutor da turma?')) return
-        const { error } = await supabase.from('class_instructors').delete().eq('id', linkId)
-        if (error) { alert('Erro ao remover: ' + error.message); return }
+        try {
+            await classesApi.removeInstructor(instructorModal.id, linkId)
+        } catch (err) { alert('Erro ao remover: ' + err.message); return }
         await openInstructorModal(instructorModal)
         fetchClasses()
     }
@@ -220,35 +209,21 @@ export default function Turmas() {
     const fetchClasses = async () => {
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('classes')
-                .select(`
-                    id, name, course_name, start_date, actual_start_date, predicted_end_date, actual_end_date, schedule, duration,
-                    lms_course_id, evaluation_pdf_url,
-                    price_cash, price_card_10x, price_installments_3x,
-                    is_immediate_start,
-                    instructor_payment_type, instructor_payment_value,
-                    address,
-                    max_capacity,
-                    students ( count ),
-                    practical_students:students!practical_class_id ( id, practical_class_status ),
-                    class_instructors ( id, role, user:users(full_name) )
-                `)
-                .order('created_at', { ascending: false })
+            const { classes: data } = await classesApi.list()
+            const dateOnly = (v) => (v ? String(v).split('T')[0] : null)
 
-            if (error) throw error
-
-            const formatted = data.map(c => ({
+            const formatted = (data || []).map(c => ({
                 id: c.id,
                 name: c.name,
                 course: c.course_name,
-                startDate: c.start_date,
-                actualStartDate: c.actual_start_date,
-                predictedEndDate: c.predicted_end_date,
-                actualEndDate: c.actual_end_date,
+                startDate: dateOnly(c.start_date),
+                actualStartDate: dateOnly(c.actual_start_date),
+                predictedEndDate: dateOnly(c.predicted_end_date),
+                actualEndDate: dateOnly(c.actual_end_date),
                 schedule: c.schedule,
                 duration: c.duration,
-                studentsCount: c.students[0]?.count || 0,
+                lms_course_id: c.lms_course_id,
+                studentsCount: c.students_count || 0,
                 evaluationUrl: c.evaluation_pdf_url,
                 priceCash: c.price_cash,
                 priceCard10x: c.price_card_10x,
@@ -257,15 +232,20 @@ export default function Turmas() {
                 instructor_payment_type: c.instructor_payment_type,
                 instructor_payment_value: c.instructor_payment_value,
                 address: c.address,
+                hasInPerson: c.has_in_person,
+                inPersonSessions: c.in_person_sessions || 0,
+                cep: c.cep || '',
+                addressNumber: c.address_number || '',
+                addressComplement: c.address_complement || '',
+                cardInstallments: c.card_installments || 10,
+                boletoInstallments: c.boleto_installments || 1,
                 maxCapacity: c.max_capacity || 10,
-                practicalStudentsCount: c.practical_students?.filter(st => st.practical_class_status === 'confirmado').length || 0,
-                practicalPendingCount: c.practical_students?.filter(st => st.practical_class_status === 'pendente').length || 0,
-                instructors: c.class_instructors || []
+                practicalStudentsCount: c.practical_confirmed || 0,
+                practicalPendingCount: c.practical_pending || 0,
+                instructors: c.instructors || []
             }))
 
-            // Reorganizando
             setClasses(formatted)
-            // setFormData(prev => ({ ...prev, name: generateNextClassName(formatted) })) // Removido para evitar sobrescritas durante edição
         } catch (error) {
             console.error('Error fetching classes:', error)
         } finally {
@@ -273,24 +253,15 @@ export default function Turmas() {
         }
     }
 
-    const fetchUserProfile = async () => {
-        if (!session?.user?.id) return
-        const { data, error } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', session.user.id)
-            .single()
-
-        if (!error && data) {
-            setUserProfile(data)
-        }
-    }
-
     useEffect(() => {
         fetchClasses()
-        fetchUserProfile()
         fetchLmsCourses()
     }, [session])
+
+    // Perfil do usuário vem do contexto de auth (backend Go).
+    useEffect(() => {
+        if (authProfile) setUserProfile(authProfile)
+    }, [authProfile])
 
 
     const isWeekend = (dateStr) => {
@@ -340,12 +311,58 @@ export default function Turmas() {
             }
         }
 
+        if (name === 'lms_course_id') {
+            const selectedCourse = lmsCourses.find(course => course.id === value)
+            if (selectedCourse) {
+                updated.course_name = selectedCourse.title
+                const totalHours = (Number(selectedCourse.min_theoretical_hours) || 0) + (Number(selectedCourse.practical_hours) || 0)
+                if (totalHours > 0) updated.duration = String(totalHours)
+                if (selectedCourse.price_pix) updated.price_cash = String(selectedCourse.price_pix)
+                if (selectedCourse.price_card) updated.price_card_10x = String(selectedCourse.price_card)
+                if (selectedCourse.price_boleto) updated.price_installments_3x = String(selectedCourse.price_boleto)
+                if (selectedCourse.max_installments) updated.card_installments = selectedCourse.max_installments
+                if ((Number(selectedCourse.practical_hours) || 0) > 0) updated.has_in_person = true
+            } else {
+                updated.course_name = ''
+            }
+        }
+
         setFormData(updated)
     }
 
+    const handleCepLookup = async () => {
+        const cep = String(formData.cep || '').replace(/\D/g, '')
+        if (cep.length !== 8) {
+            alert('Informe um CEP com 8 números.')
+            return
+        }
+        setCepLoading(true)
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+            const data = await response.json()
+            if (!response.ok || data.erro) throw new Error('CEP não encontrado')
+            const address = [data.logradouro, data.bairro, data.localidade, data.uf].filter(Boolean).join(', ')
+            setFormData(prev => ({ ...prev, cep, address }))
+        } catch (error) {
+            alert('Não foi possível localizar o CEP. Você pode preencher o endereço manualmente.')
+        } finally {
+            setCepLoading(false)
+        }
+    }
+
     const handleSubmit = async () => {
-        if (!formData.name || !formData.course_name) {
-            alert('Por favor, preencha o Nome e Curso.')
+        if (!formData.name || !formData.course_name || !formData.lms_course_id) {
+            alert('Preencha o nome da turma e selecione um curso cadastrado.')
+            return
+        }
+
+        if (!formData.is_immediate_start && (!formData.start_date || !formData.predicted_end_date)) {
+            alert('Informe as datas de início e término ou marque Início imediato.')
+            return
+        }
+
+        if (formData.has_in_person && (!formData.in_person_sessions || !formData.address)) {
+            alert('Informe a quantidade de encontros e o endereço das aulas presenciais.')
             return
         }
 
@@ -402,32 +419,16 @@ export default function Turmas() {
 
         let finalLmsId = formData.lms_course_id || null
 
-        // Se o usuário pediu integração automática e não selecionou um curso existente
-        if (formData.create_lms_integration && !finalLmsId) {
-            const { data: newCourse, error: courseError } = await supabase
-                .from('lms_courses')
-                .insert([{
-                    title: formData.course_name,
-                    description: `Curso gerado automaticamente via Turma ${formData.name}`,
-                    is_published: true,
-                    instructor_payment_type: formData.instructor_payment_type,
-                    instructor_payment_value: formData.instructor_payment_value
-                }])
-                .select()
-                .single()
+        // TODO(LMS): criação automática de curso EAD será religada quando o
+        // domínio LMS for migrado para a API Go. Por ora, apenas vincula um
+        // curso existente (se selecionado) e ignora a criação automática.
 
-            if (courseError) {
-                alert('Erro ao criar curso EAD: ' + courseError.message)
-                return
-            }
-            finalLmsId = newCourse.id
-        }
-
+        const toApiDate = value => value ? `${value}T12:00:00Z` : null
         const newClass = {
             name: formData.name,
             course_name: formData.course_name,
-            start_date: (formData.is_immediate_start || !formData.start_date) ? null : formData.start_date,
-            predicted_end_date: (formData.is_immediate_start || !formData.predicted_end_date) ? null : formData.predicted_end_date,
+            start_date: formData.is_immediate_start ? null : toApiDate(formData.start_date),
+            predicted_end_date: formData.is_immediate_start ? null : toApiDate(formData.predicted_end_date),
             schedule: formData.schedule,
             duration: formData.duration,
             lms_course_id: finalLmsId,
@@ -438,26 +439,31 @@ export default function Turmas() {
             instructor_payment_type: formData.instructor_payment_type,
             instructor_payment_value: parseFloat(formData.instructor_payment_value) || 0,
             address: formData.address || null,
+            has_in_person: !!formData.has_in_person,
+            in_person_sessions: formData.has_in_person ? (parseInt(formData.in_person_sessions) || 0) : 0,
+            cep: formData.has_in_person ? String(formData.cep || '').replace(/\D/g, '') || null : null,
+            address_number: formData.has_in_person ? formData.address_number || null : null,
+            address_complement: formData.has_in_person ? formData.address_complement || null : null,
+            card_installments: parseInt(formData.card_installments) || 1,
+            boleto_installments: parseInt(formData.boleto_installments) || 1,
             max_capacity: formData.max_capacity ? parseInt(formData.max_capacity) : 10,
-            actual_start_date: (formData.is_past_class && formData.actual_start_date) ? formData.actual_start_date : null,
-            actual_end_date: (formData.is_past_class && formData.actual_end_date) ? formData.actual_end_date : null
+            actual_start_date: (formData.is_past_class && formData.actual_start_date) ? toApiDate(formData.actual_start_date) : null,
+            actual_end_date: (formData.is_past_class && formData.actual_end_date) ? toApiDate(formData.actual_end_date) : null
         }
 
         if (isEditing && editingId) {
-            const { error } = await supabase.from('classes').update(newClass).eq('id', editingId)
-            if (error) {
-                alert('Erro ao atualizar no Supabase: ' + error.message)
-            } else {
+            try {
+                await classesApi.update(editingId, newClass)
                 alert('Turma atualizada com sucesso!')
                 finishEditing()
                 fetchClasses()
+            } catch (error) {
+                alert('Erro ao atualizar turma: ' + error.message)
             }
         } else {
-            const { error } = await supabase.from('classes').insert([newClass])
-            if (error) {
-                alert('Erro ao salvar no Supabase: ' + error.message)
-            } else {
-                alert('Turma criada com sucesso na Nuvem!')
+            try {
+                await classesApi.create(newClass)
+                alert('Turma criada com sucesso!')
                 setView('list')
                 setFormData({
                     name: '', course_name: '', start_date: '', predicted_end_date: '', schedule: '', duration: '', lms_course_id: '',
@@ -467,11 +473,16 @@ export default function Turmas() {
                     instructor_payment_value: 0,
                     create_lms_integration: false,
                     address: '',
+                    has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+                    card_installments: 10, boleto_installments: 1,
+                    max_capacity: 10,
                     is_past_class: false,
                     actual_start_date: '',
                     actual_end_date: ''
                 })
                 fetchClasses()
+            } catch (error) {
+                alert('Erro ao criar turma: ' + error.message)
             }
         }
     }
@@ -493,6 +504,13 @@ export default function Turmas() {
             instructor_payment_value: turma.instructor_payment_value || 0,
             create_lms_integration: !!turma.lms_course_id,
             address: turma.address || '',
+            has_in_person: turma.hasInPerson || false,
+            in_person_sessions: turma.inPersonSessions || 0,
+            cep: turma.cep || '',
+            address_number: turma.addressNumber || '',
+            address_complement: turma.addressComplement || '',
+            card_installments: turma.cardInstallments || 10,
+            boleto_installments: turma.boletoInstallments || 1,
             max_capacity: turma.maxCapacity || 10,
             is_past_class: !!(turma.actualStartDate && turma.actualEndDate),
             actual_start_date: turma.actualStartDate || '',
@@ -506,8 +524,8 @@ export default function Turmas() {
     const handleNewClass = () => {
         setFormData({
             name: generateNextClassName(classes),
-            course_name: 'Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)',
-            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '136',
+            course_name: '',
+            start_date: '', predicted_end_date: '', schedule: 'Seg a Sex 19h as 21h', duration: '',
             lms_course_id: '',
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
@@ -515,6 +533,8 @@ export default function Turmas() {
             instructor_payment_value: 0,
             create_lms_integration: false,
             address: '',
+            has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+            card_installments: 10, boleto_installments: 1,
             max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
@@ -526,58 +546,18 @@ export default function Turmas() {
     }
 
     const handleDeleteClass = async (classId, className) => {
+        // O backend bloqueia se houver aluno ativo (409) e desvincula os cancelados.
+        if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a turma "${className}"?\n\nEsta ação não pode ser desfeita.`)) return
         try {
-            // 1. Buscar alunos vinculados a esta turma
-            const { data: linkedStudents, error: studentError } = await supabase
-                .from('students')
-                .select('id, status')
-                .eq('turma_id', classId)
-
-            if (studentError) throw studentError
-
-            const activeStudents = linkedStudents ? linkedStudents.filter(s => s.status !== 'cancelada') : []
-
-            if (activeStudents.length > 0) {
-                alert(`Não é possível excluir a turma "${className}" porque existem ${activeStudents.length} aluno(s) ativo(s) matriculado(s) nela.\n\nPara prosseguir, transfira os alunos para outra turma ou remova suas matrículas primeiro.`)
-                return
-            }
-
-            // 2. Se houver apenas alunos cancelados, avisa sobre a desvinculação automática
-            if (linkedStudents && linkedStudents.length > 0) {
-                if (!window.confirm(`Esta turma possui ${linkedStudents.length} aluno(s) com matrícula cancelada vinculados a ela.\n\nAo excluir a turma, esses históricos serão desvinculados automaticamente (a turma deles ficará em branco).\n\nDeseja prosseguir com a exclusão da turma?`)) {
-                    return
-                }
-
-                // Desvincular alunos antes de deletar a turma para evitar violação de FK
-                const { error: updateError } = await supabase
-                    .from('students')
-                    .update({ turma_id: null })
-                    .eq('turma_id', classId)
-
-                if (updateError) throw updateError
-            } else {
-                // Confirmação padrão para turma vazia
-                if (!window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a turma "${className}"?\n\nEsta ação não pode ser desfeita.`)) return
-            }
-
-            // Desvincular matrículas da tabela enrollments associadas a esta turma para evitar violação de FK
-            try {
-                await supabase
-                    .from('enrollments')
-                    .update({ turma_id: null })
-                    .eq('turma_id', classId)
-            } catch (e) {
-                console.warn('Erro ao desvincular tabela enrollments (coluna inexistente ou RLS):', e)
-            }
-
-            const { error: deleteError } = await supabase.from('classes').delete().eq('id', classId)
-            if (deleteError) throw deleteError
-
+            await classesApi.remove(classId)
             alert('Turma excluída com sucesso!')
             fetchClasses()
         } catch (err) {
-            console.error('Erro ao excluir turma:', err)
-            alert('Erro ao excluir turma: ' + err.message)
+            if (err.status === 409) {
+                alert(`Não é possível excluir a turma "${className}": existem alunos ativos matriculados. Transfira ou cancele as matrículas primeiro.`)
+            } else {
+                alert('Erro ao excluir turma: ' + err.message)
+            }
         }
     }
 
@@ -590,6 +570,8 @@ export default function Turmas() {
             price_cash: '', price_card_10x: '', price_installments_3x: '',
             is_immediate_start: false,
             address: '',
+            has_in_person: false, in_person_sessions: 0, cep: '', address_number: '', address_complement: '',
+            card_installments: 10, boleto_installments: 1,
             max_capacity: 10,
             is_past_class: false,
             actual_start_date: '',
@@ -603,9 +585,8 @@ export default function Turmas() {
             label: 'Data Real de Início',
             initialDate: new Date().toISOString().split('T')[0],
             onSave: async (dateToSave) => {
-                const { error } = await supabase.from('classes').update({ actual_start_date: dateToSave }).eq('id', classId)
-                if (error) alert('Erro ao iniciar turma: ' + error.message)
-                else { alert('Marcada como Em Andamento!'); fetchClasses(); }
+                try { await classesApi.update(classId, { actual_start_date: dateToSave }); alert('Marcada como Em Andamento!'); fetchClasses(); }
+                catch (error) { alert('Erro ao iniciar turma: ' + error.message) }
             }
         })
         setModalDateValue(new Date().toISOString().split('T')[0])
@@ -618,9 +599,8 @@ export default function Turmas() {
             label: 'Nova Data Prevista para Início',
             initialDate: new Date().toISOString().split('T')[0],
             onSave: async (nextDate) => {
-                const { error } = await supabase.from('classes').update({ start_date: nextDate }).eq('id', classId)
-                if (error) alert('Erro ao atualizar: ' + error.message)
-                else { alert('Previsão atualizada!'); fetchClasses(); }
+                try { await classesApi.update(classId, { start_date: nextDate }); alert('Previsão atualizada!'); fetchClasses(); }
+                catch (error) { alert('Erro ao atualizar: ' + error.message) }
             }
         })
         setModalDateValue(new Date().toISOString().split('T')[0])
@@ -633,9 +613,8 @@ export default function Turmas() {
             label: 'Data Real de Término',
             initialDate: new Date().toISOString().split('T')[0],
             onSave: async (dateToSave) => {
-                const { error } = await supabase.from('classes').update({ actual_end_date: dateToSave }).eq('id', classId)
-                if (error) alert('Erro ao encerrar turma: ' + error.message)
-                else { alert('Turma finalizada e arquivada!'); fetchClasses(); }
+                try { await classesApi.update(classId, { actual_end_date: dateToSave }); alert('Turma finalizada e arquivada!'); fetchClasses(); }
+                catch (error) { alert('Erro ao encerrar turma: ' + error.message) }
             }
         })
         setModalDateValue(new Date().toISOString().split('T')[0])
@@ -653,21 +632,10 @@ export default function Turmas() {
 
     const loadSchedulingData = async (classId) => {
         try {
-            const { data: scheduledData } = await supabase
-                .from('students')
-                .select('id, full_name, cpf, email, phone, status, practical_class_status, classes(name, course_name)')
-                .eq('practical_class_id', classId)
-                .order('full_name')
-
+            const { students: scheduledData } = await studentsApi.list({ practical_class_id: classId })
             setScheduledStudents(scheduledData || [])
 
-            const { data: availableData } = await supabase
-                .from('students')
-                .select('id, full_name, cpf, email, phone, status, classes(name, course_name)')
-                .eq('status', 'ativa')
-                .is('practical_class_id', null)
-                .order('full_name')
-
+            const { students: availableData } = await studentsApi.list({ status: 'ativa', practical_null: 'true' })
             setAvailableStudents(availableData || [])
         } catch (err) {
             console.error('Erro ao carregar dados de agendamento:', err)
@@ -684,13 +652,7 @@ export default function Turmas() {
 
         setSchedulingActionLoading(student.id)
         try {
-            const { error } = await supabase
-                .from('students')
-                .update({ practical_class_status: 'confirmado' })
-                .eq('id', student.id)
-
-            if (error) throw error
-
+            await studentsApi.update(student.id, { practical_class_status: 'confirmado' })
             await loadSchedulingData(classId)
             fetchClasses()
         } catch (err) {
@@ -708,16 +670,7 @@ export default function Turmas() {
 
         setSchedulingActionLoading(student.id)
         try {
-            const { error } = await supabase
-                .from('students')
-                .update({ 
-                    practical_class_id: classId,
-                    practical_class_status: targetStatus
-                })
-                .eq('id', student.id)
-
-            if (error) throw error
-
+            await studentsApi.update(student.id, { practical_class_id: classId, practical_class_status: targetStatus })
             await loadSchedulingData(classId)
             fetchClasses()
         } catch (err) {
@@ -732,13 +685,7 @@ export default function Turmas() {
 
         setSchedulingActionLoading(studentId)
         try {
-            const { error } = await supabase
-                .from('students')
-                .update({ practical_class_id: null })
-                .eq('id', studentId)
-
-            if (error) throw error
-
+            await studentsApi.update(studentId, { practical_class_id: null })
             await loadSchedulingData(classId)
             fetchClasses()
         } catch (err) {
@@ -749,40 +696,19 @@ export default function Turmas() {
     }
 
     const toggleStudentEad = async (studentId, currentStatus) => {
-        const { error } = await supabase
-            .from('students')
-            .update({ has_lms_access: !currentStatus })
-            .eq('id', studentId)
-
-        if (error) alert('Erro ao atualizar acesso EAD')
-        else {
+        try {
+            await studentsApi.update(studentId, { has_lms_access: !currentStatus })
             setClassStudents(prev => prev.map(s => s.id === studentId ? { ...s, has_lms_access: !currentStatus } : s))
+        } catch {
+            alert('Erro ao atualizar acesso EAD')
         }
     }
 
     const handleEvalUpload = async (classId, file) => {
         if (!file) return
-        const fileName = `eval_${classId}_${Math.random().toString(36).substring(7)}.pdf`
-        const filePath = `evaluations/${fileName}`
-
         try {
-            const { error: uploadError } = await supabase.storage
-                .from('class-evaluations')
-                .upload(filePath, file)
-
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('class-evaluations')
-                .getPublicUrl(filePath)
-
-            const { error: updateError } = await supabase
-                .from('classes')
-                .update({ evaluation_pdf_url: publicUrl })
-                .eq('id', classId)
-
-            if (updateError) throw updateError
-
+            const { url } = await uploadFile(file, 'evaluations')
+            await classesApi.update(classId, { evaluation_pdf_url: url })
             alert('Avaliação da turma enviada com sucesso!')
             fetchClasses()
         } catch (error) {
@@ -794,21 +720,10 @@ export default function Turmas() {
     const handleOpenClassStudents = async (turma) => {
         setSelectedClassData(turma)
         setModalLoading(true)
-
-        // Buscar alunos matriculados e informações vinculadas como faltas e notas.
-        const { data, error } = await supabase
-            .from('students')
-            .select(`
-                id, full_name, cpf, manual_signed, has_lms_access, is_online_only, status,
-                attendance_records ( status ),
-                academic_records ( theoretical_grade, practical_grade, final_status )
-            `)
-            .eq('turma_id', turma.id)
-            .order('full_name', { ascending: true })
-
-        if (!error && data) {
-            setClassStudents(data)
-        } else {
+        try {
+            const { students } = await classesApi.classStudents(turma.id)
+            setClassStudents(students || [])
+        } catch {
             alert("Erro ao buscar alunos da turma.")
         }
         setModalLoading(false)
@@ -828,9 +743,9 @@ export default function Turmas() {
 
     const renderList = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Gestão de Turmas</h2>
-                <div style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                     <button className={`btn ${showPast ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowPast(!showPast)}>
                         {showPast ? 'Ver Apenas Ativas' : 'Ver Todas (Incluindo Passadas)'}
                     </button>
@@ -1011,7 +926,7 @@ export default function Turmas() {
             )}
 
             {/* MODAL: ALUNOS DA TURMA E RELATÓRIOS */}
-            {selectedClassData && (
+            {selectedClassData && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 9999, padding: '1rem', paddingTop: '5vh' }}>
                     <div className="card animate-fade-in" style={{ width: '800px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
@@ -1038,7 +953,8 @@ export default function Turmas() {
                         {modalLoading ? (
                             <div style={{ textAlign: 'center', padding: '2rem' }}>Carregando vínculos...</div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                            <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem', minWidth: '480px' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                                         <th style={{ padding: '0.75rem' }}>Nome do Aluno(a)</th>
@@ -1099,13 +1015,14 @@ export default function Turmas() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         )}
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL: GERENCIAR INSTRUTORES DA TURMA */}
-            {instructorModal && (
+            {instructorModal && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 9999, padding: '1rem', paddingTop: '5vh' }}>
                     <div className="card animate-fade-in" style={{ width: '560px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
@@ -1198,13 +1115,13 @@ export default function Turmas() {
                         )}
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 
     const renderAddForm = () => (
         <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
                 <div>
                     <button className="btn btn-secondary" style={{ marginBottom: '1rem' }} onClick={finishEditing}>&larr; Voltar</button>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>{isEditing ? `Editando Turma: ${editingId}` : 'Nova Grade de Turma'}</h2>
@@ -1213,38 +1130,28 @@ export default function Turmas() {
             </div>
 
             <div className="card">
-                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Dados Básicos</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>1. Identificação e Curso</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group">
                         <label className="form-label">Nome da Turma (Ex: T01/26)</label>
                         <input type="text" className="form-control" name="name" value={formData.name} onChange={handleFormChange} />
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gerado automaticamente pelo sistema, mas pode ser alterado se necessário.</span>
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Nome do Curso / Treinamento</label>
-                        <input
-                            list="course-options"
-                            className="form-control"
-                            name="course_name"
-                            value={formData.course_name}
-                            onChange={handleFormChange}
-                            placeholder="Digite ou selecione o curso"
-                        />
-                        <datalist id="course-options">
-                            {/* Sugestões dinâmicas baseadas em turmas já criadas */}
-                            {[...new Set(classes.map(c => c.course))].filter(Boolean).map((course, idx) => (
-                                <option key={idx} value={course} />
+                        <label className="form-label">Vincular curso cadastrado *</label>
+                        <select className="form-control" name="lms_course_id" value={formData.lms_course_id} onChange={handleFormChange} required>
+                            <option value="">Selecione o curso...</option>
+                            {lmsCourses.map(course => (
+                                <option key={course.id} value={course.id}>
+                                    {course.code ? `${course.code} — ` : ''}{course.title}
+                                </option>
                             ))}
-                            {/* Padrões fixos caso o banco esteja vazio */}
-                            {classes.length === 0 && (
-                                <>
-                                    <option value="Controle Dimensional – Caldeiraria e Tubulação – (CD-CL)" />
-                                    <option value="Controle Dimensional – Topografia (CD-TO)" />
-                                    <option value="Controle Dimensional - Mecânica- (CD-CM)" />
-                                </>
-                            )}
-                        </datalist>
+                        </select>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            A carga horária e os valores serão preenchidos a partir do curso e poderão ser ajustados para esta turma.
+                        </span>
                     </div>
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>2. Período da Turma</h3>
                     <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '1.5rem' }}>
                         <label className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                             <input
@@ -1270,29 +1177,6 @@ export default function Turmas() {
                             />
                             Esta turma já aconteceu (Histórica/Passada)?
                         </label>
-                    </div>
-                    <div style={{ gridColumn: 'span 2' }}>
-                        <label className="form-label">Vincular Conteúdo Online (LMS)</label>
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <select className="form-control" name="lms_course_id" value={formData.lms_course_id} onChange={handleFormChange} style={{ flex: 1 }}>
-                                <option value="">Nenhum curso vinculado</option>
-                                {lmsCourses.map(c => (
-                                    <option key={c.id} value={c.id}>{c.title}</option>
-                                ))}
-                            </select>
-                            {!formData.lms_course_id && (
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap', backgroundColor: '#F0F9FF', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-                                    <input
-                                        type="checkbox"
-                                        name="create_lms_integration"
-                                        checked={formData.create_lms_integration}
-                                        onChange={handleFormChange}
-                                    />
-                                    Criar Curso EAD Automático?
-                                </label>
-                            )}
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Selecione um curso existente ou marque para criar um novo curso EAD com o nome desta turma.</span>
                     </div>
                     <div className="form-group">
                         <label className="form-label">
@@ -1346,18 +1230,41 @@ export default function Turmas() {
                             min="1"
                         />
                     </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                        <label className="form-label">Endereço da Aula Prática (Sede ou Local Externo)</label>
-                        <input
-                            type="text"
-                            className="form-control"
-                            name="address"
-                            value={formData.address}
-                            onChange={handleFormChange}
-                            placeholder="Ex: Sede C&C - Rio de Janeiro/RJ ou local externo"
-                        />
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Deixe em branco para usar o endereço padrão (Sede C&C - Rio de Janeiro/RJ).</span>
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>3. Aulas Presenciais</h3>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
+                            <input type="checkbox" name="has_in_person" checked={formData.has_in_person} onChange={handleFormChange} />
+                            Esta turma possui aula presencial ou prática
+                        </label>
                     </div>
+                    {formData.has_in_person && (
+                        <>
+                            <div className="form-group">
+                                <label className="form-label">Quantidade de encontros presenciais *</label>
+                                <input type="number" min="1" className="form-control" name="in_person_sessions" value={formData.in_person_sessions || ''} onChange={handleFormChange} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">CEP *</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input type="text" inputMode="numeric" maxLength="9" className="form-control" name="cep" value={formData.cep} onChange={handleFormChange} placeholder="00000-000" />
+                                    <button type="button" className="btn btn-secondary" onClick={handleCepLookup} disabled={cepLoading}>{cepLoading ? 'Buscando...' : 'Buscar'}</button>
+                                </div>
+                            </div>
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <label className="form-label">Endereço *</label>
+                                <input type="text" className="form-control" name="address" value={formData.address} onChange={handleFormChange} placeholder="Logradouro, bairro, cidade e UF" />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Número</label>
+                                <input type="text" className="form-control" name="address_number" value={formData.address_number} onChange={handleFormChange} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Complemento</label>
+                                <input type="text" className="form-control" name="address_complement" value={formData.address_complement} onChange={handleFormChange} placeholder="Sala, bloco ou referência" />
+                            </div>
+                        </>
+                    )}
+                    <h3 style={{ gridColumn: '1 / -1', fontSize: '1.05rem', margin: '1rem 0 0', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>4. Pagamento do Aluno</h3>
                     <div className="form-group">
                         <label className="form-label">Preço À Vista (R$)</label>
                         <input
@@ -1373,7 +1280,7 @@ export default function Turmas() {
                         />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Preço Cartão (10x s/ juros)</label>
+                        <label className="form-label">Valor total no Cartão (R$)</label>
                         <input
                             type="text"
                             className="form-control"
@@ -1387,7 +1294,16 @@ export default function Turmas() {
                         />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Preço Boleto (3x)</label>
+                        <label className="form-label">Parcelas no Cartão</label>
+                        <input type="number" min="1" max="24" className="form-control" name="card_installments" value={formData.card_installments} onChange={handleFormChange} />
+                        {Number(formData.price_card_10x) > 0 && Number(formData.card_installments) > 0 && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {formData.card_installments}x de R$ {(Number(formData.price_card_10x) / Number(formData.card_installments)).toFixed(2).replace('.', ',')}
+                            </span>
+                        )}
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Valor total no Boleto (R$)</label>
                         <input
                             type="text"
                             className="form-control"
@@ -1400,10 +1316,14 @@ export default function Turmas() {
                             }}
                         />
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">Parcelas no Boleto</label>
+                        <input type="number" min="1" max="24" className="form-control" name="boleto_installments" value={formData.boleto_installments} onChange={handleFormChange} />
+                    </div>
                 </div>
 
-                <h3 style={{ fontSize: '1.125rem', marginTop: '2rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Configuração de Pagamento (Instrutor)</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.125rem', marginTop: '2rem', marginBottom: '1.5rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>5. Pagamento do Instrutor</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
                     <div className="form-group">
                         <label className="form-label">Tipo de Pagamento</label>
                         <select className="form-control" name="instructor_payment_type" value={formData.instructor_payment_type} onChange={handleFormChange}>
@@ -1441,7 +1361,7 @@ export default function Turmas() {
             {view === 'add' && renderAddForm()}
 
             {/* MODAL DE DATA UNIVERSAL */}
-            {showDateModal && (
+            {showDateModal && createPortal((
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
                     <div className="card animate-fade-in" style={{ maxWidth: '400px', width: '100%', margin: 'auto' }}>
                         <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>{dateModalConfig.title}</h3>
@@ -1463,11 +1383,11 @@ export default function Turmas() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL GESTÃO DE AGENDAMENTO PRÁTICO (FIM DE SEMANA) */}
-            {showSchedulingModal && selectedSchedulingClass && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showSchedulingModal && selectedSchedulingClass && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
                         
                         {/* Header */}
@@ -1662,7 +1582,7 @@ export default function Turmas() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { User, Mail, Phone, Calendar, Shield, Save, Key, Loader2, BookOpen, GraduationCap, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { studentsApi, classesApi } from '../services/academic'
+import { authApi } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function UserProfile() {
@@ -70,21 +71,12 @@ export default function UserProfile() {
             setLoadingExtra(true)
             try {
                 if (userRole === 'aluno') {
-                    // Buscar as matrículas/turmas do aluno
-                    const { data, error } = await supabase
-                        .from('students')
-                        .select('id, how_knew, base_value, payment_method, classes(id, name, course_name, start_date)')
-                        .eq('user_id', userProfile.id)
-                    
-                    if (!error && data) setExtraData(data)
+                    const { students } = await studentsApi.list({ user_id: userProfile.id })
+                    if (students) setExtraData(students.map(s => ({ ...s, classes: { name: s.turma_name, course_name: s.turma_course } })))
                 } else if (userRole === 'instrutor') {
-                    // Buscar turmas em que é o instrutor titular
-                    const { data, error } = await supabase
-                        .from('classes')
-                        .select('id, name, course_name, start_date, schedule, address')
-                        .eq('instructor_id', userProfile.id)
-
-                    if (!error && data) setExtraData(data)
+                    const { classes } = await classesApi.list()
+                    const mine = (classes || []).filter(c => (c.instructors || []).some(i => i.user?.id === userProfile.id))
+                    setExtraData(mine)
                 }
             } catch (err) {
                 console.error('Erro ao buscar dados específicos do perfil:', err)
@@ -113,11 +105,7 @@ export default function UserProfile() {
 
         setSavingPassword(true)
         try {
-            const { error } = await supabase.auth.updateUser({
-                password: passwordData.newPassword
-            })
-
-            if (error) throw error
+            await authApi.changePassword(passwordData.currentPassword, passwordData.newPassword)
 
             setPasswordFeedback({ type: 'success', message: 'Sua senha foi alterada com sucesso!' })
             setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })

@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { ClipboardList, Plus, Search, Filter, Eye, XCircle, DollarSign, Loader2, Save, X, Lock, Unlock, AlertTriangle, CheckCircle2 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { classesApi, coursesApi, studentsApi } from '../services/academic'
+import { authApi } from '../lib/api'
+import { auditApi } from '../services/financial'
+import { createOrFindCustomer, createBoletoPayment } from '../services/asaas'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Matriculas() {
@@ -26,6 +30,7 @@ export default function Matriculas() {
     const [selectedEnrollment, setSelectedEnrollment] = useState(null)
     const [saving, setSaving] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
+    const [generatingBoletoId, setGeneratingBoletoId] = useState(null)
 
     // Form Nova Matrícula
     const [form, setForm] = useState({
@@ -49,21 +54,16 @@ export default function Matriculas() {
     const fetchData = async () => {
         setLoading(true)
         try {
-            // 1. Buscar Turmas
-            const { data: clsData } = await supabase.from('classes').select('id, name, course_name, course_value')
+            // 1. Turmas
+            const { classes: clsData } = await classesApi.list()
             if (clsData) setClasses(clsData)
 
-            // 2. Buscar Cursos
-            const { data: crsData } = await supabase.from('lms_courses').select('id, title, code')
+            // 2. Cursos
+            const { courses: crsData } = await coursesApi.list()
             if (crsData) setCourses(crsData)
 
-            // 3. Buscar Matrículas (students)
-            const { data: stdData, error } = await supabase
-                .from('students')
-                .select('*, classes(id, name, course_name)')
-                .order('created_at', { ascending: false })
-            
-            if (error) throw error
+            // 3. Matrículas (students)
+            const { students: stdData } = await studentsApi.list()
 
             const formatted = (stdData || []).map(s => {
                 const totalValue = (s.base_value || 0) - (s.discount_value || 0)
@@ -75,9 +75,9 @@ export default function Matriculas() {
                     email: s.email || '',
                     phone: s.phone || '',
                     rg: s.rg || '',
-                    class_name: s.classes?.name || 'Sem Turma',
-                    class_id: s.classes?.id || '',
-                    course_name: s.classes?.course_name || 'Sem Curso',
+                    class_name: s.turma_name || 'Sem Turma',
+                    class_id: s.turma_id || '',
+                    course_name: s.turma_course || 'Sem Curso',
                     created_at: s.created_at,
                     value: totalValue >= 0 ? totalValue : 0,
                     payment_method: s.payment_method || 'À Vista (PIX/Dinheiro)',
@@ -89,61 +89,7 @@ export default function Matriculas() {
             setEnrollments(formatted)
         } catch (err) {
             console.error('Erro ao buscar matrículas:', err)
-            // Fallback mock caso as tabelas tenham inconsistências ou migração ausente
-            const mockEnrollments = [
-                {
-                    id: 'mock-1',
-                    matricula_numero: 'MAT-3849',
-                    student_name: 'Ana Júlia de Souza',
-                    cpf: '124.582.930-44',
-                    email: 'anajulia@gmail.com',
-                    phone: '(21) 98394-2039',
-                    rg: '10.293.484-9',
-                    class_name: 'Turma LP-2026.1',
-                    class_id: 'c1',
-                    course_name: 'Líquido Penetrante (LP - PR-127)',
-                    created_at: '2026-05-20T14:30:00Z',
-                    value: 1250.00,
-                    payment_method: 'Cartão de Crédito (até 10x)',
-                    payment_status: 'pago',
-                    status: 'ativa'
-                },
-                {
-                    id: 'mock-2',
-                    matricula_numero: 'MAT-8472',
-                    student_name: 'Carlos Henrique Lima',
-                    cpf: '382.910.472-11',
-                    email: 'carlos.h.lima@hotmail.com',
-                    phone: '(21) 97728-1039',
-                    rg: '21.039.482-0',
-                    class_name: 'Turma ME-2026.2',
-                    class_id: 'c2',
-                    course_name: 'Medição de Espessura por Ultrassom (ME - PR-127)',
-                    created_at: '2026-05-28T09:15:00Z',
-                    value: 1680.00,
-                    payment_method: 'Boleto Parcelado (3x)',
-                    payment_status: 'pendente',
-                    status: 'ativa'
-                },
-                {
-                    id: 'mock-3',
-                    matricula_numero: 'MAT-1940',
-                    student_name: 'Marcos Vinícius Silva',
-                    cpf: '482.019.283-99',
-                    email: 'marcosv@gmail.com',
-                    phone: '(21) 99304-4820',
-                    rg: '12.392.019-3',
-                    class_name: 'Turma LP-2026.1',
-                    class_id: 'c1',
-                    course_name: 'Líquido Penetrante (LP - PR-127)',
-                    created_at: '2026-04-10T11:00:00Z',
-                    value: 1450.00,
-                    payment_method: 'À Vista (PIX/Dinheiro)',
-                    payment_status: 'pago',
-                    status: 'concluída'
-                }
-            ]
-            setEnrollments(mockEnrollments)
+            setEnrollments([])
         } finally {
             setLoading(false)
         }
@@ -209,33 +155,7 @@ export default function Matriculas() {
                 payment_status: form.payment_method === 'À Vista (PIX/Dinheiro)' ? 'pago' : 'pendente'
             }
 
-            if (enrollments[0]?.id.toString().startsWith('mock-')) {
-                // Mock insert
-                const mockNew = {
-                    id: 'mock-' + Date.now(),
-                    matricula_numero: 'MAT-' + Math.floor(1000 + Math.random() * 9000),
-                    student_name: form.full_name,
-                    cpf: form.cpf,
-                    email: form.email,
-                    phone: form.phone,
-                    rg: form.rg,
-                    class_name: classes.find(c => c.id === form.turma_id)?.name || 'Turma Cadastrada',
-                    course_name: classes.find(c => c.id === form.turma_id)?.course_name || 'Curso Técnico',
-                    created_at: new Date().toISOString(),
-                    value: payload.base_value - payload.discount_value,
-                    payment_method: form.payment_method,
-                    payment_status: payload.payment_status,
-                    status: 'ativa'
-                }
-                setEnrollments([mockNew, ...enrollments])
-            } else {
-                // Real insert
-                const { error } = await supabase
-                    .from('students')
-                    .insert([payload])
-                
-                if (error) throw error
-            }
+            await studentsApi.create(payload)
 
             fetchData()
             setShowCreateModal(false)
@@ -268,11 +188,7 @@ export default function Matriculas() {
             if (id.toString().startsWith('mock-')) {
                 setEnrollments(prev => prev.map(e => e.id === id ? { ...e, status: 'cancelada', payment_status: 'cancelado' } : e))
             } else {
-                const { error } = await supabase
-                    .from('students')
-                    .update({ status: 'cancelada', payment_status: 'cancelado' })
-                    .eq('id', id)
-                if (error) throw error
+                await studentsApi.update(id, { status: 'cancelada', payment_status: 'cancelado' })
             }
             alert('Matrícula cancelada com sucesso.')
             fetchData()
@@ -291,53 +207,23 @@ export default function Matriculas() {
         }
 
         try {
-            const { createClient } = await import('@supabase/supabase-js')
-            const tempSupabase = createClient(
-                import.meta.env.VITE_SUPABASE_URL,
-                import.meta.env.VITE_SUPABASE_ANON_KEY,
-                { auth: { persistSession: false } }
-            )
-
-            const { data: authData, error: authErr } = await tempSupabase.auth.signInWithPassword({
-                email: authEmail,
-                password: authPassword
-            })
-
-            if (authErr || !authData?.user) {
-                setAuthError('E-mail ou senha do gestor incorretos.')
-                return
-            }
-
-            const { data: profile, error: profErr } = await tempSupabase
-                .from('users')
-                .select('role, full_name')
-                .eq('id', authData.user.id)
-                .single()
-
-            if (profErr || !profile || !['admin', 'coordenador'].includes(profile.role)) {
-                setAuthError('O usuário autenticado não possui papel de Coordenador ou Administrador.')
+            // Valida o gestor no backend (sem trocar a sessão atual).
+            const result = await authApi.verifyManager(authEmail, authPassword)
+            if (!result?.valid) {
+                setAuthError('E-mail/senha do gestor incorretos ou papel insuficiente (admin/coordenador).')
                 return
             }
 
             // Autorizado!
             setShowAuthModal(false)
-            
-            // Log de auditoria em system_settings
-            const timestamp = Date.now()
-            const logKey = `cancel_log_${timestamp}`
-            const logValue = JSON.stringify({
-                requester: userProfile?.email || 'atendente@cec.com.br',
-                authorizer: authEmail,
-                action: 'Cancelar Matrícula',
-                enrollment_id: enrollmentToCancel.id,
-                timestamp: new Date().toISOString()
-            })
 
-            await supabase.from('system_settings').upsert({
-                key: logKey,
-                value: logValue,
-                updated_at: new Date()
-            }, { onConflict: 'key' })
+            // Log de auditoria
+            try {
+                await auditApi.record('cancel_enrollment', 'students', enrollmentToCancel.id, {
+                    requester: userProfile?.email || 'atendente',
+                    authorizer: authEmail,
+                })
+            } catch { /* auditoria não bloqueia */ }
 
             confirmCancel(enrollmentToCancel.id)
         } catch (err) {
@@ -346,8 +232,41 @@ export default function Matriculas() {
         }
     }
 
-    const handleGenerateInvoice = (enrollment) => {
-        alert(`[Asaas - Sprint B] Boleto Bancário gerado com sucesso para a matrícula ${enrollment.matricula_numero} no valor de R$ ${enrollment.value.toFixed(2)}. link de pagamento enviado para o e-mail: ${enrollment.email}`)
+    const handleGenerateInvoice = async (enrollment) => {
+        if (generatingBoletoId) return
+        if (!enrollment.value || enrollment.value <= 0) {
+            alert('Esta matrícula não tem valor definido — não é possível gerar o boleto.')
+            return
+        }
+        setGeneratingBoletoId(enrollment.id)
+        try {
+            const customer = await createOrFindCustomer({
+                name: enrollment.student_name,
+                cpf: enrollment.cpf,
+                email: enrollment.email,
+                phone: enrollment.phone,
+                id: enrollment.student_id || enrollment.id,
+            })
+            const customerId = customer?.id || customer?.customer?.id
+            if (!customerId) throw new Error('Cliente não pôde ser criado no Asaas.')
+
+            const payment = await createBoletoPayment(
+                customerId,
+                enrollment.value,
+                `Matrícula ${enrollment.matricula_numero} — ${enrollment.student_name}`
+            )
+            const url = payment?.bankSlipUrl || payment?.invoiceUrl
+            if (url) {
+                window.open(url, '_blank')
+                alert(`Boleto gerado para a matrícula ${enrollment.matricula_numero} (R$ ${enrollment.value.toFixed(2)}). O link de pagamento foi aberto em uma nova aba.`)
+            } else {
+                alert('Boleto gerado no Asaas, mas o link ainda está sendo processado. Consulte em instantes na tela de Pagamentos.')
+            }
+        } catch (err) {
+            alert('Não foi possível gerar o boleto: ' + (err.message || 'verifique se a integração com o Asaas está configurada na tela de Pagamentos.'))
+        } finally {
+            setGeneratingBoletoId(null)
+        }
     }
 
     // Filtragem de Matrículas
@@ -562,12 +481,13 @@ export default function Matriculas() {
                                                 </button>
                                                 {!isCancelado && !isConcluido && (
                                                     <>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleGenerateInvoice(e)}
-                                                            style={{ padding: '0.4rem', backgroundColor: '#ecfdf5', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                                                            disabled={generatingBoletoId === e.id}
+                                                            style={{ padding: '0.4rem', backgroundColor: '#ecfdf5', border: 'none', borderRadius: '6px', cursor: generatingBoletoId === e.id ? 'wait' : 'pointer', opacity: generatingBoletoId === e.id ? 0.5 : 1 }}
                                                             title="Gerar Boleto (Asaas)"
                                                         >
-                                                            <DollarSign size={15} color="#059669" />
+                                                            {generatingBoletoId === e.id ? <Loader2 size={15} color="#059669" className="animate-spin" /> : <DollarSign size={15} color="#059669" />}
                                                         </button>
                                                         <button 
                                                             onClick={() => triggerCancel(e)}
@@ -589,8 +509,8 @@ export default function Matriculas() {
             </div>
 
             {/* MODAL DETALHES MATRICULA */}
-            {showDetailsModal && selectedEnrollment && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showDetailsModal && selectedEnrollment && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '550px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} className="animate-scale-up">
                         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
                             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
@@ -641,11 +561,11 @@ export default function Matriculas() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL NOVA MATRICULA */}
-            {showCreateModal && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showCreateModal && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0' }} className="animate-scale-up">
                         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -733,11 +653,11 @@ export default function Matriculas() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL DE AUTORIZACAO PARA CANCELAMENTO */}
-            {showAuthModal && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+            {showAuthModal && createPortal((
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
                     <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }} className="animate-scale-up">
                         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: '12px 12px 0 0' }}>
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -771,7 +691,7 @@ export default function Matriculas() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
         </div>
     )
 }

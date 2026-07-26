@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { supabase, createTempClient } from '../lib/supabase'
+import { createPortal } from 'react-dom'
+import { usersApi } from '../services/users'
+import { staffApi, qualificationsApi } from '../services/staff'
+import { useAuth } from '../contexts/AuthContext'
 import { 
   Users, Shield, Plus, RefreshCw, Trash2, 
   UserX, UserCheck2, Lock, Edit3, DollarSign, 
@@ -7,6 +10,7 @@ import {
 } from 'lucide-react'
 
 export default function Equipe() {
+    const { session, userProfile } = useAuth()
     const [staffList, setStaffList] = useState([])
     const [loading, setLoading] = useState(true)
     const [activeSection, setActiveSection] = useState('colaboradores') // colaboradores | pr127
@@ -99,54 +103,30 @@ export default function Equipe() {
         setLoading(true)
         setErrorMsg('')
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            setCurrentUser(user)
+            setCurrentUser(session?.user || null)
+            setCurrentUserProfile(userProfile || null)
 
-            // Buscar perfil do usuário logado para obter o cargo/role
-            const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
-            setCurrentUserProfile(profile)
+            // 1. Usuários administrativos (não-alunos)
+            let usersData = []
+            try {
+                const res = await usersApi.list(['admin', 'coordenador', 'atendente', 'instrutor', 'webdesigner', 'financeiro', 'administrativo'])
+                usersData = res.users || []
+            } catch (e) { console.warn('Erro ao carregar usuários:', e.message) }
 
-            // 1. Carregar registros da tabela users que sejam administrativos (não-alunos/student)
-            const { data: usersData, error: usersError } = await supabase
-                .from('users')
-                .select('*')
-                .not('role', 'eq', 'aluno')
-                .not('role', 'eq', 'student')
-                .order('full_name', { ascending: true })
-
-            if (usersError) console.warn('Erro ao carregar usuários:', usersError.message)
-
-            // 2. Carregar registros da tabela staff
+            // 2. Tabela staff
             let staffData = []
             try {
-                const { data: sData, error: staffError } = await supabase
-                    .from('staff')
-                    .select('*, users(permissions)')
-                    .order('name', { ascending: true })
-                
-                if (!staffError) {
-                    staffData = sData || []
-                } else {
-                    console.warn('Tabela staff não retornou dados ou deu erro:', staffError.message)
-                }
+                staffData = (await staffApi.list()).staff || []
             } catch (staffErr) {
-                console.warn('Erro ao ler tabela staff:', staffErr)
+                console.warn('Erro ao ler tabela staff:', staffErr.message)
             }
 
-            // 3. Carregar qualificações do Supabase (PR-127) antes da mesclagem
+            // 3. Qualificações PR-127
             let qualData = []
             try {
-                const { data: qData, error: qualError } = await supabase
-                    .from('instructor_qualifications')
-                    .select('*, users!instructor_qualifications_user_id_fkey(full_name, email, cpf, phone)')
-                
-                if (!qualError) {
-                    qualData = qData || []
-                } else {
-                    console.warn('Erro ao carregar qualificações no fetchStaff:', qualError.message)
-                }
+                qualData = (await qualificationsApi.list()).qualifications || []
             } catch (qualErr) {
-                console.warn('Erro ao carregar qualificações (usando fallbacks):', qualErr)
+                console.warn('Erro ao carregar qualificações:', qualErr.message)
             }
             setQualifications(qualData)
 
@@ -225,14 +205,8 @@ export default function Equipe() {
 
             setStaffList(mergedList)
         } catch (err) {
-            console.warn('Erro geral ao carregar colaboradores (usando fallback local):', err)
-            
-            // Fallback Resiliente local
-            const defaultStaffMock = [
-                { id: 'mock-staff-1', name: 'Maria Costa', cpf: '222.222.222-22', role: 'financeiro', email: 'maria.costa@cec.com.br', phone: '(21) 97777-6666', admission_date: '2026-05-10', salary: 3500.00, has_platform_access: false, is_active: true, user_id: null },
-                { id: 'mock-staff-2', name: 'Ana Paula Souza', cpf: '444.444.444-44', role: 'administrativo', email: 'ana.admin@cec.com.br', phone: '(21) 95555-4444', admission_date: '2026-05-20', salary: 3000.00, has_platform_access: false, is_active: true, user_id: null }
-            ]
-            setStaffList(defaultStaffMock)
+            console.warn('Erro geral ao carregar colaboradores:', err)
+            setStaffList([])
         }
         setLoading(false)
     }
@@ -240,19 +214,14 @@ export default function Equipe() {
     const fetchCapacities = async () => {
         setLoadingQualifyCapacities(true)
         try {
-            const { data } = await supabase
-                .from('instructor_qualifications')
-                .select('method')
-                .eq('status', 'ativo')
+            const { qualifications } = await qualificationsApi.list({ status: 'ativo' })
 
             const counts = { 'CD-MC': 0, 'CD-CL': 0, 'CD-TO': 0 }
-            if (data) {
-                data.forEach(item => {
-                    if (counts[item.method] !== undefined) {
-                        counts[item.method]++
-                    }
-                })
-            }
+            ;(qualifications || []).forEach(item => {
+                if (counts[item.method] !== undefined) {
+                    counts[item.method]++
+                }
+            })
             setCapacities(counts)
         } catch (err) {
             console.error('Erro ao buscar capacidades dos métodos:', err)
@@ -336,39 +305,29 @@ export default function Equipe() {
                 }
 
                 if (!isMock) {
-                    // Se o targetStaff possui um ID diferente do user_id, indica que já existe na tabela staff
-                    if (targetStaff && targetStaff.id !== targetStaff.user_id) {
-                        staffPayload.id = targetStaff.id
+                    // 1. Atualizar/criar na tabela staff
+                    try {
+                        const isRealStaffRow = targetStaff && targetStaff.id !== targetStaff.user_id
+                        if (isRealStaffRow) {
+                            await staffApi.update(targetStaff.id, staffPayload)
+                        } else {
+                            await staffApi.create(staffPayload)
+                        }
+                    } catch (staffUpdateError) {
+                        console.warn('Erro ao atualizar staff:', staffUpdateError.message)
                     }
 
-                    // 1. Atualizar ou inserir na tabela staff do Supabase
-                    const { error: staffUpdateError } = await supabase
-                        .from('staff')
-                        .upsert(staffPayload, { onConflict: targetStaff?.id !== targetStaff?.user_id ? 'id' : 'user_id' })
-
-                    if (staffUpdateError) {
-                        console.warn('Erro ao atualizar na tabela staff:', staffUpdateError.message)
-                    }
-
-                    // 2. Se possuir user_id, atualizar também na tabela users pública
+                    // 2. Se possuir user_id, atualizar o usuário vinculado
                     if (targetStaff && targetStaff.user_id) {
-                        const { error: dbUserError } = await supabase
-                            .from('users')
-                            .update({
-                                email: formData.email || null,
+                        try {
+                            await usersApi.update(targetStaff.user_id, {
                                 full_name: formData.name,
                                 role: formData.role,
                                 cpf: formData.cpf,
                                 phone: formData.phone,
-                                admission_date: formData.admission_date || null,
-                                permissions: {
-                                    has_erp_access: true,
-                                    ...formData.permissions
-                                }
+                                permissions: { has_erp_access: true, ...formData.permissions }
                             })
-                            .eq('id', targetStaff.user_id)
-
-                        if (dbUserError) console.warn('Erro ao atualizar na tabela users:', dbUserError.message)
+                        } catch (dbUserError) { console.warn('Erro ao atualizar usuário:', dbUserError.message) }
                     }
                 }
 
@@ -380,54 +339,26 @@ export default function Equipe() {
                 // MODO CRIAÇÃO
                 let createdUserId = null
 
-                // Tipo A: Com acesso à plataforma (Cria usuário na Auth + Users)
+                // Tipo A: Com acesso à plataforma (cria o usuário via API)
                 if (formData.has_platform_access) {
                     if (!formData.email || !formData.password) {
                         throw new Error('E-mail de acesso e senha são obrigatórios para colaboradores com acesso à plataforma.')
                     }
-
-                    const tempClient = createTempClient()
-                    const { data: authData, error: authError } = await tempClient.auth.signUp({
-                        email: formData.email,
-                        password: formData.password,
-                        options: {
-                            data: {
-                                full_name: formData.name,
-                                role: formData.role,
-                                permissions: {
-                                    has_erp_access: true,
-                                    ...formData.permissions
-                                }
-                            }
-                        }
-                    })
-
-                    if (authError) throw authError
-
-                    if (authData?.user) {
-                        createdUserId = authData.user.id
-                        
-                        // Inserir/Atualizar na tabela users pública (upsert evita conflitos com a trigger auth)
-                        const { error: dbUserError } = await supabase.from('users').upsert({
-                            id: createdUserId,
+                    try {
+                        const { user } = await usersApi.create({
                             email: formData.email,
+                            password: formData.password,
                             full_name: formData.name,
                             role: formData.role,
                             cpf: formData.cpf,
                             phone: formData.phone,
-                            admission_date: formData.admission_date || null,
-                            is_active: true,
-                            permissions: {
-                                has_erp_access: true,
-                                ...formData.permissions
-                            }
-                        }, { onConflict: 'id' })
-
-                        if (dbUserError) console.warn('Erro ao inserir/atualizar na tabela users:', dbUserError.message)
-                    }
+                            permissions: { has_erp_access: true, ...formData.permissions }
+                        })
+                        createdUserId = user?.id || null
+                    } catch (authError) { throw authError }
                 }
 
-                // Inserir na tabela staff do Supabase
+                // Inserir na tabela staff
                 const staffPayload = {
                     user_id: createdUserId,
                     name: formData.name,
@@ -441,12 +372,9 @@ export default function Equipe() {
                     is_active: true
                 }
 
-                const { data: insertedData, error: staffInsertError } = await supabase
-                    .from('staff')
-                    .insert([staffPayload])
-                    .select()
-
-                if (staffInsertError) {
+                try {
+                    await staffApi.create(staffPayload)
+                } catch (staffInsertError) {
                     console.warn('Erro ao inserir na tabela staff:', staffInsertError.message)
                 }
 
@@ -457,44 +385,7 @@ export default function Equipe() {
             }
         } catch (err) {
             console.error('Erro ao processar colaborador:', err)
-            
-            // Fallback Resiliente local em caso de erro de banco
-            if (editingStaffId) {
-                setStaffList(prev => prev.map(s => s.id === editingStaffId ? {
-                    ...s,
-                    name: formData.name,
-                    cpf: formData.cpf || '—',
-                    role: formData.role,
-                    email: formData.email || '—',
-                    phone: formData.phone || '—',
-                    admission_date: formData.admission_date || s.admission_date,
-                    salary: formData.salary ? parseFloat(formData.salary) : 0,
-                    has_platform_access: formData.has_platform_access
-                } : s))
-                setShowModal(false)
-                resetForm()
-                alert('Atualização efetuada localmente com sucesso (Ambiente de Testes)!')
-            } else {
-                const mockId = 'mock-new-' + Date.now()
-                const mockNew = {
-                    id: mockId,
-                    user_id: formData.has_platform_access ? 'mock-user-' + Date.now() : null,
-                    name: formData.name,
-                    cpf: formData.cpf || '—',
-                    role: formData.role,
-                    email: formData.email || '—',
-                    phone: formData.phone || '—',
-                    admission_date: formData.admission_date || new Date().toISOString().split('T')[0],
-                    salary: formData.salary ? parseFloat(formData.salary) : 0,
-                    has_platform_access: formData.has_platform_access,
-                    is_active: true
-                }
-
-                setStaffList(prev => [mockNew, ...prev])
-                setShowModal(false)
-                resetForm()
-                alert('Cadastro efetuado localmente com sucesso (Ambiente de Testes)!')
-            }
+            setErrorMsg(err.message || 'Falha ao salvar o colaborador. Tente novamente.')
         } finally {
             setLoading(false)
         }
@@ -543,14 +434,14 @@ export default function Equipe() {
         try {
             const newStatus = !staff.is_active
             
-            // 1. Atualizar na tabela staff
+            // 1. Atualizar na tabela staff (se for uma linha real de staff)
             if (!staff.id.toString().startsWith('mock-')) {
-                const { error } = await supabase.from('staff').update({ is_active: newStatus }).eq('id', staff.id)
-                if (error) throw error
-
-                // 2. Se possuir user_id, suspender na tabela users pública
+                if (staff.id !== staff.user_id) {
+                    await staffApi.update(staff.id, { is_active: newStatus })
+                }
+                // 2. Suspender o usuário vinculado
                 if (staff.user_id) {
-                    await supabase.from('users').update({ is_active: newStatus }).eq('id', staff.user_id)
+                    await usersApi.update(staff.user_id, { is_active: newStatus })
                 }
             }
 
@@ -572,12 +463,12 @@ export default function Equipe() {
         setLoading(true)
         try {
             if (!staff.id.toString().startsWith('mock-')) {
-                const { error } = await supabase.from('staff').delete().eq('id', staff.id)
-                if (error) throw error
-
-                // Deletar usuário correspondente em users se houver
+                if (staff.id !== staff.user_id) {
+                    await staffApi.remove(staff.id)
+                }
+                // Deletar usuário correspondente se houver
                 if (staff.user_id) {
-                    await supabase.from('users').delete().eq('id', staff.user_id)
+                    await usersApi.remove(staff.user_id)
                 }
             }
             setStaffList(prev => prev.filter(s => s.id !== staff.id))
@@ -708,11 +599,7 @@ export default function Equipe() {
                     status: 'pendente_aprovacao'
                 }
 
-                const { error } = await supabase
-                    .from('instructor_qualifications')
-                    .upsert(qualPayload, { onConflict: 'user_id, method' })
-
-                if (error) throw error
+                await qualificationsApi.create(qualPayload)
             }
 
             alert('Qualificações enviadas com sucesso para aprovação do Coordenador!')
@@ -730,23 +617,17 @@ export default function Equipe() {
         if (!confirm(`Aprovar a habilitação técnica no método ${qual.method} para o instrutor ${qual.users?.full_name}?`)) return
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
             const approvedAt = new Date()
             const validUntil = new Date()
             validUntil.setMonth(validUntil.getMonth() + 36)
 
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'ativo',
-                    approved_by: user.id,
-                    approved_at: approvedAt,
-                    valid_until: validUntil.toISOString().split('T')[0],
-                    rejection_reason: null
-                })
-                .eq('id', qual.id)
-
-            if (error) throw error
+            await qualificationsApi.update(qual.id, {
+                status: 'ativo',
+                approved_by: session?.user?.id,
+                approved_at: approvedAt.toISOString(),
+                valid_until: validUntil.toISOString().split('T')[0],
+                rejection_reason: null
+            })
 
             alert('Habilitação técnica aprovada com sucesso! Validade estendida por 36 meses.')
             setShowApprovalModal(false)
@@ -766,18 +647,11 @@ export default function Equipe() {
         }
         setApprovalLoading(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-
-            const { error } = await supabase
-                .from('instructor_qualifications')
-                .update({
-                    status: 'reprovado',
-                    approved_by: user.id,
-                    rejection_reason: rejectionReason
-                })
-                .eq('id', selectedQualForApproval.id)
-
-            if (error) throw error
+            await qualificationsApi.update(selectedQualForApproval.id, {
+                status: 'reprovado',
+                approved_by: session?.user?.id,
+                rejection_reason: rejectionReason
+            })
 
             alert('Habilitação reprovada. O instrutor foi notificado com o motivo.')
             setShowApprovalModal(false)
@@ -878,7 +752,7 @@ export default function Equipe() {
             </div>
 
             {/* ABAS DA SEÇÃO */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', flexWrap: 'wrap' }}>
                 <button 
                     className={`btn ${activeSection === 'colaboradores' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
@@ -939,7 +813,7 @@ export default function Equipe() {
                     </div>
 
                     {/* LISTA GRID DE COLABORADORES */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
                         {filteredStaff.map(s => {
                             const hasAccess = s.has_platform_access
                             return (
@@ -1138,13 +1012,13 @@ export default function Equipe() {
             )}
 
             {/* MODAL 1: NOVO COLABORADOR / MEMBRO DA EQUIPE */}
-            {showModal && (
+            {showModal && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
                     display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999
                 }}>
-                    <div className="card animate-slide-up" style={{ maxWidth: '520px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: 'min(520px, 92vw)', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {editingStaffId ? (
@@ -1343,16 +1217,16 @@ export default function Equipe() {
                         </form>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL 2: ASSISTENTE DE CADASTRO HABILITAÇÃO PR-127 (5 ABAS) */}
-            {showQualifyWizard && selectedInstructorForQualify && (
+            {showQualifyWizard && selectedInstructorForQualify && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
                     display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
                 }}>
-                    <div className="card animate-slide-up" style={{ maxWidth: '650px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: 'min(650px, 92vw)', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Award color="var(--primary)" /> Habilitação PR-127 — {selectedInstructorForQualify.name}
@@ -1363,7 +1237,7 @@ export default function Equipe() {
                         </div>
 
                         {/* Barra de Progresso do Assistente */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '2rem', backgroundColor: '#F1F5F9', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700' }}>
                             <span style={{ color: wizardStep === 1 ? 'var(--primary)' : '#64748B' }}>1. Pessoal</span>
                             <span style={{ color: wizardStep === 2 ? 'var(--primary)' : '#64748B' }}>2. Técnicos</span>
                             <span style={{ color: wizardStep === 3 ? 'var(--primary)' : '#64748B' }}>3. Abendi</span>
@@ -1680,16 +1554,16 @@ export default function Equipe() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
             {/* MODAL 3: JULGAMENTO DA APROVAÇÃO PR-127 */}
-            {showApprovalModal && selectedQualForApproval && (
+            {showApprovalModal && selectedQualForApproval && createPortal((
                 <div style={{
                     position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
                     display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
                 }}>
-                    <div className="card animate-slide-up" style={{ maxWidth: '600px', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
+                    <div className="card animate-slide-up" style={{ maxWidth: 'min(600px, 92vw)', width: '100%', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Award color="var(--primary)" /> Revisão Técnica PR-127
@@ -1779,7 +1653,7 @@ export default function Equipe() {
                         </div>
                     </div>
                 </div>
-            )}
+            ), document.body)}
 
         </div>
     )
