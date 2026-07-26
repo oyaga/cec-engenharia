@@ -848,7 +848,7 @@ export default function AreaAluno() {
     }
 
     try {
-      const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`);
+      const { url: publicUrl } = await uploadFile(file, `students/${studentId}`);
       await studentsApi.update(studentId, { [`doc_${docType}_url`]: publicUrl });
 
       setDocumentNotice({
@@ -2136,7 +2136,9 @@ export default function AreaAluno() {
     setUploadingDoc(type);
     setUploadError(null);
     try {
-      con
+      const res = await uploadFile(file, 'students/' + studentId);
+      const url = res.url;
+      const patch = {};
       patch['doc_' + type + '_url']    = url;
       patch['doc_' + type + '_status'] = 'pending';
       patch['doc_' + type + '_reject'] = null;

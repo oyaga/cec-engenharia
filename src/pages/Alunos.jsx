@@ -903,7 +903,7 @@ export default function Alunos() {
     const handleFileUpload = async (studentId, file, type) => {
         if (!file) return
         try {
-            const { url: publicUrl } = await uploadFile(file, `student-docs/${studentId}`)
+            const { url: publicUrl } = await uploadFile(file, `students/${studentId}`)
 
             let updatePayload = {}
             if (type === 'provas') {
