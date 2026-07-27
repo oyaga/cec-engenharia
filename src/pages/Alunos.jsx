@@ -910,7 +910,12 @@ export default function Alunos() {
                 const currentExams = view.originalData?.doc_exams_url || []
                 updatePayload = { doc_exams_url: [...currentExams, { name: file.name, url: publicUrl, date: new Date().toISOString() }] }
             } else {
-                updatePayload = { [`doc_${type}_url`]: publicUrl }
+                // Ao substituir um arquivo, reseta o status para pending
+                updatePayload = {
+                    [`doc_${type}_url`]: publicUrl,
+                    [`doc_${type}_status`]: 'pending',
+                    [`doc_${type}_reject`]: null,
+                }
             }
 
             await studentsApi.update(studentId, updatePayload)
