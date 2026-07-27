@@ -932,7 +932,9 @@ func (h *Handler) update(c *gin.Context, model any, key string) {
 		return
 	}
 	delete(body, "id")
-	if err := h.db.Model(model).Updates(body).Error; err != nil {
+	// Usa Save via mapa de colunas explícitas para persistir zeros/nulls (GORM
+	// ignora valores zero em Updates sem Select — ex.: is_in_person=false).
+	if err := h.db.Model(model).Select("*").Updates(body).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar "+key)
 		return
 	}

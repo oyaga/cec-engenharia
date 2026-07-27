@@ -23,9 +23,12 @@ func (h *Handler) MyCourses(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	var courses []models.LMSCourse
+	// Não filtra por is_published: se o aluno está matriculado, vê o curso
+	// independentemente do status de publicação (pode ser um rascunho liberado
+	// antecipadamente para a turma).
 	h.db.Table("lms_courses").
 		Joins("JOIN lms_enrollments e ON e.course_id = lms_courses.id").
-		Where("e.user_id = ? AND lms_courses.is_published = true", uid).
+		Where("e.user_id = ?", uid).
 		Order("lms_courses.title").
 		Find(&courses)
 
