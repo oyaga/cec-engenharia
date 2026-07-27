@@ -330,6 +330,20 @@ func (h *Handler) Update(c *gin.Context) {
 			updates[k] = v
 		}
 	}
+
+	// Quando o aluno envia um novo arquivo de documento, reseta o status para
+	// pending e limpa o motivo de rejeição automaticamente — independente do
+	// que o frontend mandou no payload (selfAllowed não inclui doc_*_status).
+	if isAluno {
+		docTypes := []string{"photo", "id", "cpf", "address", "education"}
+		for _, dt := range docTypes {
+			urlKey := "doc_" + dt + "_url"
+			if _, hasURL := updates[urlKey]; hasURL {
+				updates["doc_"+dt+"_status"] = "pending"
+				updates["doc_"+dt+"_reject"] = nil
+			}
+		}
+	}
 	if err := h.db.Model(&s).Updates(updates).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar aluno")
 		return
