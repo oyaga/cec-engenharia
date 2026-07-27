@@ -61,12 +61,16 @@ jobs:
     needs: build-push
     runs-on: ubuntu-latest
     steps:
-      - name: Redeploy no Portainer
+      - name: Redeploy via SSH
         env:
           WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
           P_URL: ${{ secrets.PORTAINER_URL }}
           P_KEY: ${{ secrets.PORTAINER_API_KEY }}
           P_STACK: ${{ secrets.PORTAINER_STACK_NAME }}
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_KEY:  ${{ secrets.DEPLOY_SSH_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -79,29 +83,86 @@ jobs:
           fi
 
           # Opção B: API do Portainer (funciona no CE) — re-pull da imagem.
-          if [ -z "${P_URL:-}" ] || [ -z "${P_KEY:-}" ]; then
-            echo "::notice::Nenhum segredo de deploy configurado (PORTAINER_WEBHOOK_URL ou PORTAINER_URL+PORTAINER_API_KEY). Imagem publicada; redeploy manual no Portainer."
+          if [ -n "${P_URL:-}" ] && [ -n "${P_KEY:-}" ]; then
+            STACK_NAME="${P_STACK:-cec}"
+            echo "Buscando stack '$STACK_NAME'..."
+            STACK=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks" \
+              | jq -c --arg n "$STACK_NAME" '.[] | select(.Name == $n)')
+            if [ -n "$STACK" ]; then
+              ID=$(echo "$STACK" | jq -r '.Id')
+              ENDPOINT=$(echo "$STACK" | jq -r '.EndpointId')
+              ENVJSON=$(echo "$STACK" | jq -c '.Env // []')
+              FILE=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks/$ID/file" \
+                | jq -r '.StackFileContent')
+              echo "Redeploy do stack $ID (endpoint $ENDPOINT) com re-pull..."
+              jq -n --arg content "$FILE" --argjson env "$ENVJSON" \
+                '{stackFileContent: $content, env: $env, prune: false, pullImage: true}' \
+                | curl -fsS -X PUT -H "X-API-Key: $P_KEY" -H "Content-Type: application/json" \
+                    -d @- "$P_URL/api/stacks/$ID?endpointId=$ENDPOINT" > /dev/null
+              echo "Deploy disparado com sucesso."
+              exit 0
+            fi
+          fi
+
+          # Opção C: SSH direto — recria o container com a nova imagem.
+          if [ -n "${SSH_HOST:-}" ] && [ -n "${SSH_KEY:-}" ]; then
+            echo "Redeploy via SSH..."
+            echo "$SSH_KEY" > /tmp/deploy_key
+            chmod 600 /tmp/deploy_key
+            RESEND="${RESEND_API_KEY:-}"
+            ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key \
+              "${SSH_USER:-root}@${SSH_HOST}" \
+              RESEND_KEY="$RESEND" bash << 'ENDSSH'
+              docker pull ghcr.io/oyaga/cec:latest
+              docker stop cec-app-1 2>/dev/null || true
+              docker rm   cec-app-1 2>/dev/null || true
+              docker run -d \
+                --name cec-app-1 --restart always \
+                --network cec_internal \
+                -e APP_ENV=production \
+                -e HTTP_PORT=8080 \
+                -e DATABASE_URL="postgres://cec:c1020ccd66f50a95d32dbdff6e91405459942e32c131679a54ecc3da3f2e4fa2@db:5432/cec?sslmode=disable" \
+                -e REDIS_URL="redis://redis:6379" \
+                -e JWT_SECRET="ZTXxYeRanwKBkYPIJhPQHvx70WdK8NB0gSwf8ZzzgFfR42g/YgMgM0XYJuZgEghb" \
+                -e JWT_TTL_HOURS=12 \
+                -e SEED_DEV=false \
+                -e SEED_ADMIN_EMAIL=lpiticalyn@gmail.com \
+                -e SEED_ADMIN_PASSWORD=uEOKKtF3B5lqMo0h \
+                -e PUBLIC_URL=https://cursocec.com.br \
+                -e STORAGE_DIR=/app/uploads \
+                -e WEB_DIR=/app/web \
+                -e CORS_ORIGINS="https://cursocec.com.br,https://www.cursocec.com.br,https://aluno.cursocec.com.br,https://secretaria.cursocec.com.br,https://portal.cursocec.com.br" \
+                -e ASAAS_ENV=production \
+                -e ASAAS_API_KEY="" \
+                -e ASAAS_WEBHOOK_TOKEN="" \
+                -e RESEND_API_KEY="${RESEND_API_KEY:-}" \
+                -e MAIL_FROM="CEC Cursos <nao-responda@cursocec.com.br>" \
+                -e SECRETARIA_EMAIL="cursoscecengenharia@gmail.com" \
+                -e EVOLUTION_API_URL="" \
+                -e EVOLUTION_API_KEY="" \
+                -e AI_PROVIDER="" \
+                -e AI_API_KEY="" \
+                -e MARIA_ATTENDANT="" \
+                -v cec_cec_uploads:/app/uploads \
+                --label "traefik.enable=true" \
+                --label "traefik.docker.network=proxy" \
+                --label "traefik.http.routers.cec.rule=Host(\`cursocec.com.br\`) || Host(\`www.cursocec.com.br\`) || Host(\`aluno.cursocec.com.br\`) || Host(\`secretaria.cursocec.com.br\`) || Host(\`portal.cursocec.com.br\`)" \
+                --label "traefik.http.routers.cec.entrypoints=websecure" \
+                --label "traefik.http.routers.cec.tls=true" \
+                --label "traefik.http.routers.cec.tls.certresolver=letsencrypt" \
+                --label "traefik.http.services.cec.loadbalancer.server.port=8080" \
+                --label "traefik.http.routers.cec-http.rule=Host(\`cursocec.com.br\`) || Host(\`www.cursocec.com.br\`) || Host(\`aluno.cursocec.com.br\`) || Host(\`secretaria.cursocec.com.br\`) || Host(\`portal.cursocec.com.br\`)" \
+                --label "traefik.http.routers.cec-http.entrypoints=web" \
+                --label "traefik.http.routers.cec-http.middlewares=cec-redirect" \
+                --label "traefik.http.middlewares.cec-redirect.redirectscheme.scheme=https" \
+                ghcr.io/oyaga/cec:latest
+              docker network connect proxy cec-app-1 2>/dev/null || true
+              echo "Container recriado com sucesso."
+ENDSSH
+            rm -f /tmp/deploy_key
+            echo "Deploy SSH concluído."
             exit 0
           fi
 
-          STACK_NAME="${P_STACK:-cec}"
-          echo "Buscando stack '$STACK_NAME'..."
-          STACK=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks" \
-            | jq -c --arg n "$STACK_NAME" '.[] | select(.Name == $n)')
-          if [ -z "$STACK" ]; then
-            echo "::error::Stack '$STACK_NAME' não encontrado no Portainer."
-            exit 1
-          fi
-          ID=$(echo "$STACK" | jq -r '.Id')
-          ENDPOINT=$(echo "$STACK" | jq -r '.EndpointId')
-          ENVJSON=$(echo "$STACK" | jq -c '.Env // []')
-
-          FILE=$(curl -fsS -H "X-API-Key: $P_KEY" "$P_URL/api/stacks/$ID/file" \
-            | jq -r '.StackFileContent')
-
-          echo "Redeploy do stack $ID (endpoint $ENDPOINT) com re-pull..."
-          jq -n --arg content "$FILE" --argjson env "$ENVJSON" \
-            '{stackFileContent: $content, env: $env, prune: false, pullImage: true}' \
-            | curl -fsS -X PUT -H "X-API-Key: $P_KEY" -H "Content-Type: application/json" \
-                -d @- "$P_URL/api/stacks/$ID?endpointId=$ENDPOINT" > /dev/null
-          echo "Deploy disparado com sucesso."
+          echo "::notice::Nenhum segredo de deploy configurado. Imagem publicada; redeploy manual necessário."
+          exit 0
