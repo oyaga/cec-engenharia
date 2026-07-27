@@ -1070,15 +1070,26 @@ export default function Alunos() {
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
                                                         <a href={url} target="_blank" rel="noreferrer"
                                                             style={{ fontSize: '0.68rem', color: '#0369a1', fontWeight: 700 }}>Ver</a>
-                                                        {isPending && (
-                                                            <div style={{ display: 'flex', gap: '3px' }}>
+                                                        {/* Status badge */}
+                                                        <span style={{ fontSize: '0.62rem', fontWeight: 800,
+                                                            color: isApproved ? '#065f46' : isRejected ? '#991b1b' : '#92400e',
+                                                            background: isApproved ? '#d1fae5' : isRejected ? '#fee2e2' : '#fef3c7',
+                                                            padding: '0 5px', borderRadius: '3px' }}>
+                                                            {isApproved ? '✓ OK' : isRejected ? '✗ Rep.' : '⏳'}
+                                                        </span>
+                                                        {/* Botões sempre visíveis */}
+                                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                                            {!isApproved && (
                                                                 <button onClick={async () => {
                                                                     try {
                                                                         await studentsApi.reviewDoc(s.id, t, 'approved');
                                                                         s.originalData[`doc_${t}_status`] = 'approved';
+                                                                        s.originalData[`doc_${t}_reject`] = null;
                                                                         fetchStudents();
                                                                     } catch(e) { alert(e.message); }
-                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#d1fae5', color: '#065f46', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✓</button>
+                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#d1fae5', color: '#065f46', border: '1px solid #a7f3d0', borderRadius: '4px', cursor: 'pointer' }} title="Aprovar">✓</button>
+                                                            )}
+                                                            {!isRejected && (
                                                                 <button onClick={async () => {
                                                                     const motivo = window.prompt('Motivo da reprovação:');
                                                                     if (motivo === null) return;
@@ -1087,11 +1098,19 @@ export default function Alunos() {
                                                                         s.originalData[`doc_${t}_status`] = 'rejected';
                                                                         fetchStudents();
                                                                     } catch(e) { alert(e.message); }
-                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✗</button>
-                                                            </div>
-                                                        )}
-                                                        {isApproved && <span style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 800 }}>✓ OK</span>}
-                                                        {isRejected && <span style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: 800 }}>✗ Rep.</span>}
+                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer' }} title="Reprovar">✗</button>
+                                                            )}
+                                                            {(isApproved || isRejected) && (
+                                                                <button onClick={async () => {
+                                                                    try {
+                                                                        await studentsApi.reviewDoc(s.id, t, 'pending');
+                                                                        s.originalData[`doc_${t}_status`] = 'pending';
+                                                                        s.originalData[`doc_${t}_reject`] = null;
+                                                                        fetchStudents();
+                                                                    } catch(e) { alert(e.message); }
+                                                                }} style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 5px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'pointer' }} title="Redefinir para análise">↺</button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </td>
                                             );
