@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
-import { coursesApi, classesApi } from '../services/academic'
+import { coursesApi, classesApi, studentsApi } from '../services/academic'
 import { lmsApi } from '../services/lms'
 import { uploadFile } from '../lib/api'
 import { Plus, Book, Video, FileText, ChevronRight, ChevronDown, Save, Trash2, Edit, CheckSquare, Clock, Trophy, Eye, Printer, Search, Award, UploadCloud, Megaphone } from 'lucide-react'
@@ -203,6 +203,33 @@ export default function LMSAdmin() {
             setEadDoubts(doubts || [])
         } catch { /* ignora */ }
         setLoading(false)
+    }
+
+    // Matricula automaticamente todos os alunos de turmas vinculadas ao curso
+    const handleEnrollClassStudents = async (courseId) => {
+        try {
+            const { classes } = await classesApi.list()
+            const linked = (classes || []).filter(c => c.lms_course_id === courseId)
+            if (linked.length === 0) {
+                alert('Nenhuma turma vinculada a este curso.')
+                return
+            }
+            let count = 0
+            for (const turma of linked) {
+                const { students } = await studentsApi.list({ turma_id: turma.id })
+                for (const s of (students || [])) {
+                    if (s.user_id) {
+                        try {
+                            await lmsApi.enroll(s.user_id, courseId)
+                            count++
+                        } catch { /* já matriculado */ }
+                    }
+                }
+            }
+            alert(`${count} aluno(s) matriculado(s) no curso com sucesso!`)
+        } catch (err) {
+            alert('Erro ao matricular alunos: ' + err.message)
+        }
     }
 
     const handleAnswerDoubt = async (id) => {
@@ -960,6 +987,13 @@ export default function LMSAdmin() {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
+                        onClick={() => handleEnrollClassStudents(selectedCourse.id)}
+                        title="Matricula automaticamente todos os alunos de turmas vinculadas a este curso">
+                        👥 Matricular alunos das turmas
+                    </button>
                     <button className="btn btn-secondary" onClick={handlePreviewCourse}><ChevronRight size={16} /> Ver como Aluno</button>
                     <button className="btn btn-primary" onClick={() => handleOpenModuleForm()}><Plus size={16} /> Novo Módulo</button>
                 </div>

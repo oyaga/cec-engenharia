@@ -240,6 +240,22 @@ func (h *Handler) Create(c *gin.Context) {
 	if accountCreated {
 		h.sendWelcome(linkedUser)
 	}
+	// Matrícula LMS automática no Create — mesma lógica do Update.
+	if s.UserID != nil && s.TurmaID != nil {
+		go func() {
+			var turmaLMS struct{ LMSCourseID *uuid.UUID }
+			if h.db.Table("classes").Select("lms_course_id").Where("id = ?", s.TurmaID).Scan(&turmaLMS).Error != nil {
+				return
+			}
+			if turmaLMS.LMSCourseID == nil {
+				return
+			}
+			h.db.Exec(
+				"INSERT INTO lms_enrollments (id, user_id, course_id, created_at) VALUES (gen_random_uuid(), ?, ?, NOW()) ON CONFLICT DO NOTHING",
+				s.UserID, turmaLMS.LMSCourseID,
+			)
+		}()
+	}
 	c.JSON(http.StatusCreated, gin.H{
 		"student":         s,
 		"user":            linkedUser,
@@ -348,6 +364,29 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar aluno")
 		return
 	}
+
+	// Matrícula LMS automática: quando turma_id é atribuído (ou já existe) e
+	// a turma tem lms_course_id, cria automaticamente a linha em lms_enrollments
+	// para que o aluno veja o curso na Área do Aluno.
+	go func() {
+		var st models.Student
+		if h.db.First(&st, "id = ?", s.ID).Error != nil || st.UserID == nil || st.TurmaID == nil {
+			return
+		}
+		var turmaLMS struct{ LMSCourseID *uuid.UUID }
+		if h.db.Table("classes").Select("lms_course_id").Where("id = ?", st.TurmaID).Scan(&turmaLMS).Error != nil {
+			return
+		}
+		if turmaLMS.LMSCourseID == nil {
+			return
+		}
+		// Idempotente: FirstOrCreate não duplica
+		h.db.Exec(
+			"INSERT INTO lms_enrollments (id, user_id, course_id, created_at) VALUES (gen_random_uuid(), ?, ?, NOW()) ON CONFLICT DO NOTHING",
+			st.UserID, turmaLMS.LMSCourseID,
+		)
+	}()
+
 	c.JSON(http.StatusOK, gin.H{"student": s})
 }
 
