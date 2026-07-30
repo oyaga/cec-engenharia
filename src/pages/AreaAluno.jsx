@@ -1455,13 +1455,13 @@ export default function AreaAluno() {
   // ABA 3: AULAS PRESENCIAIS E FREQUÊNCIA DETALHADA
   const renderPresencial = () => {
     return (
-      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
+      <div className="aa-stack aa-presencial" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
         {/* HISTÓRICO DE PRESENÇAS */}
         <div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1.5rem' }}>Frequência e Chamadas Presenciais</h3>
           
-          <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div className="card aa-presencial-card" style={{ padding: '1.5rem', backgroundColor: 'white', marginBottom: '2rem' }}>
+            <div className="aa-frequency-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
                 <h4 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>Frequência Prática Registrada</h4>
                 <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>
@@ -1471,7 +1471,7 @@ export default function AreaAluno() {
                 </p>
               </div>
 
-              <div style={{ textAlign: 'right' }}>
+              <div className="aa-frequency-result" style={{ textAlign: 'right' }}>
                 <span style={{ 
                   fontSize: '2rem', 
                   fontWeight: 900, 
@@ -1496,16 +1496,16 @@ export default function AreaAluno() {
               <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', display: 'flex', gap: '0.5rem', color: '#991B1B', fontSize: '0.82rem', lineHeight: '1.4' }}>
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
                 <span>
-                  <strong>Atenção:</strong> Sua frequência prática está abaixo de 75%. De acordo com as normas regulamentares da **Abendi**, a emissão do certificado permanecerá **bloqueada** até que as faltas sejam justificadas ou repostas com a secretaria.
+                  <strong>Atenção:</strong> Sua frequência prática está abaixo de 75%. De acordo com as normas regulamentares da <strong>Abendi</strong>, a emissão do certificado permanecerá <strong>bloqueada</strong> até que as faltas sejam justificadas ou repostas com a secretaria.
                 </span>
               </div>
             )}
           </div>
 
           <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-dark)', marginBottom: '1rem' }}>Lista de Chamadas Realizadas</h4>
-          <div className="card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '480px' }}>
+          <div className="card aa-attendance-card" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
+            <div className="aa-attendance-scroll" style={{ overflowX: 'auto' }}>
+            <table className="aa-attendance-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '480px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #cbd5e1', color: '#475569', fontWeight: 700 }}>
                   <th style={{ padding: '1rem' }}>Data da Aula</th>
@@ -1517,11 +1517,11 @@ export default function AreaAluno() {
               <tbody>
                 {attendanceHistory.map(a => (
                   <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>
+                    <td data-label="Data da aula" style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>
                       {a.date ? new Date(`${a.date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
                     </td>
-                    <td style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
-                    <td style={{ padding: '0.85rem 1rem' }}>
+                    <td data-label="Turma / Disciplina" style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
+                    <td data-label="Status" style={{ padding: '0.85rem 1rem' }}>
                       <span style={{ 
                         padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
                         backgroundColor: !isAttendanceFinalized(a) ? '#fef3c7' : a.status === 'presente' ? '#dcfce7' : ((a.status === 'justificado' || a.status === 'falta_justificada') ? '#dbeafe' : '#fee2e2'),
@@ -1530,7 +1530,7 @@ export default function AreaAluno() {
                         {!isAttendanceFinalized(a) ? 'Aguardando chamada' : a.status === 'presente' ? 'Presente' : ((a.status === 'justificado' || a.status === 'falta_justificada') ? 'Falta Justificada' : 'Falta')}
                       </span>
                     </td>
-                    <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                    <td data-label="Justificativa" style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
                       {a.justification_type || ' --- '}
                     </td>
                   </tr>
@@ -1555,7 +1555,7 @@ export default function AreaAluno() {
             const address = [module.street, module.address_number, module.address_complement, module.neighborhood, module.city, module.state, module.cep].filter(Boolean).join(', ');
             const confirmed = module.attendance?.confirmed_by_student;
             return (
-              <div key={module.id} className="card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid #0f766e' }}>
+              <div key={module.id} className="card aa-presencial-card" style={{ padding: '1.25rem', marginBottom: '1rem', borderLeft: '4px solid #0f766e' }}>
                 <strong style={{ display: 'block', marginBottom: '.25rem' }}>{module.title}</strong>
                 <span style={{ fontSize: '.8rem', color: '#64748b' }}>{module.course_title}</span>
                 <div style={{ display: 'grid', gap: '.45rem', marginTop: '.8rem', fontSize: '.84rem' }}>
@@ -3074,10 +3074,40 @@ export default function AreaAluno() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className={`animate-fade-in aa-page${activeTab === 'presencial' ? ' aa-page-presencial' : ''}`} style={{ maxWidth: isChatFull ? '100%' : '1200px', margin: '0 auto', padding: isChatFull ? '1.25rem 1.5rem' : '2rem 1.5rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <style>{`
         @media (max-width: 768px) {
           .aa-stack { grid-template-columns: 1fr !important; }
+          .aa-page-presencial { padding: 1rem 0 !important; width: 100%; box-sizing: border-box; }
+          .aa-presencial { gap: 1.5rem !important; min-width: 0; }
+          .aa-presencial > div { min-width: 0; }
+          .aa-presencial h3 { font-size: 1.15rem !important; margin-bottom: 1rem !important; }
+          .aa-presencial-card { padding: 1rem !important; }
+          .aa-frequency-header { align-items: flex-start !important; }
+          .aa-frequency-result { width: 100%; text-align: left !important; }
+          .aa-attendance-scroll { overflow: visible !important; }
+          .aa-attendance-table { min-width: 0 !important; display: block; }
+          .aa-attendance-table thead { display: none; }
+          .aa-attendance-table tbody,
+          .aa-attendance-table tr,
+          .aa-attendance-table td { display: block; width: 100%; box-sizing: border-box; }
+          .aa-attendance-table tr { padding: 0.8rem 1rem; border-bottom: 1px solid #e2e8f0 !important; }
+          .aa-attendance-table tr:last-child { border-bottom: 0 !important; }
+          .aa-attendance-table td {
+            display: grid;
+            grid-template-columns: minmax(105px, 40%) 1fr;
+            gap: 0.65rem;
+            padding: 0.35rem 0 !important;
+            overflow-wrap: anywhere;
+          }
+          .aa-attendance-table td[data-label]::before {
+            content: attr(data-label);
+            color: #475569;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+          }
+          .aa-attendance-table td[colspan] { display: block; padding: 1.25rem 0 !important; }
         }
         /* Chat como JANELA: preenche a area a direita do menu, abaixo do topo. */
         .aa-chat-window {
