@@ -221,20 +221,31 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 
 // ListAttendance: GET /attendance?student_id=&class_id=
 func (h *Handler) ListAttendance(c *gin.Context) {
-	q := h.db.Model(&models.AttendanceRecord{}).Order("created_at DESC")
+	type attendanceItem struct {
+		models.AttendanceRecord
+		ClassName   string `json:"class_name"`
+		ModuleTitle string `json:"module_title"`
+		CourseTitle string `json:"course_title"`
+	}
+	q := h.db.Table("attendance_records ar").
+		Select("ar.*, cl.name as class_name, m.title as module_title, COALESCE(lc.title, cl.course_name) as course_title").
+		Joins("LEFT JOIN classes cl ON cl.id = ar.class_id").
+		Joins("LEFT JOIN lms_modules m ON m.id = ar.module_id").
+		Joins("LEFT JOIN lms_courses lc ON lc.id = m.course_id").
+		Order("ar.date DESC, ar.created_at DESC")
 	role := middleware.Role(c)
 	if role == "aluno" {
-		q = q.Where("student_id IN (SELECT id FROM students WHERE user_id = ?)", middleware.UserID(c))
+		q = q.Where("ar.student_id IN (SELECT id FROM students WHERE user_id = ?)", middleware.UserID(c))
 	} else if role == "instrutor" {
-		q = q.Where("class_id IN (SELECT class_id FROM class_instructors WHERE user_id = ?)", middleware.UserID(c))
+		q = q.Where("ar.class_id IN (SELECT class_id FROM class_instructors WHERE user_id = ?)", middleware.UserID(c))
 	}
 	if sid := c.Query("student_id"); sid != "" {
-		q = q.Where("student_id = ?", sid)
+		q = q.Where("ar.student_id = ?", sid)
 	}
 	if cid := c.Query("class_id"); cid != "" {
-		q = q.Where("class_id = ?", cid)
+		q = q.Where("ar.class_id = ?", cid)
 	}
-	list := []models.AttendanceRecord{}
+	list := []attendanceItem{}
 	q.Find(&list)
 	c.JSON(http.StatusOK, gin.H{"attendance": list})
 }

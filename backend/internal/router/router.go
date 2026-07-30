@@ -347,9 +347,9 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		cg2.PUT("/:id", staffOnly, cch.InvalidateOn(ckCourses), lmsH.Update)
 		cg2.DELETE("/:id", staffOnly, cch.InvalidateOn(ckCourses), lmsH.Delete)
 
-		// ─── LMS conteúdo (admin/instrutor gerenciam) ───
+		// ─── LMS conteúdo (secretaria e equipe pedagógica gerenciam) ───
 		lmsAdmin := v1.Group("/lms")
-		lmsAdmin.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "instrutor"))
+		lmsAdmin.Use(middleware.RequireAuth(tm), middleware.RequireRole("admin", "coordenador", "atendente", "instrutor"))
 		lmsAdmin.POST("/modules", lmsH.CreateModule)
 		lmsAdmin.PUT("/modules/:id", lmsH.UpdateModule)
 		lmsAdmin.DELETE("/modules/:id", lmsH.DeleteModule)

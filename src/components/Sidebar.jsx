@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone, Bot, Inbox, Star, UserCheck, Presentation, BarChart3, CreditCard, LifeBuoy } from 'lucide-react'
+import { LayoutDashboard, Users as UsersIcon, GraduationCap, DollarSign, LogOut, BookOpen, ShieldCheck, Settings, Video, PlayCircle, Menu, X, MessageSquare, Award, ClipboardList, Megaphone, Bot, Inbox, Star, UserCheck, Presentation, BarChart3, CreditCard, LifeBuoy, CalendarCheck } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 // Estilo de um link de menu (ativo x inativo).
@@ -192,6 +192,7 @@ export default function Sidebar() {
                         {can.certificados && <NavItem to="/secretaria/certificados" icon={Award} label="Certificados" />}
                         {can.instrutores && <NavItem to="/secretaria/instrutores" icon={UserCheck} label="Instrutores" />}
                         {can.professor && <NavItem to="/professor" end icon={Presentation} label="Minhas turmas" hint="Notas & freq." />}
+                        {can.professor && <NavItem to="/professor/aulas-presenciais" icon={CalendarCheck} label="Aulas presenciais" hint="Agenda & chamada" />}
                         {can.professor && <NavItem to="/professor/chat" icon={MessageSquare} label="Chat" hint="Alunos & secretaria" />}
                         {can.professor && <NavItem to="/professor/comentarios" icon={Video} label="Comentários dos vídeos" />}
                     </>}

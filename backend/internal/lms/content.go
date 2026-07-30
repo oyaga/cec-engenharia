@@ -20,7 +20,7 @@ import (
 // aluno. Espelha o grupo lmsAdmin do router.
 func isStaff(c *gin.Context) bool {
 	switch middleware.Role(c) {
-	case "admin", "coordenador", "instrutor":
+	case "admin", "coordenador", "atendente", "instrutor":
 		return true
 	}
 	return false

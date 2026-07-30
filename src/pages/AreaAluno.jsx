@@ -219,6 +219,7 @@ export default function AreaAluno() {
         const enrolledCourses = courses || [];
         setMyCourses(enrolledCourses);
         const structures = await Promise.all(enrolledCourses.map(async course => {
+          if (turma?.lms_course_id && course.id !== turma.lms_course_id) return [];
           try {
             const { modules } = await lmsApi.structure(course.id);
             return (modules || []).filter(module => module.is_in_person).map(module => ({ ...module, course_title: course.title }));
@@ -1483,7 +1484,12 @@ export default function AreaAluno() {
                     <td data-label="Data da aula" style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>
                       {a.date ? new Date(`${a.date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
                     </td>
-                    <td data-label="Turma / Disciplina" style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
+                    <td data-label="Turma / Disciplina" style={{ padding: '0.85rem 1rem' }}>
+                      <strong style={{ display: 'block' }}>{a.module_title || 'Aula presencial'}</strong>
+                      <span style={{ color: '#64748b', fontSize: '.74rem' }}>
+                        {[a.course_title, a.class_name].filter(Boolean).join(' · ') || 'Treinamento Prático'}
+                      </span>
+                    </td>
                     <td data-label="Status" style={{ padding: '0.85rem 1rem' }}>
                       <span style={{ 
                         padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
@@ -1494,7 +1500,7 @@ export default function AreaAluno() {
                       </span>
                     </td>
                     <td data-label="Justificativa" style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
-                      {a.justification_type || ' --- '}
+                      {[a.justification_type, a.justification_note].filter(Boolean).join(': ') || '—'}
                     </td>
                   </tr>
                 ))}
@@ -1522,7 +1528,7 @@ export default function AreaAluno() {
                 <strong style={{ display: 'block', marginBottom: '.25rem' }}>{module.title}</strong>
                 <span style={{ fontSize: '.8rem', color: '#64748b' }}>{module.course_title}</span>
                 <div style={{ display: 'grid', gap: '.45rem', marginTop: '.8rem', fontSize: '.84rem' }}>
-                  {module.in_person_date && <span><Calendar size={14} style={{ verticalAlign: 'middle' }} /> {new Date(module.in_person_date).toLocaleDateString('pt-BR')} · {module.start_time?.slice(0, 5)}–{module.end_time?.slice(0, 5)}</span>}
+                  {module.in_person_date && <span><Calendar size={14} style={{ verticalAlign: 'middle' }} /> {new Date(`${module.in_person_date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR')} · {module.start_time?.slice(0, 5)}–{module.end_time?.slice(0, 5)}</span>}
                   {address && <span><MapPin size={14} style={{ verticalAlign: 'middle' }} /> {address}</span>}
                   <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
                     {address && <a className="btn btn-secondary" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">Ver no Maps</a>}
@@ -1531,7 +1537,17 @@ export default function AreaAluno() {
                       {confirmed ? 'Participação confirmada' : confirmingModuleId === module.id ? 'Confirmando...' : 'Confirmar participação'}
                     </button>
                   </div>
-                  {module.attendance?.status && <small>Chamada do professor: <strong>{module.attendance.status}</strong></small>}
+                  {module.attendance?.professor_confirmed_at && (
+                    <small>
+                      Chamada do professor: <strong>
+                        {module.attendance.status === 'presente'
+                          ? 'Presente'
+                          : module.attendance.status === 'justificado'
+                            ? 'Falta justificada'
+                            : 'Falta'}
+                      </strong>
+                    </small>
+                  )}
                 </div>
               </div>
             );

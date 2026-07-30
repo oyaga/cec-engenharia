@@ -279,7 +279,22 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             if (!uid) return
             if (userProfile?.role) setUserRole(userProfile.role)
             const { classes: all } = await classesApi.list()
-            setClasses(filterMyClasses(all))
+            const mine = filterMyClasses(all)
+            const enriched = await Promise.all(mine.map(async (turma) => {
+                if (!turma.lms_course_id) return { ...turma, in_person_modules: [] }
+                try {
+                    const { modules } = await lmsApi.structure(turma.lms_course_id)
+                    return {
+                        ...turma,
+                        in_person_modules: (modules || [])
+                            .filter(module => module.is_in_person)
+                            .sort((a, b) => String(a.in_person_date || '').localeCompare(String(b.in_person_date || ''))),
+                    }
+                } catch {
+                    return { ...turma, in_person_modules: [] }
+                }
+            }))
+            setClasses(enriched)
         } catch (error) {
             console.error('Error fetching classes for professor:', error)
         } finally {
@@ -287,7 +302,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         }
     }
 
-    const fetchClassStudents = async (classId) => {
+    const fetchClassStudents = async (classId, preferredModuleId = null) => {
         setLoading(true)
         try {
             const selected = classes.find(c => c.id === classId)
@@ -303,9 +318,11 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             let activeModule = null
             if (selected.lms_course_id) {
                 const { modules: courseModules } = await lmsApi.structure(selected.lms_course_id)
-                const presencial = (courseModules || []).filter(m => m.is_in_person)
+                const presencial = (courseModules || [])
+                    .filter(m => m.is_in_person)
+                    .sort((a, b) => String(a.in_person_date || '').localeCompare(String(b.in_person_date || '')))
                 setInPersonModules(presencial)
-                activeModule = presencial[0] || null
+                activeModule = presencial.find(module => module.id === preferredModuleId) || presencial[0] || null
                 setSelectedAttendanceModule(activeModule)
             } else {
                 setInPersonModules([])
@@ -327,7 +344,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             studentsList.forEach(s => {
                 const rec = records?.find(r => r.student_id === s.id)
                 // Mapear status antigo se houver
-                let currentStatus = 'presente'
+                let currentStatus = ''
                 if (rec) {
                     if (rec.status === 'present' || rec.status === 'presente') currentStatus = 'presente'
                     else if (rec.status === 'absent' || rec.status === 'falta' || rec.status === 'ausente') currentStatus = 'falta'
@@ -375,11 +392,13 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             const statuses = {}, notes = {}, confirmations = {}
             ;(rows || []).forEach(row => {
                 statuses[row.student_id] = row.status === 'ausente' ? 'falta' : row.status === 'justificado' ? 'falta_justificada' : 'presente'
-                notes[row.student_id] = { type: row.status === 'justificado' ? 'Outro' : '', note: row.justification_note || '' }
+                notes[row.student_id] = { type: row.justification_type || '', note: row.justification_note || '' }
                 confirmations[row.student_id] = !!row.confirmed_by_student
             })
-            classStudents.forEach(student => { if (!statuses[student.id]) statuses[student.id] = 'presente' })
             setAttendance(statuses); setJustifications(notes); setStudentConfirmations(confirmations)
+            const firstRecord = (rows || []).find(row => row.record_id)
+            setContentTaught(firstRecord?.content_taught || '')
+            setClassNotes(firstRecord?.class_notes || '')
             if (module.in_person_date) setRecordDate(module.in_person_date.slice(0, 10))
         } catch (err) { alert('Erro ao carregar chamada do módulo: ' + err.message) }
         finally { setLoading(false) }
@@ -611,7 +630,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     }, [userProfile])
 
     useEffect(() => {
-        if (activeTab === 'minhasTurmas') fetchClasses()
+        if (activeTab === 'minhasTurmas' || activeTab === 'aulasPresenciais') fetchClasses()
         if (activeTab === 'duvidasEad') {
             fetchEadDoubts()
         }
@@ -683,10 +702,10 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         }
     }
 
-    const handleOpenDiario = (turma) => {
+    const handleOpenDiario = (turma, moduleId = null) => {
         setSelectedClass(turma)
         setActiveTab('diario')
-        fetchClassStudents(turma.id)
+        fetchClassStudents(turma.id, moduleId)
         setSelectedClassProgress(null)
         classesApi.progress(turma.id)
             .then(setSelectedClassProgress)
@@ -800,6 +819,12 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             return
         }
 
+        const unmarkedStudent = classStudents.find(student => !attendance[student.id])
+        if (unmarkedStudent) {
+            alert(`Marque Presente, Falta ou Justificado para ${unmarkedStudent.full_name} antes de fechar a chamada.`)
+            return
+        }
+
         // Validação de faltas justificadas
         for (const studentId of Object.keys(attendance)) {
             if (attendance[studentId] === 'falta_justificada') {
@@ -820,7 +845,10 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                     const j = justifications[studentId] || {}
                     await attendanceApi.setModuleStatus(selectedClass.id, selectedAttendanceModule.id, studentId, {
                         status: currentStatus === 'falta' ? 'ausente' : currentStatus === 'falta_justificada' ? 'justificado' : 'presente',
-                        justification_note: currentStatus === 'falta_justificada' ? `${j.type ? j.type + ': ' : ''}${j.note || ''}` : null
+                        justification_type: currentStatus === 'falta_justificada' ? j.type || null : null,
+                        justification_note: currentStatus === 'falta_justificada' ? j.note || null : null,
+                        content_taught: contentTaught.trim(),
+                        class_notes: classNotes.trim() || null,
                     })
                 }
                 alert('Chamada do módulo presencial salva e confirmada!')
@@ -866,61 +894,63 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
         }
     }
 
-    // Separar as turmas em categorias dinâmicas
-    const proximasAulas = classes.filter(c => c.status !== 'completed' && c.status !== 'aguardando_revisao')
-    const historicoAulas = classes.filter(c => c.status === 'completed')
-    const pendentesRevisao = classes.filter(c => c.status === 'aguardando_revisao')
+    // A agenda do professor usa os mesmos módulos presenciais configurados pela
+    // secretaria no curso. Cada módulo é um encontro/chamada independente.
+    const today = new Date().toISOString().slice(0, 10)
+    const scheduledSessions = classes.flatMap(turma =>
+        (turma.in_person_modules || []).map(module => ({ turma, module }))
+    )
+    const proximasAulas = scheduledSessions.filter(({ module }) => !module.in_person_date || module.in_person_date.slice(0, 10) >= today)
+    const historicoAulas = scheduledSessions.filter(({ module }) => module.in_person_date && module.in_person_date.slice(0, 10) < today).reverse()
+    const turmasSemAgenda = classes.filter(turma => !(turma.in_person_modules || []).length)
 
-    const renderCardTurma = (turma, type) => {
+    const renderCardTurma = ({ turma, module }, type) => {
         const courseTitle = turma.lms_courses?.title || turma.course_name || 'Curso não informado'
-        const classDate = turma.start_date
-            ? new Date(`${turma.start_date}T12:00:00`).toLocaleDateString('pt-BR')
+        const classDate = module.in_person_date
+            ? new Date(`${module.in_person_date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR')
             : 'A agendar'
+        const schedule = module.start_time && module.end_time
+            ? `${module.start_time.slice(0, 5)} às ${module.end_time.slice(0, 5)}`
+            : 'Não definido'
+        const address = [
+            module.street,
+            module.address_number,
+            module.address_complement,
+            module.neighborhood,
+            module.city,
+            module.state,
+        ].filter(Boolean).join(', ') || 'Não definido'
 
         return (
-            <article key={turma.id} className={`prof-class-card prof-class-card--${type}`}>
+            <article key={`${turma.id}-${module.id}`} className={`prof-class-card prof-class-card--${type}`}>
                 <div className="prof-class-heading">
                     <div>
-                        <span className="prof-class-eyebrow">{type === 'passada' ? 'Aula concluída' : type === 'revisao' ? 'Revisão necessária' : 'Próxima aula presencial'}</span>
-                        <h3>Aula Prática — {courseTitle} {turma.lms_courses?.code ? `(${turma.lms_courses.code})` : ''}</h3>
+                        <span className="prof-class-eyebrow">{type === 'passada' ? 'Encontro anterior' : 'Próxima aula presencial'}</span>
+                        <h3>{module.title}</h3>
                         <span className="prof-class-badge">Turma: {turma.name}</span>
+                        <span style={{ display: 'block', marginTop: '.45rem', color: 'var(--text-secondary)', fontSize: '.78rem' }}>{courseTitle}</span>
                     </div>
                     <span className={`prof-status-badge prof-status-badge--${type}`}>
-                        {type === 'passada' ? 'Concluída' : type === 'revisao' ? 'Pendente' : 'Programada'}
+                        {type === 'passada' ? 'Data realizada' : module.in_person_date ? 'Programada' : 'A agendar'}
                     </span>
                 </div>
 
                 <div className="prof-class-meta">
-                    <div><CalendarIcon size={17} /><span><small>Data prevista</small><strong>{classDate}</strong></span></div>
-                    <div><Clock size={17} /><span><small>Horário</small><strong>{turma.schedule || 'Não definido'}</strong></span></div>
-                    <div><MapPin size={17} /><span><small>Local</small><strong>{turma.address || 'Sede C&C Engenharia'}</strong></span></div>
+                    <div><CalendarIcon size={17} /><span><small>Data</small><strong>{classDate}</strong></span></div>
+                    <div><Clock size={17} /><span><small>Horário</small><strong>{schedule}</strong></span></div>
+                    <div><MapPin size={17} /><span><small>Local</small><strong>{address}</strong></span></div>
                 </div>
 
-                {type === 'revisao' && (
-                    <div className="prof-review-alert"><AlertTriangle size={16} /><span>Revise a data e o horário com a secretaria antes de liberar a chamada.</span></div>
-                )}
-
                 <div className="prof-class-actions">
-                    {type !== 'revisao' && (
-                        <button className="prof-action-button" onClick={() => handleOpenStudentsModal(turma)}>
-                            <Users size={16} /> Alunos
-                        </button>
-                    )}
-                    {type === 'futura' && (
-                        <button className="prof-action-button" onClick={() => handleOpenEditClassModal(turma)}>
-                            <Edit3 size={16} /> Editar aula
-                        </button>
-                    )}
-                    {type === 'futura' && (
-                        <button className="prof-action-button prof-action-button--primary" onClick={() => handleOpenDiario(turma)}>
-                            <CheckSquare size={17} /> Abrir Diário / Fazer Chamada
-                        </button>
-                    )}
-                    {type === 'passada' && (
-                        <button className="prof-action-button prof-action-button--success" onClick={() => handleOpenDiario(turma)}>
-                            <Check size={17} /> Ver Diário Salvo / Chamada
-                        </button>
-                    )}
+                    <button className="prof-action-button" onClick={() => handleOpenStudentsModal(turma)}>
+                        <Users size={16} /> Alunos
+                    </button>
+                    <button
+                        className={`prof-action-button ${type === 'passada' ? 'prof-action-button--success' : 'prof-action-button--primary'}`}
+                        onClick={() => handleOpenDiario(turma, module.id)}
+                    >
+                        <CheckSquare size={17} /> {type === 'passada' ? 'Consultar / corrigir chamada' : 'Fazer chamada'}
+                    </button>
                 </div>
             </article>
         )
@@ -929,14 +959,20 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const renderTurmas = () => (
         <div className="animate-fade-in prof-classes-content" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
             
-            {/* Seção 1: Pendentes de Revisão */}
-            {pendentesRevisao.length > 0 && (
+            {turmasSemAgenda.length > 0 && (
                 <div>
                     <h3 className="prof-section-title prof-section-title--warning" style={{ fontSize: '1.2rem', fontWeight: '700', color: '#B45309', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <AlertTriangle size={20} /> Aulas Pendentes de Revisão ({pendentesRevisao.length})
+                        <AlertTriangle size={20} /> Turmas aguardando agenda da secretaria ({turmasSemAgenda.length})
                     </h3>
                     <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
-                        {pendentesRevisao.map(t => renderCardTurma(t, 'revisao'))}
+                        {turmasSemAgenda.map(turma => (
+                            <div key={turma.id} className="card" style={{ padding: '1.25rem', borderColor: '#fde68a', background: '#fffbeb' }}>
+                                <strong>{turma.name}</strong>
+                                <p style={{ margin: '.4rem 0 0', color: '#92400e', fontSize: '.82rem' }}>
+                                    {turma.course_name}: ainda não há módulo presencial agendado no curso.
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -948,7 +984,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
                 </h3>
                 {proximasAulas.length > 0 ? (
                     <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
-                        {proximasAulas.map(t => renderCardTurma(t, 'futura'))}
+                        {proximasAulas.map(session => renderCardTurma(session, 'futura'))}
                     </div>
                 ) : (
                     <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-secondary)' }}>
@@ -961,16 +997,16 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
             {/* Seção 3: Histórico de Aulas */}
             <div>
                 <h3 className="prof-section-title" style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <CheckSquare size={20} color="#10B981" /> Histórico de Aulas Concluídas ({historicoAulas.length})
+                    <CheckSquare size={20} color="#10B981" /> Aulas com data anterior ({historicoAulas.length})
                 </h3>
                 {historicoAulas.length > 0 ? (
                     <div className="prof-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
-                        {historicoAulas.map(t => renderCardTurma(t, 'passada'))}
+                        {historicoAulas.map(session => renderCardTurma(session, 'passada'))}
                     </div>
                 ) : (
                     <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-secondary)' }}>
                         <Info size={32} style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
-                        <p style={{ margin: 0, fontWeight: 500 }}>Nenhum diário foi fechado ou concluído por você anteriormente.</p>
+                        <p style={{ margin: 0, fontWeight: 500 }}>Nenhuma aula presencial anterior encontrada.</p>
                     </div>
                 )}
             </div>
@@ -981,7 +1017,12 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
     const renderDiario = () => {
         if (!selectedClass) return null
 
-        const isReadOnly = selectedClass.status === 'completed' && userRole !== 'admin' && userRole !== 'coordenador'
+        // Chamadas por módulo permanecem corrigíveis; o bloqueio histórico da
+        // turma vale apenas para o diário legado sem módulo presencial.
+        const isReadOnly = !selectedAttendanceModule
+            && selectedClass.status === 'completed'
+            && userRole !== 'admin'
+            && userRole !== 'coordenador'
 
         return (
             <div className="animate-fade-in prof-diary" style={{ paddingBottom: '3rem' }}>
@@ -1887,6 +1928,7 @@ export default function Professor({ initialTab = 'minhasTurmas' }) {
 }
 `}</style>
             {activeTab === 'minhasTurmas' && renderTurmas()}
+            {activeTab === 'aulasPresenciais' && renderTurmas()}
             {activeTab === 'diario' && renderDiario()}
             {activeTab === 'duvidasEad' && renderDoubtEad()}
             {activeTab === 'messages' && renderMessagesTab()}

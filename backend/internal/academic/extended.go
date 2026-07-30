@@ -146,10 +146,13 @@ func (h *Handler) ModuleAttendance(c *gin.Context) {
 		ConfirmedByStudent   bool       `json:"confirmed_by_student"`
 		StudentConfirmedAt   *time.Time `json:"student_confirmed_at,omitempty"`
 		ProfessorConfirmedAt *time.Time `json:"professor_confirmed_at,omitempty"`
+		JustificationType    *string    `json:"justification_type,omitempty"`
 		JustificationNote    *string    `json:"justification_note,omitempty"`
+		ContentTaught        *string    `json:"content_taught,omitempty"`
+		ClassNotes           *string    `json:"class_notes,omitempty"`
 	}
 	q := h.db.Table("students s").
-		Select("s.id student_id, s.full_name, ar.id record_id, ar.status, ar.confirmed_by_student, ar.student_confirmed_at, ar.professor_confirmed_at, ar.justification_note").
+		Select("s.id student_id, s.full_name, ar.id record_id, ar.status, ar.confirmed_by_student, ar.student_confirmed_at, ar.professor_confirmed_at, ar.justification_type, ar.justification_note, ar.content_taught, ar.class_notes").
 		Joins("LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.class_id = ? AND ar.module_id = ?", classID, moduleID).
 		Where("s.turma_id = ? AND s.status <> ?", classID, "cancelada").Order("s.full_name")
 	if middleware.Role(c) == "aluno" {
@@ -229,7 +232,10 @@ func (h *Handler) SetModuleAttendance(c *gin.Context) {
 	}
 	var body struct {
 		Status            string  `json:"status"`
+		JustificationType *string `json:"justification_type"`
 		JustificationNote *string `json:"justification_note"`
+		ContentTaught     *string `json:"content_taught"`
+		ClassNotes        *string `json:"class_notes"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
@@ -250,10 +256,31 @@ func (h *Handler) SetModuleAttendance(c *gin.Context) {
 	if module.InPersonDate != nil {
 		date = *module.InPersonDate
 	}
-	record := models.AttendanceRecord{ClassID: &classID, StudentID: &studentID, ModuleID: &moduleID, Date: &date, Status: body.Status, JustificationNote: body.JustificationNote, ProfessorConfirmedAt: &now, RecordedBy: func() *uuid.UUID { id := middleware.UserID(c); return &id }()}
+	record := models.AttendanceRecord{
+		ClassID:              &classID,
+		StudentID:            &studentID,
+		ModuleID:             &moduleID,
+		Date:                 &date,
+		Status:               body.Status,
+		JustificationType:    body.JustificationType,
+		JustificationNote:    body.JustificationNote,
+		ContentTaught:        body.ContentTaught,
+		ClassNotes:           body.ClassNotes,
+		ProfessorConfirmedAt: &now,
+		RecordedBy:           func() *uuid.UUID { id := middleware.UserID(c); return &id }(),
+	}
 	err = h.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "class_id"}, {Name: "student_id"}, {Name: "module_id"}, {Name: "date"}},
-		DoUpdates: clause.Assignments(map[string]any{"status": body.Status, "justification_note": body.JustificationNote, "professor_confirmed_at": now, "recorded_by": middleware.UserID(c), "updated_at": now}),
+		Columns: []clause.Column{{Name: "class_id"}, {Name: "student_id"}, {Name: "module_id"}, {Name: "date"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"status":                 body.Status,
+			"justification_type":     body.JustificationType,
+			"justification_note":     body.JustificationNote,
+			"content_taught":         body.ContentTaught,
+			"class_notes":            body.ClassNotes,
+			"professor_confirmed_at": now,
+			"recorded_by":            middleware.UserID(c),
+			"updated_at":             now,
+		}),
 	}).Create(&record).Error
 	if err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao salvar chamada")

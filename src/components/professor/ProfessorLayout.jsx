@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { GraduationCap, LogOut, Menu, MessageSquare, User, Video, X } from 'lucide-react'
+import { CalendarCheck, GraduationCap, LogOut, Menu, MessageSquare, User, Video, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import NotificationBell from '../NotificationBell'
@@ -7,6 +7,7 @@ import './professor-layout.css'
 
 const links = [
   { to: '/professor', label: 'Minhas turmas', hint: 'Notas & freq.', icon: GraduationCap, end: true },
+  { to: '/professor/aulas-presenciais', label: 'Aulas presenciais', hint: 'Agenda & chamada', icon: CalendarCheck },
   { to: '/professor/chat', label: 'Chat', hint: 'Alunos & secretaria', icon: MessageSquare },
   { to: '/professor/comentarios', label: 'Comentários dos vídeos', hint: 'EAD', icon: Video },
 ]
