@@ -392,6 +392,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		lmsAuth.GET("/forum-topics", lmsH.AllForumTopics)
 		lmsAuth.GET("/lessons/:id/forum", lmsH.LessonForum)
 		lmsAuth.GET("/lessons/:id/doubts", lmsH.ListLessonDoubts)
+		lmsAuth.GET("/my-doubts", lmsH.ListMyDoubts)
 		lmsAuth.POST("/doubts", lmsH.CreateDoubt)
 		lmsAuth.POST("/forum/topics", lmsH.CreateTopic)
 		lmsAuth.POST("/forum/replies", lmsH.CreateReply)

@@ -223,7 +223,7 @@ export default function StudentLayout() {
                             <MessageSquare size={18} /> Mensagens
                         </NavLink>
                         <NavLink to="/area-aluno/forum" style={navLinkStyle} onClick={() => setMobileMenuOpen(false)}>
-                            <HelpCircle size={18} /> Dúvidas / Fórum
+                            <HelpCircle size={18} /> Central de Dúvidas
                         </NavLink>
 
                         {/* ── Minha conta ── */}

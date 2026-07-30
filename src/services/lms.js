@@ -67,6 +67,7 @@ export const lmsApi = {
 
   // Dúvidas dos alunos (Central de Dúvidas)
   doubts: () => request('/lms/doubts'),
+  myDoubts: () => request('/lms/my-doubts'),
   lessonDoubts: (lessonId) => request(`/lms/lessons/${lessonId}/doubts`),
   createDoubt: (payload) => request('/lms/doubts', { method: 'POST', body: payload }),
   answerDoubt: (id, answer_text) => request(`/lms/doubts/${id}`, { method: 'PUT', body: { answer_text } }),

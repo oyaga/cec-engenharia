@@ -103,11 +103,10 @@ export default function AreaAluno() {
   // Estados do Fórum
   const [forumTopics, setForumTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
-  const [topicReplies, setTopicReplies] = useState([]);
-  const [newTopicTitle, setNewTopicTitle] = useState('');
-  const [newTopicContent, setNewTopicContent] = useState('');
-  const [newReplyContent, setNewReplyContent] = useState('');
   const [forumSearch, setForumSearch] = useState('');
+  const [forumStatus, setForumStatus] = useState('todos');
+  const [forumLoading, setForumLoading] = useState(false);
+  const [forumError, setForumError] = useState('');
 
   // Estados do Chat
   const [instructors, setInstructors] = useState([]);
@@ -398,19 +397,19 @@ export default function AreaAluno() {
     }
   }, [loading, docsBlockado, location.pathname]);
 
-  // Função para carregar fórum (com resiliência no localStorage)
-  const loadForum = async (activeTurmaId) => {
+  // Central de Dúvidas: comentários enviados pelo aluno durante as aulas.
+  const loadForum = async () => {
+    setForumLoading(true);
+    setForumError('');
     try {
-      const { topics } = await lmsApi.allForumTopics();
-      setForumTopics((topics || []).map(t => ({ ...t, student: { full_name: t.student_name } })));
+      const { doubts } = await lmsApi.myDoubts();
+      setForumTopics(doubts || []);
     } catch (err) {
-      console.warn("Fórum: Usando fallback resiliente do localStorage");
-      const localForum = localStorage.getItem('local_forum_topics');
-      if (localForum) {
-        setForumTopics(JSON.parse(localForum));
-      } else {
-        setForumTopics([]);
-      }
+      console.error('Erro ao carregar a Central de Dúvidas:', err);
+      setForumTopics([]);
+      setForumError('Não foi possível carregar suas dúvidas. Tente novamente em instantes.');
+    } finally {
+      setForumLoading(false);
     }
   };
 
@@ -599,92 +598,6 @@ export default function AreaAluno() {
     } catch {
       setContacts({ professores: [], secretaria: [], alunos: [] });
     }
-  };
-
-  // Enviar dúvida no Fórum
-  const handleAddTopic = async (e) => {
-    e.preventDefault();
-    if (!newTopicTitle.trim() || !newTopicContent.trim() || !session?.user?.id) return;
-
-    const topicPayload = {
-      title: newTopicTitle.trim(),
-      content: newTopicContent.trim(),
-      student_id: session.user.id,
-      created_at: new Date().toISOString()
-    };
-
-    try {
-      const { topic } = await lmsApi.createTopic(topicPayload);
-      setForumTopics(prev => [{ ...topic, student: { full_name: userName } }, ...prev]);
-    } catch (err) {
-      // Fallback localstorage
-      const newLocalTopic = {
-        id: 'f-' + Date.now(),
-        title: topicPayload.title,
-        content: topicPayload.content,
-        student: { full_name: userName },
-        created_at: topicPayload.created_at
-      };
-      const updated = [newLocalTopic, ...forumTopics];
-      setForumTopics(updated);
-      localStorage.setItem('local_forum_topics', JSON.stringify(updated));
-    }
-
-    setNewTopicTitle('');
-    setNewTopicContent('');
-    alert('Dúvida publicada no fórum com sucesso!');
-  };
-
-  // Carregar respostas de um tópico selecionado
-  const handleSelectTopic = async (topic) => {
-    setSelectedTopic(topic);
-    setTopicReplies([]);
-    try {
-      const { replies } = await lmsApi.topicReplies(topic.id);
-      setTopicReplies(replies || []);
-    } catch (err) {
-      // Fallback localstorage para respostas
-      const localReplies = localStorage.getItem(`replies_${topic.id}`);
-      if (localReplies) {
-        setTopicReplies(JSON.parse(localReplies));
-      } else {
-        const initialReplies = [
-          { id: 'r-1', content: 'O ideal é uma demão fina e uniforme a uma distância de 20-30cm.', author: { full_name: 'Prof. Carlos Santos', role: 'instrutor' }, created_at: new Date().toISOString() }
-        ];
-        setTopicReplies(initialReplies);
-        localStorage.setItem(`replies_${topic.id}`, JSON.stringify(initialReplies));
-      }
-    }
-  };
-
-  // Responder no Fórum
-  const handleAddReply = async (e) => {
-    e.preventDefault();
-    if (!newReplyContent.trim() || !selectedTopic || !session?.user?.id) return;
-
-    const replyPayload = {
-      topic_id: selectedTopic.id,
-      author_id: session.user.id,
-      content: newReplyContent.trim(),
-      created_at: new Date().toISOString()
-    };
-
-    try {
-      const { reply } = await lmsApi.createReply(replyPayload);
-      setTopicReplies(prev => [...prev, { ...reply, author: { full_name: userName, role: 'aluno' } }]);
-    } catch (err) {
-      const newLocalReply = {
-        id: 'r-' + Date.now(),
-        content: replyPayload.content,
-        author: { full_name: userName, role: 'aluno' },
-        created_at: replyPayload.created_at
-      };
-      const updated = [...topicReplies, newLocalReply];
-      setTopicReplies(updated);
-      localStorage.setItem(`replies_${selectedTopic.id}`, JSON.stringify(updated));
-    }
-
-    setNewReplyContent('');
   };
 
   // Selecionar instrutor para Chat e carregar mensagens
@@ -2018,154 +1931,169 @@ export default function AreaAluno() {
     );
   };
 
-  // ABA 5: FÓRUM DE DÚVIDAS
-  const renderForum = () => (
-    <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: selectedTopic ? '1fr 1fr' : '1.2fr 0.8fr', gap: '2rem', flexWrap: 'wrap' }}>
-      {/* TÓPICOS DO FÓRUM */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Fórum de Dúvidas</h3>
-          <input 
-            type="text" 
-            placeholder="Buscar dúvidas..."
-            value={forumSearch}
-            onChange={e => setForumSearch(e.target.value)}
-            style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
-          />
-        </div>
+  // ABA 5: CENTRAL DE DÚVIDAS
+  const renderForum = () => {
+    const query = forumSearch.trim().toLocaleLowerCase('pt-BR');
+    const filteredTopics = forumTopics.filter((topic) => {
+      const matchesStatus = forumStatus === 'todos'
+        || (forumStatus === 'respondidas' ? Boolean(topic.answer_text) : !topic.answer_text);
+      const searchable = [
+        topic.question_text,
+        topic.answer_text,
+        topic.course_title,
+        topic.module_title,
+        topic.lesson_title,
+      ].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+      return matchesStatus && searchable.includes(query);
+    });
+    const pendingCount = forumTopics.filter(topic => !topic.answer_text).length;
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', maxHeight: '65vh', overflowY: 'auto', paddingRight: '4px' }}>
-          {forumTopics
-            .filter(t => t.title.toLowerCase().includes(forumSearch.toLowerCase()) || t.content.toLowerCase().includes(forumSearch.toLowerCase()))
-            .map(t => (
-              <div 
-                key={t.id} 
-                className="card" 
-                onClick={() => handleSelectTopic(t)}
-                style={{ 
-                  padding: '1.25rem', 
-                  backgroundColor: selectedTopic?.id === t.id ? '#F0F9FF' : 'white', 
-                  borderColor: selectedTopic?.id === t.id ? '#0284c7' : '#cbd5e1',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <h4 style={{ fontSize: '0.98rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 6px 0' }}>{t.title}</h4>
-                <p style={{ fontSize: '0.82rem', color: '#475569', margin: '0 0 10px 0', lineHeight: 1.4 }}>
-                  {t.content.length > 100 ? `${t.content.slice(0, 100)}...` : t.content}
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94a3b8' }}>
-                  <span>Por: <strong>{t.student?.full_name}</strong></span>
-                  <span>{new Date(t.created_at).toLocaleDateString('pt-BR')}</span>
-                </div>
-              </div>
-            ))
-          }
-          {forumTopics.length === 0 && (
-            <div className="card" style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'white' }}>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Nenhuma dúvida registrada no fórum.</p>
+    return (
+      <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: selectedTopic ? 'minmax(0, 1fr) minmax(320px, 0.9fr)' : '1fr', gap: '1.5rem' }}>
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+          <div>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 4px' }}>Central de Dúvidas</h3>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0 }}>
+              Aqui ficam os comentários enviados durante suas aulas e as respostas dos professores.
+            </p>
+          </div>
+
+          <div className="card" style={{ padding: '1rem', backgroundColor: 'white', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {[
+                ['todos', `Todas (${forumTopics.length})`],
+                ['pendentes', `Aguardando (${pendingCount})`],
+                ['respondidas', `Respondidas (${forumTopics.length - pendingCount})`],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setForumStatus(value)}
+                  className={`btn ${forumStatus === value ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '0.45rem 0.75rem', fontSize: '0.76rem', margin: 0 }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ position: 'relative', flex: '1 1 240px' }}>
+              <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                type="search"
+                aria-label="Buscar nas dúvidas"
+                placeholder="Buscar por curso, aula, pergunta ou resposta..."
+                value={forumSearch}
+                onChange={event => setForumSearch(event.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem 0.55rem 2rem', borderRadius: '7px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+              />
+            </div>
+          </div>
+
+          {forumError && (
+            <div role="alert" className="card" style={{ padding: '1rem', background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', fontSize: '0.82rem' }}>
+              {forumError}
             </div>
           )}
-        </div>
-      </div>
 
-      {/* DETALHE DO TÓPICO / CRIAR TÓPICO */}
-      <div>
-        {selectedTopic ? (
-          <div className="card animate-fade-in" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', maxHeight: '72vh' }}>
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-              <div>
-                <h4 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--primary-dark)', margin: '0 0 4px 0' }}>{selectedTopic.title}</h4>
-                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Postado por {selectedTopic.student?.full_name} em {new Date(selectedTopic.created_at).toLocaleString('pt-BR')}</span>
-              </div>
-              <button 
-                onClick={() => setSelectedTopic(null)}
-                style={{ background: '#f1f5f9', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700', cursor: 'pointer' }}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', maxHeight: '64vh', overflowY: 'auto', paddingRight: '4px' }}>
+            {forumLoading && (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Carregando suas dúvidas...</div>
+            )}
+            {!forumLoading && filteredTopics.map(topic => (
+              <button
+                type="button"
+                key={topic.id}
+                className="card"
+                onClick={() => setSelectedTopic(topic)}
+                style={{
+                  padding: '1.15rem',
+                  backgroundColor: selectedTopic?.id === topic.id ? '#f0f9ff' : 'white',
+                  borderColor: selectedTopic?.id === topic.id ? '#0284c7' : '#cbd5e1',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  width: '100%',
+                }}
               >
-                Voltar
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.85rem', color: '#334155', margin: 0, lineHeight: 1.5, padding: '0.5rem 0' }}>{selectedTopic.content}</p>
-
-            {/* Respostas */}
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-              <h5 style={{ fontSize: '0.82rem', fontWeight: '800', color: '#475569', margin: '0 0 4px 0' }}>Respostas Pedagógicas</h5>
-              {topicReplies.map(r => (
-                <div key={r.id} style={{ 
-                  padding: '0.85rem', 
-                  backgroundColor: r.author?.role === 'instrutor' || r.author?.role === 'admin' ? '#ECFDF5' : '#f8fafc',
-                  border: '1px solid',
-                  borderColor: r.author?.role === 'instrutor' || r.author?.role === 'admin' ? '#A7F3D0' : '#e2e8f0',
-                  borderRadius: '10px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748b', marginBottom: '4px' }}>
-                    <span style={{ fontWeight: '750', color: r.author?.role === 'instrutor' ? '#065f46' : '#1e293b' }}>
-                      {r.author?.full_name} ({r.author?.role?.toUpperCase() || 'ALUNO'})
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'start' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
+                      {topic.course_title || 'Curso'} · {topic.module_title || 'Módulo'}
                     </span>
-                    <span>{new Date(r.created_at).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <h4 style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--primary-dark)', margin: '4px 0' }}>
+                      {topic.lesson_title || 'Aula'}
+                    </h4>
                   </div>
-                  <p style={{ fontSize: '0.82rem', color: '#334155', margin: 0, lineHeight: 1.4 }}>{r.content}</p>
+                  <span style={{
+                    flexShrink: 0,
+                    padding: '3px 8px',
+                    borderRadius: '999px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: topic.answer_text ? '#dcfce7' : '#fef3c7',
+                    color: topic.answer_text ? '#166534' : '#92400e',
+                  }}>
+                    {topic.answer_text ? 'Respondida' : 'Aguardando resposta'}
+                  </span>
                 </div>
-              ))}
-              {topicReplies.length === 0 && (
-                <p style={{ fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>Nenhuma resposta no momento.</p>
-              )}
+                <p style={{ fontSize: '0.82rem', color: '#475569', margin: '8px 0', lineHeight: 1.45 }}>
+                  {topic.question_text?.length > 160 ? `${topic.question_text.slice(0, 160)}…` : topic.question_text}
+                </p>
+                <time style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                  Enviada em {new Date(topic.created_at).toLocaleString('pt-BR')}
+                </time>
+              </button>
+            ))}
+            {!forumLoading && !forumError && filteredTopics.length === 0 && (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'white' }}>
+                <MessageSquare size={28} color="#94a3b8" style={{ marginBottom: '0.5rem' }} />
+                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
+                  {forumTopics.length === 0
+                    ? 'Você ainda não enviou dúvidas durante as aulas.'
+                    : 'Nenhuma dúvida corresponde aos filtros selecionados.'}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {selectedTopic && (
+          <aside className="card animate-fade-in" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem', alignSelf: 'start' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.85rem' }}>
+              <div>
+                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>{selectedTopic.course_title || 'Curso'}</span>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-dark)', margin: '4px 0' }}>{selectedTopic.lesson_title || 'Aula'}</h4>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{selectedTopic.module_title || 'Módulo'}</span>
+              </div>
+              <button type="button" onClick={() => setSelectedTopic(null)} className="btn btn-secondary" style={{ padding: '0.35rem 0.6rem', fontSize: '0.7rem', margin: 0 }}>Fechar</button>
             </div>
 
-            {/* Form de Resposta */}
-            <form onSubmit={handleAddReply} style={{ display: 'flex', gap: '0.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-              <input 
-                type="text" 
-                placeholder="Escreva sua resposta..."
-                value={newReplyContent}
-                onChange={e => setNewReplyContent(e.target.value)}
-                style={{ flex: 1, padding: '0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none' }}
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700' }}>Responder</button>
-            </form>
-          </div>
-        ) : (
-          <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <h4 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <MessageSquare size={18} color="var(--primary)" /> Nova Dúvida Pedagógica
-            </h4>
-            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Sua pergunta ficará disponível para que instrutores e outros alunos respondam.</p>
-            
-            <form onSubmit={handleAddTopic} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Título da Dúvida</label>
-                <input 
-                  type="text" 
-                  placeholder="Ex: Como calibrar o bloco V1 no Ultrassom?"
-                  value={newTopicTitle}
-                  onChange={e => setNewTopicTitle(e.target.value)}
-                  required
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none' }}
-                />
-              </div>
+            <div>
+              <small style={{ display: 'block', color: '#64748b', fontWeight: 800, marginBottom: '5px' }}>SUA PERGUNTA</small>
+              <p style={{ fontSize: '0.86rem', color: '#334155', lineHeight: 1.55, whiteSpace: 'pre-wrap', margin: 0 }}>{selectedTopic.question_text}</p>
+            </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>Explique sua Dúvida em Detalhes</label>
-                <textarea 
-                  rows="4" 
-                  placeholder="Descreva aqui sua pergunta com o máximo de informações possível..."
-                  value={newTopicContent}
-                  onChange={e => setNewTopicContent(e.target.value)}
-                  required
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }}
-                />
+            {selectedTopic.answer_text ? (
+              <div style={{ padding: '1rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '10px' }}>
+                <small style={{ display: 'block', color: '#047857', fontWeight: 800, marginBottom: '6px' }}>
+                  RESPOSTA {selectedTopic.answered_name ? `DE ${selectedTopic.answered_name.toLocaleUpperCase('pt-BR')}` : 'DO PROFESSOR'}
+                </small>
+                <p style={{ fontSize: '0.86rem', color: '#065f46', lineHeight: 1.55, whiteSpace: 'pre-wrap', margin: 0 }}>{selectedTopic.answer_text}</p>
+                {selectedTopic.answered_at && (
+                  <time style={{ display: 'block', fontSize: '0.68rem', color: '#059669', marginTop: '0.75rem' }}>
+                    Respondida em {new Date(selectedTopic.answered_at).toLocaleString('pt-BR')}
+                  </time>
+                )}
               </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', fontWeight: '750', fontSize: '0.85rem' }}>
-                Enviar para o Fórum
-              </button>
-            </form>
-          </div>
+            ) : (
+              <div style={{ padding: '1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', color: '#92400e', fontSize: '0.8rem' }}>
+                Sua dúvida foi enviada e está aguardando a resposta do professor.
+              </div>
+            )}
+          </aside>
         )}
       </div>
-    </div>
-  );
+    );
+  };
 
   // ABA 6: CHAT COM INSTRUTOR
   const renderMensagens = () => createPortal((
@@ -3049,7 +2977,7 @@ export default function AreaAluno() {
     { id: 'desempenho', label: 'Desempenho' },
     { id: 'mensagens', label: 'Mensagens' },
     { id: 'avisos', label: 'Avisos' },
-    { id: 'forum', label: 'Forum' },
+    { id: 'forum', label: 'Dúvidas' },
     { id: 'financeiro', label: 'Financeiro' },
     { id: 'documentos', label: 'Documentos' },
     { id: 'certificados', label: 'Certificados' },

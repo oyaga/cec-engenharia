@@ -1021,6 +1021,34 @@ func (h *Handler) DeleteQuestionBank(c *gin.Context) {
 
 // ───────────── Dúvidas dos alunos (lms_lesson_questions) ─────────────
 
+// ListMyDoubts: GET /lms/my-doubts — histórico de dúvidas do aluno autenticado.
+// A identidade vem exclusivamente do token; nunca de um parâmetro enviado pelo cliente.
+func (h *Handler) ListMyDoubts(c *gin.Context) {
+	type row struct {
+		models.LMSLessonQuestion
+		LessonTitle  string     `json:"lesson_title"`
+		ModuleTitle  string     `json:"module_title"`
+		CourseTitle  string     `json:"course_title"`
+		CourseID     *uuid.UUID `json:"course_id,omitempty"`
+		AnsweredName *string    `json:"answered_name,omitempty"`
+		AnsweredRole *string    `json:"answered_role,omitempty"`
+	}
+	rows := []row{}
+	if err := h.db.Table("lms_lesson_questions q").
+		Select("q.*, l.title as lesson_title, m.title as module_title, c.title as course_title, c.id as course_id, a.full_name as answered_name, a.role as answered_role").
+		Joins("LEFT JOIN lms_lessons l ON l.id = q.lesson_id").
+		Joins("LEFT JOIN lms_modules m ON m.id = l.module_id").
+		Joins("LEFT JOIN lms_courses c ON c.id = m.course_id").
+		Joins("LEFT JOIN users a ON a.id = q.answered_by").
+		Where("q.student_id = ?", middleware.UserID(c)).
+		Order("q.created_at DESC").
+		Scan(&rows).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar dúvidas")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"doubts": rows})
+}
+
 // ListDoubts: GET /lms/doubts — todas as dúvidas com nome do aluno e aula (admin).
 func (h *Handler) ListDoubts(c *gin.Context) {
 	type row struct {
@@ -1063,10 +1091,8 @@ func (h *Handler) CreateDoubt(c *gin.Context) {
 		return
 	}
 	d.ID = uuid.Nil
-	if d.StudentID == nil {
-		sid := middleware.UserID(c)
-		d.StudentID = &sid
-	}
+	sid := middleware.UserID(c)
+	d.StudentID = &sid
 	if err := h.db.Create(&d).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar dúvida")
 		return
