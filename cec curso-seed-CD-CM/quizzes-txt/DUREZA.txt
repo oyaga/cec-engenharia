@@ -1,0 +1,77 @@
+
+1 – Qual é a alternativa que não está correta?
+a) O ensaio de dureza permite conhecer a resistência ao desgaste do material. 
+b) O ensaio de dureza permite o conhecimento aproximado da resistência mecânica através do uso de tabelas de correlação. 
+c) O ensaio de dureza permite controlar a qualidade de tratamentos térmicos.
+d) O ensaio de dureza permite controlar a qualidade nos processos de conformação e em processos de ligação. 
+2 – Como é descrito o ensaio de dureza Brinell?
+a) Consiste em comprimir lentamente, por meio de uma carga F, uma esfera de aço, de diâmetro D, sobre uma superfície plana, durante certo intervalo de tempo t. 
+b) Consiste em comparações das impressões provocadas simultaneamente no material testado e em uma barra padrão de dureza conhecida por uma esfera de aço de 10 mm de diâmetro, pelo impacto de um martelo sobre um dispositivo de impacto ou haste do medidor. 
+c) Consiste na medição da profundidade de penetração de um penetrador, subtraídas a recuperação elástica devida à retirada de uma carga maior e a profundidade causada pela aplicação de uma carga menor.
+d) Consiste na resistência que o material oferece à penetração de uma pirâmide de diamante de base quadrada e ângulo entre faces de 136º, sob uma determinada carga.
+3 – Como é descrito o ensaio de dureza Poldi?
+a) Consiste em comparações das impressões provocadas simultaneamente no material testado em uma barra padrão de dureza conhecida por uma esfera de aço de 10 mm de diâmetro, pelo impacto de um martelo sobre um dispositivo de impacto ou haste do medidor. 
+b) Consiste na medição da profundidade de penetração de um penetrador, subtraídas a recuperação elástica devida à retirada de uma carga maior e a profundidade causada pela aplicação de uma carga menor.
+c) Consiste na resistência que o material oferece à penetração de uma pirâmide de diamante de base quadrada e ângulo entre faces de 136º, sob uma determinada carga.
+d) Consiste na resistência que um material oferece à penetração de uma pirâmide de diamante com 4 faces, tendo ângulos entre faces de 172º30' e 130º respectivamente, sob uma determinada carga.
+
+
+
+
+
+
+
+
+
+
+
+4 – Como é descrito o ensaio de dureza Rockwell?
+a) Consiste em comprimir lentamente, por meio de uma carga F, uma esfera de aço, de diâmetro D, sobre uma superfície plana, durante certo intervalo de tempo t. 
+b) Consiste em comparações das impressões provocadas simultaneamente no material testado e em uma barra padrão de dureza conhecida por uma esfera de aço de 10 mm de diâmetro, pelo impacto de um martelo sobre um dispositivo de impacto ou haste do medidor. 
+c) Consiste na medição da profundidade de penetração de um penetrador, subtraídas a recuperação elástica devida à retirada de uma carga maior e a profundidade causada pela aplicação de uma carga menor.
+d) Consiste na resistência que um material oferece à penetração de uma pirâmide de diamante com 4 faces, tendo ângulos entre faces de 172º30' e 130º respectivamente, sob uma determinada carga. 
+5 – Qual deve ser o valor da pré-carga para o ensaio Rockwell de dureza superficial?
+a) 10 kgf 
+b) 1 kgf
+c) 3 kgf
+d) 5 kgf 
+
+6 – Como é descrito o ensaio de dureza Vickers?
+a) Consiste em comprimir lentamente, por meio de uma carga F, uma esfera de aço, de diâmetro D, sobre uma superfície plana, durante certo intervalo de tempo t. 
+b) Consiste em comparações das impressões provocadas simultaneamente no material testado em uma barra padrão de dureza conhecida por uma esfera de aço de 10 mm de diâmetro, pelo impacto de um martelo sobre um dispositivo de impacto ou haste do medidor. 
+c) Consiste na medição da profundidade de penetração de um penetrador, subtraídas a recuperação elástica devida à retirada de uma carga maior e a profundidade causada pela aplicação de uma carga menor.
+d) Consiste na resistência que o material oferece à penetração de uma pirâmide de diamante de base quadrada e ângulo entre faces de 136º, sob uma determinada carga.
+
+7 – Como é descrito o ensaio de dureza Knoop?
+a) Consiste em comprimir lentamente, por meio de uma carga F, uma esfera de aço, de diâmetro D, sobre uma superfície plana, durante certo intervalo de tempo t. 499 
+b) Consiste na medição da profundidade de penetração de um penetrador, subtraídas a recuperação elástica devida à retirada de uma carga maior e a profundidade causada pela aplicação de uma carga menor.
+c) Consiste na resistência que o material oferece à penetração de uma pirâmide de diamante de base quadrada e ângulo entre faces de 136º, sob uma determinada carga.
+d) Consiste na resistência que um material oferece à penetração de uma pirâmide de diamante com 4 faces, tendo ângulos entre faces de 172º30' e 130º respectivamente, sob uma determinada carga.
+
+8 – Qual medida de dureza é baseada na profundidade de impressão? 
+a) Brinell 
+b) Rockwell 
+c) Vickers
+d) Knoop 
+
+9 – Qual dos ensaios de dureza, listados a seguir, requer a aplicação de uma pré-carga? 
+a) Brinnel 
+b) Vickers
+c) Knoop 
+d) Rockwell
+10 – Durante um ensaio de dureza, o inspetor confrontou a marca deixada em um corpo de dureza conhecida, gerada por uma esfera de 10 mm, com a impressão obtida na peça submetida ao ensaio. Qual foi método para ensaio utilizado pelo inspetor?
+a) ensaio de dureza Brinell 
+b) ensaio de dureza Vickers 
+c) ensaio de dureza Rockwell
+d) ensaio de dureza Poldi
+GABARITO
+1 - d
+2 - a
+3 - a
+4 - c
+5 - c
+6 - d
+7 - d
+8 - b
+9 - d
+10 - d

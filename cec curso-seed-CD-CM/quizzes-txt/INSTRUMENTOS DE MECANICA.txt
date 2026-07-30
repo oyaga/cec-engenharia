@@ -1,0 +1,63 @@
+
+1 – Qual a menor resolução de uma escala metálica?
+a) 0,5 mm 
+b) 0,1 mm 
+c) 1 mm
+d) 0,01 mm
+2 – Uma trena que possui a indicação 15 m,I , 20°C e 50 N. O que cada identificação significa?
+a) Comprimento nominal da trena, classe de exatidão, temperatura de calibração e força de tração para calibração e medição 
+b) Comprimento nominal da trena, classe de exatidão, temperatura de calibração e força de compressão para calibração 
+c) Comprimento de trabalho da trena, classe de exatidão, temperatura de medição e força de tração para medição
+d) Comprimento de trabalho da trena, classe de exatidão, temperatura de medição e força de compressão para medição
+3 – A espessura de uma chapa foi medida com um paquímetro com um nônio de 20 divisões. Qual alternativa que melhor representa esta medição?
+a) 2 mm 
+b) 2,01 mm 
+c) 2,10 mm
+d) 2,024 mm
+4 –Qual a distância máxima que os níveis ótico podem ser utilizados?
+a) 20m 
+b) 50m 
+c) 200m
+d) 70m
+5 –Qual a resolução de um goniômetro que possui um nônio com 10 divisões? 
+a) 3’
+b) 5’
+c) 6’
+d) 10’
+6 – Para que serve o esquadro?
+a) Medir um ângulo de 90° 
+b) Verificar um ângulo de 90° 
+c) Medir e verificar ângulos de 90°
+d) Verificar ângulos menores que 90°
+7 – Um micrômetro possui o passo da rosca de 0,5 mm, o tambor com 50 divisões e o nônio com 10 divisões. Qual a resolução deste micrômetro? 
+a) 0,01 mm 
+b) 0,005 mm
+c) 0,002 mm
+d) 0,001 mm
+8 – Qual é a menor resolução de um relógio apalpador? 
+a) 0,0005 mm 
+b) 0,01 mm 
+c) 0,005 mm
+d) 0,001 mm
+
+9 – Para que serve o calibrador de rosca?
+a) Identificar e verificar o tipo de rosca através da verificação do passo, do ângulo do filete e do diâmetro de flanco 
+b) Identificar e verificar o tipo de rosca através da verificação do passo e do ângulo do filete 
+c) Identificar o tipo de rosca, mas não define qual o valor do passo e do ângulo do filete
+d) Definir o valor do passo e do ângulo do filete, mas não identifica o tipo de rosca
+10 – Qual a classe é considerada padrão de referência, segundo norma DIN 861? 
+a) 0 
+b) 2 
+c) 1
+d) k
+GABARITO
+1 - a 
+2 - a
+3 - c
+4 - d
+5 - c
+6 - b
+7 - d
+8 - d
+9 - b
+10 - d

@@ -1,0 +1,62 @@
+
+1 - Como também e conhecida a rugosidade?
+a) Erro de posição 
+b) Erro macrogeométrico 
+c) Erro microgeométrico
+d) Erro de forma
+2 - Qual é a melhor definição para superfície real?
+a) É a superfície ideal especificada no projeto. 
+b) É a superfície existente após o processo de fabricação, apresenta imperfeições, irregularidades e desvios inerentes ao método de produção.
+c) É a superfície apresentada e analisada pelo aparelho de medição.
+d) É a superfície de referência.
+3 - Como é chamado um perfil apresentado por um rugosímetro sem qualquer filtragem?
+a) Perfil geométrico 
+b) Perfil real 
+c) Perfil efetivo
+d) Perfil de rugosidade
+4 - Como é conhecido o termo “cut-off”?
+a) Percurso inicial 
+b) Percurso de medição 
+c) Percurso final
+d) Comprimento de amostragem
+5 - Qual é a alternativa que não possui um parâmetro de rugosidade?
+a) Ra 
+b) Rt 
+c) Rx
+d) Ry
+6 - Qual processo de fabricação não é adequado utilizar o parâmetro Ra para avaliar a rugosidade?
+a) Peças torneadas 
+b) Peças fresadas 
+c) Peças sinterizadas
+d) Peças aplainadas
+7 - Qual o parâmetro de rugosidade que substituiu o parâmetro Rmáx?
+a) Ra 
+b) Rt 
+c) Rz
+d) Ry
+8 - Qual é o parâmetro de rugosidade que informa sobre a máxima deteriorização da superfície vertical da peça?
+a) Rugosidade média – Rz 
+b) Rugosidade máxima – Ry 
+c) Rugosidade média – Ra
+d) Rugosidade média do terceiro pico e vale – R3Z
+9 - Como deve ser o movimento de apalpamento do rugosímetro para um correto procedimento de medição da rugosidade?
+a) Transversal a direção de corte 
+c) Em toda região de corte independente da direção
+b) Paralelo a direção de corte 
+d) Perpendicular a direção de corte
+10 - Existem quantas classes de rugosidade Ra, segundo a norma NBR 8404/1984?
+a) 5
+b) 8
+c) 12
+d) 20
+GABARITO
+1 - c
+2 - b
+3 - c
+4 - d
+5 - c
+6 - c
+7 - d
+8 - b
+9 - d
+10 - c

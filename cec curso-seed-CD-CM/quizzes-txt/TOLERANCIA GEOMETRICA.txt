@@ -1,0 +1,64 @@
+
+1 - Como são classificadas as tolerâncias geométricas?
+a) Forma, orientação e localização 
+b) Forma e posição
+c) Forma, posição e orientação
+d) Forma, orientação, posição e batimento
+2 - Qual é a alternativa que apresenta somente tolerâncias geométrica de forma?
+a) Retitude, planeza, paralelismo e simetria 
+b) Retitude, perfil de linha qualquer e cilindricidade 
+c) Planeza, concentricidade e paralelismo
+d) Circularidade, perpendicularidade e concentricidade
+3 - Como pode ser classificada a tolerância geométrica de batimento?
+a) Circular e axial 
+b) Circular e total 
+c) Radial e axial
+d) Radial e total
+4 - Como é chamada a superfície que limita o corpo da peça?
+a) Superfície geométrica 
+b) Superfície real 
+c) Superfície efetiva
+d) Superfície de referência.
+5 - A indicação da tolerância geométrica de forma em desenhos técnicos é feita utilizando-se um retângulo dividido em duas partes. O que representa a segunda parte do retângulo?
+a) O elemento de referência onde se aplica a tolerância geométrica 
+b) O valor da tolerância geométrica 
+c) O instrumento necessário para verificar a tolerância geométrica
+d) O símbolo da tolerância geométrica 
+6 - Segundo a norma NBR 6409, “quando um campo de tolerância é limitado por duas linhas paralelas afastadas de uma distância “t”, a superfície deve estar contida entre duas linhas retas paralela”. Esta definição é refente a qual tolerância geométrica?
+a) Retitude 
+b) Planeza 
+c) Circularidade
+d) Cilindricidade
+7 - Os erros de conicidade, concavidade e convexidade estão associados com qual tolerância geométrica?
+a) Circularidade 
+b) Coaxialidade
+c) Cilindricidade 
+d) Concentricidade
+8 - Quando se pode afirmar que dois elementos são concêntricos?
+a) Quando seus centros ocupam a mesma posição no plano. 
+b) Quando existe simetria entre os dois centros. 
+c) Quando seus centros ocupam a mesma posição em relação a uma referência de nível
+d) Quando os seus centros estão paralelos entre si.
+9 - Segundo a norma NBR 6409, “quando o campo de tolerância é limitado por dois planos paralelos, afastados de uma distância “t” e perpendicular à linha de referência”. Esta definição é refente a qual tolerância geométrica?
+a) Tolerância de batimento circular axial 
+b) Tolerância de batimento circular radial
+c) Tolerância de batimento total radial
+d) Tolerância de batimento total axial 
+10 - O erro de circularidade de um eixo de diâmetro 20 mm e comprimento de 100 mm é medido com um relógio comparador sobre o eixo que está preso em um suporte entre pontas. O relógio comparador mostra uma variação de ±0,02 mm após uma volta completa do eixo. Qual é o valor do erro de circularidade do eixo?
+a) 0,005 mm 
+b) 0,01 mm 
+c) 0,02 mm
+d) 0,04 mm
+
+
+GABARITO
+1 - d
+2 - b
+3 - b
+4 - b
+5 - b
+6 - a
+7 - c
+8 - a
+9 - d
+10 - d

@@ -1,0 +1,71 @@
+
+1 - Que dispositivo é destinado a estabelecer, controlar e interromper o fluxo em uma tubulação?
+a) Válvula
+b) Bomba hidráulica
+c) Tê de redução
+d) Curva excêntrica
+2 - Qual é a válvula que se destina primordialmente a apenas estabelecer ou interromper o fluxo em uma tubulação?
+a) Válvula de agulha
+b) Válvula de retenção
+c) Válvula de gaveta
+d) Válvula de globo
+
+3 - Qual é a válvula considerada basicamente de regulagem, mas também podem trabalhar como válvulas de bloqueio?
+a) Válvula de segurança
+b) Válvula de borboleta 
+c) Válvula de macho
+d) Válvula de pé
+
+4 - Qual é a válvula que permitem a passagem do fluido em um sentido apenas?
+a) Válvula de retenção
+b) Válvula de alívio 
+c) Válvula de reguladores de pressão
+d) Válvula de esfera
+
+5 - Quais são as válvulas que controlam a pressão de entrada?
+a) Válvulas de alívio e segurança
+b) Válvulas globo e esfera
+c) Válvulas de retenção e comporta
+d) Válvulas de redutoras e reguladoras de pressão
+
+6 - Quais são as válvulas que controlam a pressão de saída?
+a) Válvulas de alívio e segurança
+b) Válvulas globo e esfera
+c) Válvulas de retenção e comporta
+d) Válvulas de redutoras e reguladoras de pressão
+
+
+7 – Em uma tubulação que passa um líquido corrosivo a temperaturas moderadas e com presença de sólidos, existe a necessidade de fechamento rápido, frequentes e estanques. Qual a válvula mais adequada para essa aplicação?
+a) Válvula globo
+b) Válvula esfera
+c) Válvula agulha
+d) Válvula gaveta
+
+8 - Quais válvulas são consideradas válvulas de bloqueio?
+a) Válvula de diafragma, válvula de globo e válvula de gaveta
+b) Válvula de esfera, válvula de comporta e válvula de globo
+c) Válvula de borboleta, válvula de globo e válvula de gaveta
+d) Válvula de gaveta, válvula de macho e válvula de agulha
+
+9 - Qual é a alternativa verdadeira sobre válvulas?
+a) Válvulas de redução de pressão somente são utilizadas em linha de vapor
+b) Válvulas de globo não devem ser empregadas quando se deseja um fechamento rápido da válvula
+c) Válvulas de esfera e borboleta são empregadas para controlara vazão do fluxo
+d) Válvulas de gaveta são empregadas para regular o fluxo porque ocasionam pouca perda de carga na linha
+
+10 - Qual é a válvula onde a sua principal característica é abrir automaticamente para descarregar o excesso de fluido (líquido ou gás) sempre que a pressão interna de um sistema ultrapassar um limite pré-determinado?
+a) Válvula de alívio 
+b) Válvula de retenção de fechamento
+c) Válvula de pé
+d) Válvula de controle
+GABARITO
+1 - a
+2 - c
+3 - b
+4 - a
+5 - a
+6 - d
+7 - b
+8 - d
+9 - b
+10 - a

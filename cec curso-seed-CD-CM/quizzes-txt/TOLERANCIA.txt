@@ -1,0 +1,62 @@
+
+1 - O que significa a qualidade IT (tolerância ISO)?
+a) A dimensão máxima do eixo e mínima do furo 
+b) O valor da tolerância dimensional para cada grupo de dimensões 
+c) A posição da tolerância em relação a linha zero
+d) O campo de tolerância
+2 - Qual é o ajuste para a designação 18H6 g5?
+a) Eixo base com interferência 
+b) Eixo base com folga
+c) Furo base com interferência
+d) Furo base com folga
+3 - Qual é a unidade que o sistema de tolerância ISO adota?
+a) Milímetro 
+b) Milésimo de polegada
+c) Polegada
+d) Micrometro
+4 - No sistema de ajuste furo base, qual é a medida nominal do furo?
+a) Igual a medida mínima do eixo 
+b) Igual a medida nominal do eixo 
+c) Igual a medida mínima do furo
+d) Igual a medida máxima do furo
+5 - O que a letra minúscula representa em um sistema de tolerância e ajuste?
+a) O campo de tolerância do eixo 
+b) O IT do furo 
+c) O campo de tolerância do furo
+d) O IT do eixo 
+6 - Quais são os símbolos normalizados pela ABNT para dimensão nominal do furo e do eixo, respectivamente?
+a) De, de 
+b) de, De 
+c) d, D
+d) D, d
+7 - Quais os tipos de ajuste existentes no sistema de tolerância dimensional?
+a) ajuste com folga, ajuste incerto, ajuste com interferência e ajuste preciso 
+b) ajuste grosseiro, ajuste preciso, ajuste médio e ajuste extrapreciso 
+c) ajuste com folga, ajuste médio e ajuste com interferência
+d) ajuste com folga, ajuste incerto e ajuste com interferência
+8 - Qual a alternativa que possui a qualidade de trabalho mais precisa para a tolerância-padrão de uso geral?
+a) IT1 
+b) IT0 
+c) IT01
+d) IT18
+9 - O campo de tolerância do furo é designado por qual letra no sistema furo base?
+a) A 
+b) g
+c) H
+d) h
+10 - Quantas qualidades de trabalho o sistema de tolerância ISO estabelece?
+a) 12 
+b) 20 
+c) 16
+d) 18 
+GABARITO
+1 - b
+2 - d
+3 - d
+4 - c
+5 - a
+6 - d
+7 - d
+8 - a
+9 - c
+10 - b

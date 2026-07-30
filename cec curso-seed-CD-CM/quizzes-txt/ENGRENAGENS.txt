@@ -1,0 +1,63 @@
+
+1 – Quais são os tipos de dentes das engrenagens cilíndricas?
+a) Retos ou cônicos 
+b) Retos, helicoidais ou parafuso sem-fim 
+c) Retos ou helicoidais
+d) Helicoidais ou cônicos
+2 – Qual a definição correta para o passo da engrenagem? 
+a) É a medida do arco que compreende um dente e um vão consecutivo, sobre a circunferência primitiva. 
+b) É a distância axial entre o diâmetro primitivo e o diâmetro externo. 
+c) É a medida do arco que compreende um dente e um vão consecutivo, sobre a circunferência externa.
+d) É a distância axial entre o diâmetro interno e o diâmetro externo.
+3 – Qual a definição correta para a espessura do dente da engrenagem? 
+a) É a medida do arco que compreende um dente e um vão consecutivo, sobre a circunferência primitiva. 
+b) É a distância axial entre o diâmetro primitivo e o diâmetro externo. 
+c) É a medida do arco de um dente, sobre a circunferência externa.
+d) É a distância axial entre o diâmetro interno e o diâmetro primitivo.
+4 – Qual é a definição para a distância radial entre a circunferência externa e circunferência interna define em uma engrenagem? 
+a) Ângulo de pressão
+b) Altura do dente 
+c) Cabeça do dente
+d) Pé do dente
+5 – Qual a característica de uma engrenagem cilíndrica de dentes retos no sistema americano ou Diametral Pitch? 
+a) Módulo 
+b) Passo 
+c) Passo circular
+d) Módulo frontal
+6 – Quais são os ângulos de pressão mais comuns de serem usados na construção de engrenagens cilíndricas de dentes retos? 
+a) 15° e 30° 
+b) 14°30’ e 20° 
+c) 15° e 20°
+d) 14°30’, 15° e 20°
+7 – Uma engrenagem possui módulo 16. Qual deve ser unidade dessa medida?
+a) O metro 
+b) O milímetro 
+c) A polegada
+d) A jarda
+8 – Uma engrenagem possui o Diametral Pitch 2.Qual deve ser unidade dessa medida?
+a) O metro 
+b) O milímetro 
+c) A polegada
+d) A jarda
+9 – Qual é a melhor definição para a medida de Wk? 
+a) Distância entre dois planos paralelos a dois flancos externos de um determinado número de dentes. 
+b) Medida da espessura do dente.
+c) Medição sobre dois roletes.
+d) Distância em arco sobre dois dentes consecutivos.
+10 – Qual instrumento é mais adequado para a medição do Wk de uma engrenagem?
+a) Micrômetro com batentes em forma de discos 
+b) Paquímetro duplo 
+c) Micrômetro externo e dois roletes
+d) Paquímetro 
+
+GABARITO
+1 - c
+2 - a
+3 - c
+4 - b
+5 - c
+6 - d
+7 - b
+8 - c
+9 - a
+10 - a

@@ -1,0 +1,63 @@
+
+1 - Qual o termo técnico para as figuras resultantes da projeção cilíndrica ortogonal de um objeto? 
+a) Seções 
+b) Planos 
+c) Vistas Ortogonais
+d) Detalhes
+2 - Qual deve ser o tamanho do desenho técnico em escala natural?
+a) Maior que o tamanho real da peça 
+b) Menor que o tamanho real da peça 
+c) Igual ao tamanho real da peça
+d) Igual ou menor que o tamanho da peça
+3 - Qual a melhor definição para corte total de um desenho técnico?
+a) É aquele que atinge apenas as partes maciças da peça 
+b) É aquele que divide a peça horizontalmente 
+c) É aquele que atinge a peça em toda sua extensão
+d) É aquele que mostra todos os elementos internos da peça
+4 - Quando o observador imagina o corte vendo a peça de frente, Qual é a vista representada em corte?
+a) vista de frontal (elevação)
+b) vista superior (planta)
+c) vista lateral esquerda (perfil)
+d) vista lateral direita (perfil)
+5 - Quando o corte de um objeto é representado na vista lateral esquerda, em qual vista deve ser feita a indicação do plano de corte?
+a) Vista inferior 
+b) Vista frontal 
+c) Vista lateral esquerda
+d) Vista lateral direita
+6 - Quando deve ser aplicado o corte parcial em um objeto?
+a) Quando se quer mostrar o corte em toda sua extensão da peça
+b) Quando se quer mostrar apenas a metade da peça 
+c) Quando os elementos internos concentram-se em partes determinada da peça
+d) Quando se quer mostrar apenas a vista ortogonal da peça
+7 - Qual a alternativa correta sobre a formação dos eixos isométricos?
+a) Consistem em três linhas que formam entre si ângulos de 90º. 
+b) Consistem em três linhas que formam entre si ângulos de 120º. 
+c) Consistem em duas linhas que formam entre si ângulos de 120º.
+d) Consistem em duas linhas que formam entre si ângulos de 90º.
+8 - Qual a perspectiva que não sofre alterações em suas dimensões?
+a) Perspectiva cavalheira 
+b) Perspectiva bimétrica 
+c) Perspectiva isométrica
+d) Perspectiva cônica
+9 - A cota da distância entre duas faces de um eixo em um desenho técnico é de 200 mm, em uma escala de 1:10. Qual deve ser medida real da distância entre as faces desse eixo?
+a) 2.000 mm 
+b) 200 mm 
+c) 20 mm
+d) 20.000 mm
+10 - Segundo a NBR 12298, uma hachura composta de linhas retas inclinadas a 45° e com espaçamento uniforme é usada para identificar o seguinte tipo de material?
+a) Madeira 
+b) Vidro
+c) Borracha 
+d) Metal 
+
+GABARITO
+1 - c
+2 - c
+3 - c
+4 - a
+5 - b
+6 - c
+7 - b
+8 - c
+9 - b
+10 - d

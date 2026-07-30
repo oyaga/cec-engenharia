@@ -1,0 +1,62 @@
+
+1 – Quais são os grupos que as bombas hidráulicas podem ser classificadas?
+a) Volumétricos ou turbocompressores 
+b) Dinâmicas ou volumétricas 
+c) Alternativas ou rotativas
+d) Centrífugas ou alternativas
+2 – O que significa cavitação em uma bomba hidráulica? 
+a) Fenômeno que decorre da ebulição da água no interior dos condutos, quando as condições de pressão caem a valores inferiores a pressão de vaporização 
+b) Fenômeno que decorre da ebulição da água no interior dos condutos, quando as condições de pressão sobem a valores superiores a pressão de vaporização 
+c) Fenômeno que decorre da condensação da água no interior dos condutos 
+d) Fenômeno que ocorre devido ao regime laminar do líquido no interior da bomba
+3 – Para que serve o compressor? 
+a) Aumentar a pressão de um líquido 
+b) Aumentar a pressão de um gás
+c) Aumentar ou reduzir a pressão de um líquido
+d) Aumentar ou reduzir a pressão de um gás
+4 – A turbina é um equipamento utilizado para transformar que tipos de energias?
+a) Energia elétrica em energia mecânica 
+b) Energia mecânica em energia cinética 
+c) Energia térmica em energia mecânica
+d) Energia mecânica em energia hidráulica
+5 – Qual é o equipamento mecânico que permite reduzir a velocidade e aumentar o torque de um eixo? 
+a) Bomba hidráulica 
+b) Redutor de velocidade 
+c) Compressor
+d) Turbina
+6 – Qual é a tolerância máxima de nivelamento da base metálica?
+a) 0,2 mm/m 
+b) 2 mm/m 
+c) 20 mm/m
+d) 20 mm/m
+7 – Qual deve ser o espaçamento máximo entre calços em um nivelamento de bases?
+a) 100 mm 
+b) 250 mm 
+c) 450 mm
+d) 800 mm
+8 – Como deve ser feito o nivelamento da base de máquinas?
+a) Na posição longitudinal 
+c) Na posição transversal
+b) Na posição longitudinal ou transversal 
+d) Na posição longitudinal e transversal
+9 – Qual o instrumento utilizado para medir o nivelamento das bases? 
+a) Nível quadrado 
+b) Trena 
+c) Relógio comparador
+d) Nível de bolha
+10 – Qual a finalidade do uso dos “shims”? 
+a) Serve para calibração de instrumentos 
+b) Serve como referência de nível 
+c) Serve como calços para ajustes de precisão 
+d) Serve para localizar uma placa base de fundações 
+GABARITO
+1 - b
+2 - a
+3 - b
+4 - c
+5 - b
+6 - b
+7 - c
+8 - d
+9 - a
+10 - c
