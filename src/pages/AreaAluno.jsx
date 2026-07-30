@@ -2,7 +2,7 @@
 import { createPortal } from 'react-dom';
 import { studentsApi, classesApi, coursesApi, attendanceApi } from '../services/academic';
 import { lmsApi } from '../services/lms';
-import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi, upcomingClassesApi } from '../services/misc';
+import { ordersApi, messagesApi, generalAnnouncementsApi, siteContentApi } from '../services/misc';
 import { connectSocket, onSocketMessage, onSocketStatus, isSocketConnected } from '../lib/socket';
 import ChatPanel from '../components/ChatPanel';
 import { financialApi, evaluationsApi } from '../services/financial';
@@ -250,23 +250,21 @@ export default function AreaAluno() {
         }
       }
 
-      // 4. Próxima aula prática presencial
-      if (activeTurmaId) {
-        const { classes: uc } = await upcomingClassesApi.list(activeTurmaId);
-        const upcoming = uc && uc[0];
-        if (upcoming) {
-          setUpcomingPractical(upcoming);
-          if (activeStudentId) {
-            const { attendance } = await attendanceApi.list({ student_id: activeStudentId, class_id: activeTurmaId });
-            setHasConfirmedAttendance(!!(attendance && attendance.some(a => a.status === 'presente')));
-          }
-        }
-      }
+      // A agenda presencial é formada pelos módulos dos cursos matriculados.
+      // Limpa o card legado de upcoming_classes, que não possui vínculo confiável
+      // com a matrícula e usa um contrato de data diferente.
+      setUpcomingPractical(null);
+      setHasConfirmedAttendance(false);
 
-      // 5. Histórico de presença
+      // 4. Histórico de presença
       if (activeStudentId) {
-        const { attendance: attData } = await attendanceApi.list({ student_id: activeStudentId });
+        const { attendance: attData } = await attendanceApi.list({
+          student_id: activeStudentId,
+          ...(activeTurmaId ? { class_id: activeTurmaId } : {}),
+        });
         setAttendanceHistory(attData || []);
+      } else {
+        setAttendanceHistory([]);
       }
 
       // 6. Notas de provas + avaliações técnicas
@@ -934,20 +932,30 @@ export default function AreaAluno() {
   // ═══════════════════════════════════════════
   // CÁLCULO DE FREQUÊNCIA PRESENCIAL (Fórmulas do Resumo)
   // ═══════════════════════════════════════════
-  const getFrequenciaPresencial = () => {
-    if (!turmaId) return { freq: 100, presencas: 0, totalDadas: 0, progresso: 0 };
-    
-    // Total de aulas ocorridas = datas distintas na tabela attendance_records para a turma
-    // Buscamos datas distintas de presença lançadas
-    const datasUnicas = Array.from(new Set(attendanceHistory.map(a => a.created_at?.split('T')[0])));
-    const totalDadas = datasUnicas.length;
-    
-    // Contagem de presenças e faltas justificadas (status 'presente' ou 'falta_justificada')
-    const presencas = attendanceHistory.filter(a => 
-      a.class_id === turmaId && (a.status === 'presente' || a.status === 'falta_justificada')
-    ).length;
+  const isAttendanceFinalized = attendance => Boolean(
+    attendance?.professor_confirmed_at
+    || (!attendance?.module_id && !attendance?.confirmed_by_student)
+  );
 
-    const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : 100;
+  const getFrequenciaPresencial = () => {
+    if (!turmaId) return { freq: null, presencas: 0, totalDadas: 0, progresso: 0 };
+
+    // A confirmação feita pelo aluno é apenas uma intenção de participação.
+    // Frequência só entra no cálculo depois da chamada definitiva do professor.
+    const chamadasFinalizadas = attendanceHistory.filter(a =>
+      a.class_id === turmaId && isAttendanceFinalized(a)
+    );
+    const chaveDaAula = a => a.module_id || a.date?.split('T')[0] || a.id;
+    const aulasFinalizadas = new Set(chamadasFinalizadas.map(chaveDaAula).filter(Boolean));
+    const aulasPresentes = new Set(
+      chamadasFinalizadas
+        .filter(a => a.status === 'presente' || a.status === 'justificado' || a.status === 'falta_justificada')
+        .map(chaveDaAula)
+        .filter(Boolean)
+    );
+    const totalDadas = aulasFinalizadas.size;
+    const presencas = aulasPresentes.size;
+    const freq = totalDadas > 0 ? Math.round((presencas / totalDadas) * 100) : null;
     const progresso = Math.round((presencas / 10) * 100); // Divisor padrão 10
 
     return { freq, presencas, totalDadas, progresso };
@@ -1456,31 +1464,35 @@ export default function AreaAluno() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
                 <h4 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>Frequência Prática Registrada</h4>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>Cálculo baseado em {totalDadasReal} aulas ministradas na turma (mínimo exigido: 75%).</p>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {totalDadasReal > 0
+                    ? `Cálculo baseado em ${totalDadasReal} ${totalDadasReal === 1 ? 'aula com chamada finalizada' : 'aulas com chamada finalizada'} (mínimo exigido: 75%).`
+                    : 'A frequência será calculada após o professor finalizar a primeira chamada.'}
+                </p>
               </div>
 
               <div style={{ textAlign: 'right' }}>
                 <span style={{ 
                   fontSize: '2rem', 
                   fontWeight: 900, 
-                  color: freqReal >= 75 ? '#10b981' : '#ef4444',
+                  color: freqReal == null ? '#64748b' : freqReal >= 75 ? '#10b981' : '#ef4444',
                   display: 'block',
                   lineHeight: 1
                 }}>
-                  {freqReal}%
+                  {freqReal == null ? '—' : `${freqReal}%`}
                 </span>
-                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: freqReal >= 75 ? '#047857' : '#b91c1c' }}>
-                  {freqReal >= 75 ? 'Aprovado por Frequência' : 'Frequência Insuficiente'}
+                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: freqReal == null ? '#64748b' : freqReal >= 75 ? '#047857' : '#b91c1c' }}>
+                  {freqReal == null ? 'Aguardando primeira chamada' : freqReal >= 75 ? 'Aprovado por Frequência' : 'Frequência Insuficiente'}
                 </span>
               </div>
             </div>
 
             {/* Barra de Progresso de Frequência */}
             <div style={{ height: '12px', backgroundColor: '#e2e8f0', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
-              <div style={{ width: `${freqReal}%`, height: '100%', backgroundColor: freqReal >= 75 ? '#10b981' : '#ef4444', transition: 'width 0.4s' }}></div>
+              <div style={{ width: `${freqReal || 0}%`, height: '100%', backgroundColor: freqReal >= 75 ? '#10b981' : '#ef4444', transition: 'width 0.4s' }}></div>
             </div>
 
-            {freqReal < 75 && (
+            {freqReal != null && freqReal < 75 && (
               <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', display: 'flex', gap: '0.5rem', color: '#991B1B', fontSize: '0.82rem', lineHeight: '1.4' }}>
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
                 <span>
@@ -1505,15 +1517,17 @@ export default function AreaAluno() {
               <tbody>
                 {attendanceHistory.map(a => (
                   <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>
+                      {a.date ? new Date(`${a.date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
+                    </td>
                     <td style={{ padding: '0.85rem 1rem' }}>{a.classes?.name || 'Treinamento Prático'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>
                       <span style={{ 
                         padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '800',
-                        backgroundColor: a.status === 'presente' ? '#dcfce7' : (a.status === 'falta_justificada' ? '#fee2e2' : '#f1f5f9'),
-                        color: a.status === 'presente' ? '#15803d' : (a.status === 'falta_justificada' ? '#991b1b' : '#475569')
+                        backgroundColor: !isAttendanceFinalized(a) ? '#fef3c7' : a.status === 'presente' ? '#dcfce7' : ((a.status === 'justificado' || a.status === 'falta_justificada') ? '#dbeafe' : '#fee2e2'),
+                        color: !isAttendanceFinalized(a) ? '#92400e' : a.status === 'presente' ? '#15803d' : ((a.status === 'justificado' || a.status === 'falta_justificada') ? '#1d4ed8' : '#991b1b')
                       }}>
-                        {a.status === 'presente' ? 'Presente' : (a.status === 'falta_justificada' ? 'Falta Justificada' : 'Falta')}
+                        {!isAttendanceFinalized(a) ? 'Aguardando chamada' : a.status === 'presente' ? 'Presente' : ((a.status === 'justificado' || a.status === 'falta_justificada') ? 'Falta Justificada' : 'Falta')}
                       </span>
                     </td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
