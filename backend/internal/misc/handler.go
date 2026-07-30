@@ -206,8 +206,67 @@ func (h *Handler) chatClassUserIDs(classID uuid.UUID) []uuid.UUID {
 
 func (h *Handler) ListAnnouncements(c *gin.Context) {
 	list := []models.Announcement{}
-	h.db.Where("expires_at IS NULL OR expires_at > NOW()").Order("is_pinned DESC, created_at DESC").Find(&list)
-	c.JSON(http.StatusOK, gin.H{"announcements": list})
+	if err := h.db.Where("expires_at IS NULL OR expires_at > NOW()").Order("is_pinned DESC, created_at DESC").Find(&list).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar comunicados")
+		return
+	}
+
+	role := middleware.Role(c)
+	if role != "admin" && role != "coordenador" {
+		filtered := make([]models.Announcement, 0, len(list))
+		for _, announcement := range list {
+			var roles []string
+			if err := json.Unmarshal(announcement.TargetRoles, &roles); err != nil {
+				continue
+			}
+			for _, targetRole := range roles {
+				if targetRole == role {
+					filtered = append(filtered, announcement)
+					break
+				}
+			}
+		}
+		list = filtered
+	}
+
+	type authorSummary struct {
+		ID       uuid.UUID `json:"id"`
+		FullName string    `json:"full_name"`
+		Role     string    `json:"role"`
+	}
+	type announcementWithAuthor struct {
+		models.Announcement
+		Author *authorSummary `json:"author,omitempty"`
+	}
+	authorIDs := make([]uuid.UUID, 0, len(list))
+	for _, announcement := range list {
+		if announcement.CreatedBy != nil {
+			authorIDs = append(authorIDs, *announcement.CreatedBy)
+		}
+	}
+	authorsByID := map[uuid.UUID]authorSummary{}
+	if len(authorIDs) > 0 {
+		users := []models.User{}
+		if err := h.db.Where("id IN ?", authorIDs).Find(&users).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar autores dos comunicados")
+			return
+		}
+		for _, user := range users {
+			authorsByID[user.ID] = authorSummary{ID: user.ID, FullName: user.FullName, Role: user.Role}
+		}
+	}
+	response := make([]announcementWithAuthor, 0, len(list))
+	for _, announcement := range list {
+		item := announcementWithAuthor{Announcement: announcement}
+		if announcement.CreatedBy != nil {
+			if author, ok := authorsByID[*announcement.CreatedBy]; ok {
+				authorCopy := author
+				item.Author = &authorCopy
+			}
+		}
+		response = append(response, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"announcements": response})
 }
 func (h *Handler) CreateAnnouncement(c *gin.Context) {
 	var a models.Announcement
@@ -216,6 +275,8 @@ func (h *Handler) CreateAnnouncement(c *gin.Context) {
 		return
 	}
 	a.ID = uuid.Nil
+	creatorID := middleware.UserID(c)
+	a.CreatedBy = &creatorID
 	if err := h.db.Create(&a).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao criar comunicado")
 		return

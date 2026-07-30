@@ -455,8 +455,49 @@ func (h *Handler) ListEvaluations(c *gin.Context) {
 	} else if sid := c.Query("student_id"); sid != "" {
 		q = q.Where("student_id = ?", sid)
 	}
-	q.Find(&list)
-	c.JSON(http.StatusOK, gin.H{"evaluations": list})
+	if err := q.Find(&list).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar avaliações")
+		return
+	}
+
+	type classSummary struct {
+		ID         uuid.UUID `json:"id"`
+		Name       string    `json:"name"`
+		CourseName string    `json:"course_name"`
+	}
+	type evaluationWithClass struct {
+		models.StudentEvaluation
+		Class *classSummary `json:"classes,omitempty"`
+	}
+	classIDs := make([]uuid.UUID, 0, len(list))
+	for _, evaluation := range list {
+		if evaluation.ClassID != nil {
+			classIDs = append(classIDs, *evaluation.ClassID)
+		}
+	}
+	classesByID := map[uuid.UUID]classSummary{}
+	if len(classIDs) > 0 {
+		classes := []models.Class{}
+		if err := h.db.Where("id IN ?", classIDs).Find(&classes).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar turmas das avaliações")
+			return
+		}
+		for _, class := range classes {
+			classesByID[class.ID] = classSummary{ID: class.ID, Name: class.Name, CourseName: class.CourseName}
+		}
+	}
+	response := make([]evaluationWithClass, 0, len(list))
+	for _, evaluation := range list {
+		item := evaluationWithClass{StudentEvaluation: evaluation}
+		if evaluation.ClassID != nil {
+			if class, ok := classesByID[*evaluation.ClassID]; ok {
+				classCopy := class
+				item.Class = &classCopy
+			}
+		}
+		response = append(response, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"evaluations": response})
 }
 
 // CreateEvaluation: POST /evaluations

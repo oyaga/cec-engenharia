@@ -545,7 +545,43 @@ func (h *Handler) ListQuizResults(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar resultados")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"results": list})
+
+	// A tela de desempenho precisa dos critérios do quiz para interpretar a
+	// nota corretamente. Mantemos os campos do resultado no nível raiz para
+	// preservar compatibilidade com o player e acrescentamos os metadados.
+	type resultWithQuiz struct {
+		models.LMSQuizResult
+		LMSQuiz *models.LMSQuiz `json:"lms_quizzes,omitempty"`
+	}
+	quizIDs := make([]uuid.UUID, 0, len(list))
+	for _, result := range list {
+		if result.QuizID != nil {
+			quizIDs = append(quizIDs, *result.QuizID)
+		}
+	}
+	quizzesByID := map[uuid.UUID]models.LMSQuiz{}
+	if len(quizIDs) > 0 {
+		quizzes := []models.LMSQuiz{}
+		if err := h.db.Where("id IN ?", quizIDs).Find(&quizzes).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar dados das provas")
+			return
+		}
+		for _, quiz := range quizzes {
+			quizzesByID[quiz.ID] = quiz
+		}
+	}
+	response := make([]resultWithQuiz, 0, len(list))
+	for _, result := range list {
+		item := resultWithQuiz{LMSQuizResult: result}
+		if result.QuizID != nil {
+			if quiz, ok := quizzesByID[*result.QuizID]; ok {
+				quizCopy := quiz
+				item.LMSQuiz = &quizCopy
+			}
+		}
+		response = append(response, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"results": response})
 }
 
 // ───────────── Fórum ─────────────
@@ -783,18 +819,185 @@ func (h *Handler) ListAnnouncements(c *gin.Context) {
 	if cid := c.Query("course_id"); cid != "" {
 		q = q.Where("course_id = ? OR course_id IS NULL", cid)
 	}
-	q.Find(&list)
-	c.JSON(http.StatusOK, gin.H{"announcements": list})
+	role := middleware.Role(c)
+	switch role {
+	case "aluno":
+		q = q.Where(
+			"course_id IS NULL OR course_id IN (SELECT course_id FROM lms_enrollments WHERE user_id = ?)",
+			middleware.UserID(c),
+		)
+	case "instrutor":
+		q = q.Where(
+			"course_id IS NULL OR course_id IN (SELECT c.lms_course_id FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.user_id = ? AND c.lms_course_id IS NOT NULL)",
+			middleware.UserID(c),
+		)
+	case "admin", "coordenador":
+		// Gestores consultam todos os avisos.
+	default:
+		q = q.Where("course_id IS NULL")
+	}
+	if err := q.Find(&list).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar avisos pedagógicos")
+		return
+	}
+
+	type authorSummary struct {
+		ID       uuid.UUID `json:"id"`
+		FullName string    `json:"full_name"`
+		Role     string    `json:"role"`
+	}
+	type announcementWithContext struct {
+		models.LMSAnnouncement
+		Course *models.LMSCourse `json:"lms_courses,omitempty"`
+		Author *authorSummary    `json:"author,omitempty"`
+	}
+	courseIDs := make([]uuid.UUID, 0, len(list))
+	authorIDs := make([]uuid.UUID, 0, len(list))
+	for _, announcement := range list {
+		if announcement.CourseID != nil {
+			courseIDs = append(courseIDs, *announcement.CourseID)
+		}
+		if announcement.CreatedBy != nil {
+			authorIDs = append(authorIDs, *announcement.CreatedBy)
+		}
+	}
+	coursesByID := map[uuid.UUID]models.LMSCourse{}
+	if len(courseIDs) > 0 {
+		courses := []models.LMSCourse{}
+		if err := h.db.Where("id IN ?", courseIDs).Find(&courses).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar cursos dos avisos")
+			return
+		}
+		for _, course := range courses {
+			coursesByID[course.ID] = course
+		}
+	}
+	authorsByID := map[uuid.UUID]authorSummary{}
+	if len(authorIDs) > 0 {
+		users := []models.User{}
+		if err := h.db.Where("id IN ?", authorIDs).Find(&users).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao carregar autores dos avisos")
+			return
+		}
+		for _, user := range users {
+			authorsByID[user.ID] = authorSummary{ID: user.ID, FullName: user.FullName, Role: user.Role}
+		}
+	}
+	response := make([]announcementWithContext, 0, len(list))
+	for _, announcement := range list {
+		item := announcementWithContext{LMSAnnouncement: announcement}
+		if announcement.CourseID != nil {
+			if course, ok := coursesByID[*announcement.CourseID]; ok {
+				courseCopy := course
+				item.Course = &courseCopy
+			}
+		}
+		if announcement.CreatedBy != nil {
+			if author, ok := authorsByID[*announcement.CreatedBy]; ok {
+				authorCopy := author
+				item.Author = &authorCopy
+			}
+		}
+		response = append(response, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"announcements": response})
 }
 func (h *Handler) CreateAnnouncement(c *gin.Context) {
-	h.create(c, &models.LMSAnnouncement{}, "announcement")
+	var announcement models.LMSAnnouncement
+	if err := c.ShouldBindJSON(&announcement); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
+		return
+	}
+	if announcement.Title == "" || announcement.Content == "" {
+		httpx.Error(c, http.StatusBadRequest, "título e conteúdo são obrigatórios")
+		return
+	}
+	if !h.canManageAnnouncementCourse(c, announcement.CourseID) {
+		httpx.Error(c, http.StatusForbidden, "o instrutor só pode publicar para cursos vinculados às próprias turmas")
+		return
+	}
+	announcement.ID = uuid.Nil
+	creatorID := middleware.UserID(c)
+	announcement.CreatedBy = &creatorID
+	if err := h.db.Create(&announcement).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao criar announcement")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"announcement": announcement})
 }
 func (h *Handler) UpdateAnnouncement(c *gin.Context) {
-	h.update(c, &models.LMSAnnouncement{}, "announcement")
+	var announcement models.LMSAnnouncement
+	if err := h.db.First(&announcement, "id = ?", c.Param("id")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "aviso não encontrado")
+		return
+	}
+	if middleware.Role(c) == "instrutor" &&
+		(announcement.CreatedBy == nil || *announcement.CreatedBy != middleware.UserID(c)) {
+		httpx.Error(c, http.StatusForbidden, "o instrutor só pode editar avisos próprios")
+		return
+	}
+	var body struct {
+		Title    string     `json:"title"`
+		Content  string     `json:"content"`
+		Priority string     `json:"priority"`
+		CourseID *uuid.UUID `json:"course_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
+		return
+	}
+	if body.Title == "" || body.Content == "" {
+		httpx.Error(c, http.StatusBadRequest, "título e conteúdo são obrigatórios")
+		return
+	}
+	if !h.canManageAnnouncementCourse(c, body.CourseID) {
+		httpx.Error(c, http.StatusForbidden, "o instrutor só pode publicar para cursos vinculados às próprias turmas")
+		return
+	}
+	if err := h.db.Model(&announcement).Updates(map[string]any{
+		"title": body.Title, "content": body.Content, "priority": body.Priority, "course_id": body.CourseID,
+	}).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar aviso")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"announcement": announcement})
 }
 func (h *Handler) DeleteAnnouncement(c *gin.Context) {
-	h.db.Delete(&models.LMSAnnouncement{}, "id = ?", c.Param("id"))
+	var announcement models.LMSAnnouncement
+	if err := h.db.First(&announcement, "id = ?", c.Param("id")).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "aviso não encontrado")
+		return
+	}
+	if middleware.Role(c) == "instrutor" &&
+		(announcement.CreatedBy == nil || *announcement.CreatedBy != middleware.UserID(c)) {
+		httpx.Error(c, http.StatusForbidden, "o instrutor só pode excluir avisos próprios")
+		return
+	}
+	if !h.canManageAnnouncementCourse(c, announcement.CourseID) {
+		httpx.Error(c, http.StatusForbidden, "sem acesso ao curso deste aviso")
+		return
+	}
+	if err := h.db.Delete(&announcement).Error; err != nil {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao excluir aviso")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) canManageAnnouncementCourse(c *gin.Context, courseID *uuid.UUID) bool {
+	role := middleware.Role(c)
+	if role == "admin" || role == "coordenador" {
+		return true
+	}
+	if role != "instrutor" || courseID == nil {
+		return false
+	}
+	var count int64
+	h.db.Table("classes c").
+		Joins("JOIN class_instructors ci ON ci.class_id = c.id").
+		Where("c.lms_course_id = ? AND ci.user_id = ?", *courseID, middleware.UserID(c)).
+		Count(&count)
+	return count > 0
 }
 
 // ───────────── Banco de questões (lms_question_bank) ─────────────

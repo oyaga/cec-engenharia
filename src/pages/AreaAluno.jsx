@@ -66,7 +66,9 @@ export default function AreaAluno() {
   const [hasConfirmedAttendance, setHasConfirmedAttendance] = useState(false);
   const [quizResults, setQuizResults] = useState([]);
   const [technicalEvals, setTechnicalEvals] = useState([]);
+  const [performanceErrors, setPerformanceErrors] = useState({ quizzes: '', evaluations: '' });
   const [announcements, setAnnouncements] = useState([]);
+  const [announcementsError, setAnnouncementsError] = useState('');
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [inPersonModules, setInPersonModules] = useState([]);
   const [confirmingModuleId, setConfirmingModuleId] = useState(null);
@@ -268,21 +270,69 @@ export default function AreaAluno() {
       }
 
       // 6. Notas de provas + avaliações técnicas
-      const { results: qResults } = await lmsApi.results({});
-      if (qResults) setQuizResults(qResults);
+      try {
+        const { results: qResults } = await lmsApi.results({});
+        setQuizResults(qResults || []);
+        setPerformanceErrors(prev => ({ ...prev, quizzes: '' }));
+      } catch (err) {
+        console.error('Erro ao carregar resultados das provas:', err);
+        setQuizResults([]);
+        setPerformanceErrors(prev => ({ ...prev, quizzes: 'Não foi possível carregar as provas online.' }));
+      }
       if (activeStudentId) {
-        const { evaluations } = await evaluationsApi.list(activeStudentId);
-        if (evaluations) setTechnicalEvals(evaluations);
+        try {
+          const { evaluations } = await evaluationsApi.list(activeStudentId);
+          setTechnicalEvals(evaluations || []);
+          setPerformanceErrors(prev => ({ ...prev, evaluations: '' }));
+        } catch (err) {
+          console.error('Erro ao carregar avaliações presenciais:', err);
+          setTechnicalEvals([]);
+          setPerformanceErrors(prev => ({ ...prev, evaluations: 'Não foi possível carregar as avaliações presenciais.' }));
+        }
+      } else {
+        setTechnicalEvals([]);
       }
 
       // 7. Mural de comunicados
-      const { announcements: annData } = await generalAnnouncementsApi.list();
-      if (annData) {
-        const activeAnn = annData.filter(a => {
-          const roles = Array.isArray(a.target_roles) ? a.target_roles : [];
-          return roles.includes('aluno');
-        });
-        setAnnouncements(activeAnn.length ? activeAnn : annData);
+      const [officialResult, pedagogicalResult] = await Promise.allSettled([
+        generalAnnouncementsApi.list(),
+        lmsApi.announcements(),
+      ]);
+      const officialAnnouncements = officialResult.status === 'fulfilled'
+        ? (officialResult.value.announcements || []).map(ann => ({
+            ...ann,
+            source_type: 'official',
+            source_label: `${ann.author?.role === 'coordenador' ? 'Coordenação' : 'Secretaria'}${ann.author?.full_name ? ` · ${ann.author.full_name}` : ''}`,
+            priority: ann.is_pinned ? 'urgente' : 'geral',
+          }))
+        : [];
+      const pedagogicalAnnouncements = pedagogicalResult.status === 'fulfilled'
+        ? (pedagogicalResult.value.announcements || []).map(ann => ({
+            ...ann,
+            body: ann.content,
+            source_type: 'pedagogical',
+            source_label: ann.author?.role === 'instrutor'
+              ? `Professor(a) · ${ann.author.full_name}`
+              : `Equipe Pedagógica${ann.author?.full_name ? ` · ${ann.author.full_name}` : ''}`,
+            is_pinned: ann.priority === 'urgente',
+            course_title: ann.lms_courses?.title || '',
+          }))
+        : [];
+      setAnnouncements([...officialAnnouncements, ...pedagogicalAnnouncements].sort((a, b) => {
+        if (Boolean(a.is_pinned) !== Boolean(b.is_pinned)) return a.is_pinned ? -1 : 1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }));
+      if (officialResult.status === 'rejected' && pedagogicalResult.status === 'rejected') {
+        console.error('Erro ao carregar avisos:', officialResult.reason, pedagogicalResult.reason);
+        setAnnouncementsError('Não foi possível carregar o quadro de avisos. Tente novamente em instantes.');
+      } else {
+        if (officialResult.status === 'rejected') console.error('Erro ao carregar avisos oficiais:', officialResult.reason);
+        if (pedagogicalResult.status === 'rejected') console.error('Erro ao carregar avisos pedagógicos:', pedagogicalResult.reason);
+        setAnnouncementsError(
+          officialResult.status === 'rejected' || pedagogicalResult.status === 'rejected'
+            ? 'Alguns avisos podem estar temporariamente indisponíveis.'
+            : ''
+        );
       }
 
       // 8. Certificados
@@ -1230,12 +1280,12 @@ export default function AreaAluno() {
         {/* COMUNICADOS DO MURAL */}
         <div>
           <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: '0 0 1.25rem 0', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Megaphone size={22} className="text-warning" /> Avisos da Secretaria
+            <Megaphone size={22} className="text-warning" /> Avisos Recentes
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {announcements.slice(0, 3).map(ann => (
-              <div key={ann.id} className="card" style={{ 
+              <div key={`${ann.source_type}-${ann.id}`} className="card" style={{
                 padding: '1.25rem', 
                 backgroundColor: ann.is_pinned ? '#FEF2F2' : 'white', 
                 borderLeft: ann.is_pinned ? '4px solid #ef4444' : '4px solid var(--primary)',
@@ -1246,7 +1296,7 @@ export default function AreaAluno() {
                   {ann.body.length > 120 ? `${ann.body.slice(0, 120)}...` : ann.body}
                 </p>
                 <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
-                  Publicado em: {new Date(ann.created_at).toLocaleDateString('pt-BR')}
+                  {ann.source_label} · {new Date(ann.created_at).toLocaleDateString('pt-BR')}
                 </span>
               </div>
             ))}
@@ -1834,7 +1884,48 @@ export default function AreaAluno() {
   };
 
   // ABA 4: DESEMPENHO E NOTAS
-  const renderDesempenho = () => (
+  const renderDesempenho = () => {
+    const quizSummaries = Array.from(quizResults.reduce((groups, result) => {
+      const key = result.quiz_id || result.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(result);
+      return groups;
+    }, new Map()).values()).map(attempts => {
+      const latest = attempts[0];
+      const quiz = latest.lms_quizzes || {};
+      const best = attempts.reduce((current, attempt) => attempt.score > current.score ? attempt : current, latest);
+      return {
+        id: latest.quiz_id || latest.id,
+        title: quiz.title || 'Avaliação online',
+        quizType: quiz.quiz_type || 'exercise',
+        passingGrade: quiz.passing_grade > 0 ? quiz.passing_grade : 70,
+        maxAttempts: quiz.max_attempts,
+        attempts: Math.max(attempts.length, ...attempts.map(a => a.attempts_count || 0)),
+        score: best.score,
+        approved: attempts.some(a => a.is_approved),
+      };
+    });
+
+    const practicalSummaries = Array.from(technicalEvals.reduce((groups, evaluation) => {
+      const key = `${evaluation.class_id || 'sem-turma'}:${evaluation.exam_type || 'avaliacao'}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(evaluation);
+      return groups;
+    }, new Map()).values()).map(attempts => {
+      const latest = attempts[0];
+      const best = attempts.reduce((current, attempt) =>
+        Number(attempt.grade) > Number(current.grade) ? attempt : current, latest);
+      return {
+        id: `${latest.class_id || 'sem-turma'}:${latest.exam_type || latest.id}`,
+        date: latest.date,
+        examType: latest.exam_type || 'Avaliação prática',
+        className: latest.classes?.name || latest.classes?.course_name || 'Turma não informada',
+        attempts: attempts.length,
+        grade: Number(best.grade),
+      };
+    });
+
+    return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>Histórico de Notas e Desempenho</h3>
       
@@ -1842,6 +1933,11 @@ export default function AreaAluno() {
         {/* Provas Online (EAD) */}
         <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
           <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provas Online (LMS)</h4>
+          {performanceErrors.quizzes && (
+            <div role="alert" style={{ padding: '0.75rem', marginBottom: '0.75rem', borderRadius: '8px', background: '#fef2f2', color: '#991b1b', fontSize: '0.8rem' }}>
+              {performanceErrors.quizzes}
+            </div>
+          )}
           <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
@@ -1851,21 +1947,23 @@ export default function AreaAluno() {
               </tr>
             </thead>
             <tbody>
-              {quizResults.map(r => (
+              {quizSummaries.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '0.75rem 0' }}>
-                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{r.lms_quizzes?.title}</div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: '800', color: r.lms_quizzes?.quiz_type === 'final_exam' ? '#7c3aed' : '#059669', marginTop: '2px' }}>
-                      {r.lms_quizzes?.quiz_type === 'final_exam' ? '🏆 PROVA FINAL' : '📝 EXERCÍCIO'}
+                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{r.title}</div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: '800', color: r.quizType === 'final_exam' ? '#7c3aed' : '#059669', marginTop: '2px' }}>
+                      {r.quizType === 'final_exam' ? '🏆 PROVA FINAL' : '📝 EXERCÍCIO'} · MÍNIMO {r.passingGrade}%
                     </div>
                   </td>
-                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{r.attempts_count} / 3</td>
-                  <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: r.score >= 70 ? '#10b981' : '#ef4444' }}>
+                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>
+                    {r.attempts}{r.maxAttempts > 0 ? ` / ${r.maxAttempts}` : ''}
+                  </td>
+                  <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: r.approved ? '#10b981' : '#ef4444' }}>
                     {r.score}%
                   </td>
                 </tr>
               ))}
-              {quizResults.length === 0 && (
+              {!performanceErrors.quizzes && quizSummaries.length === 0 && (
                 <tr>
                   <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
                     Nenhum quiz online concluído ainda.
@@ -1879,28 +1977,33 @@ export default function AreaAluno() {
         {/* Avaliações Presenciais */}
         <div className="card" style={{ padding: '1.5rem', backgroundColor: 'white' }}>
           <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avaliações Práticas Presenciais</h4>
+          {performanceErrors.evaluations && (
+            <div role="alert" style={{ padding: '0.75rem', marginBottom: '0.75rem', borderRadius: '8px', background: '#fef2f2', color: '#991b1b', fontSize: '0.8rem' }}>
+              {performanceErrors.evaluations}
+            </div>
+          )}
           <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
                 <th style={{ padding: '0.5rem 0' }}>Data</th>
-                <th style={{ padding: '0.5rem 0' }}>Exame Prático</th>
-                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Média Final</th>
+                <th style={{ padding: '0.5rem 0' }}>Avaliação / Turma</th>
+                <th style={{ padding: '0.5rem 0', textAlign: 'right' }}>Melhor Nota</th>
               </tr>
             </thead>
             <tbody>
-              {technicalEvals.map(e => (
+              {practicalSummaries.map(e => (
                 <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{new Date(e.date).toLocaleDateString('pt-BR')}</td>
+                  <td style={{ padding: '0.75rem 0', color: 'var(--text-muted)' }}>{e.date ? new Date(`${e.date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'}</td>
                   <td style={{ padding: '0.75rem 0' }}>
-                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{e.exam_type}</div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>{e.classes?.name}</div>
+                    <div style={{ fontWeight: '700', color: 'var(--primary-dark)' }}>{e.examType}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>{e.className} · {e.attempts} {e.attempts === 1 ? 'tentativa' : 'tentativas'}</div>
                   </td>
                   <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: '800', color: e.grade >= 7.0 ? '#10b981' : '#ef4444' }}>
                     {e.grade}
                   </td>
                 </tr>
               ))}
-              {technicalEvals.length === 0 && (
+              {!performanceErrors.evaluations && practicalSummaries.length === 0 && (
                 <tr>
                   <td colSpan="3" style={{ padding: '2rem 0', textAlign: 'center', color: '#94a3b8' }}>
                     Nenhuma nota presencial lançada pelo instrutor.
@@ -1912,7 +2015,8 @@ export default function AreaAluno() {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   // ABA 5: FÓRUM DE DÚVIDAS
   const renderForum = () => (
@@ -2873,13 +2977,24 @@ export default function AreaAluno() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {announcementsError && (
+            <div role="alert" style={{ padding: '0.9rem 1rem', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: '0.82rem', fontWeight: 600 }}>
+              {announcementsError}
+            </div>
+          )}
           {announcements.map(ann => {
             const isPinned = ann.is_pinned;
+            const priorities = {
+              urgente: { label: 'Urgente', color: '#b91c1c', background: '#fee2e2' },
+              importante: { label: 'Importante', color: '#b45309', background: '#fef3c7' },
+              geral: { label: ann.source_type === 'pedagogical' ? 'Pedagógico' : 'Informativo', color: '#1d4ed8', background: '#dbeafe' },
+            };
+            const priority = priorities[ann.priority] || priorities.geral;
             return (
-              <div key={ann.id} className="card" style={{ 
+              <article key={`${ann.source_type}-${ann.id}`} className="card" style={{
                 padding: '1.75rem', 
                 backgroundColor: isPinned ? '#FEF2F2' : 'white', 
-                borderLeft: isPinned ? '6px solid #ef4444' : '6px solid var(--primary)',
+                borderLeft: `6px solid ${priority.color}`,
                 borderColor: isPinned ? '#FCA5A5' : '#cbd5e1',
                 borderRadius: '16px',
                 boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)',
@@ -2887,23 +3002,22 @@ export default function AreaAluno() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {isPinned && (
-                      <span style={{ backgroundColor: '#fee2e2', color: '#ef4444', fontSize: '0.7rem', fontWeight: '800', padding: '3px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <Pin size={10} fill="#ef4444" /> IMPORTANTE
-                      </span>
-                    )}
+                    <span style={{ backgroundColor: priority.background, color: priority.color, fontSize: '0.7rem', fontWeight: '800', padding: '3px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '2px', textTransform: 'uppercase' }}>
+                      {isPinned && <Pin size={10} fill={priority.color} />} {priority.label}
+                    </span>
                     <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>{ann.title}</h3>
                   </div>
                   <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    Publicado em: {new Date(ann.created_at).toLocaleDateString('pt-BR')}
+                    {new Date(ann.created_at).toLocaleDateString('pt-BR')}
                   </span>
                 </div>
                 <p style={{ fontSize: '0.9rem', color: '#334155', margin: '0 0 1.25rem 0', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
                   {ann.body}
                 </p>
-                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#64748b' }}>
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.78rem', color: '#64748b' }}>
                   <span>
-                    Autor: <strong>{ann.author?.full_name || 'Coordenação Pedagógica'}</strong>
+                    Publicado por: <strong>{ann.source_label}</strong>
+                    {ann.course_title && <> · Curso: <strong>{ann.course_title}</strong></>}
                   </span>
                   {ann.expires_at && (
                     <span>
@@ -2911,7 +3025,7 @@ export default function AreaAluno() {
                     </span>
                   )}
                 </div>
-              </div>
+              </article>
             );
           })}
           {announcements.length === 0 && (
@@ -2927,7 +3041,7 @@ export default function AreaAluno() {
   };
 
   // ═══════════════════════════════════════════
-  const renderAvisos = () => renderCursos();
+  const renderAvisos = () => renderQuadroAvisos();
 
   const PORTAL_TABS = [
     { id: 'cursos', label: 'Meus Cursos' },
