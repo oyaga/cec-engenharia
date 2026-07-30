@@ -158,7 +158,7 @@ jobs:
                 ghcr.io/oyaga/cec:latest
               docker network connect proxy cec-app-1 2>/dev/null || true
               echo "Container recriado com sucesso."
-ENDSSH
+          ENDSSH
             rm -f /tmp/deploy_key
             echo "Deploy SSH concluído."
             exit 0
