@@ -3,6 +3,7 @@
 package site
 
 import (
+	"errors"
 	"html"
 	"net/http"
 	"strings"
@@ -51,7 +52,7 @@ func (h *Handler) notifyLead(l *models.Lead) {
 
 type leadInput struct {
 	Name           string  `json:"name" binding:"required"`
-	Phone          string  `json:"phone" binding:"required"`
+	Phone          *string `json:"phone"`
 	Email          *string `json:"email"`
 	CourseInterest *string `json:"course_interest"`
 	Message        *string `json:"message"`
@@ -59,22 +60,55 @@ type leadInput struct {
 	Origem         *string `json:"origem"`
 }
 
-// CreateLeadPublic: POST /public/leads — captação (sem auth). Upsert por telefone.
+func trimmedValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// CreateLeadPublic: POST /public/leads — captação (sem auth).
+// Aceita telefone ou e-mail e usa o contato disponível como chave do upsert.
 func (h *Handler) CreateLeadPublic(c *gin.Context) {
 	var in leadInput
 	if err := c.ShouldBindJSON(&in); err != nil {
-		httpx.Error(c, http.StatusBadRequest, "nome e telefone são obrigatórios")
+		httpx.Error(c, http.StatusBadRequest, "nome é obrigatório")
 		return
 	}
-	phone := strings.TrimSpace(in.Phone)
+	name := strings.TrimSpace(in.Name)
+	phone := trimmedValue(in.Phone)
+	email := trimmedValue(in.Email)
+	if name == "" {
+		httpx.Error(c, http.StatusBadRequest, "nome é obrigatório")
+		return
+	}
+	if phone == "" && email == "" {
+		httpx.Error(c, http.StatusBadRequest, "telefone ou e-mail é obrigatório")
+		return
+	}
 
 	var lead models.Lead
-	err := h.db.Where("phone = ?", phone).First(&lead).Error
+	query := h.db
+	if phone != "" {
+		query = query.Where("phone = ?", phone)
+	} else {
+		query = query.Where("LOWER(email) = LOWER(?)", email)
+	}
+	err := query.First(&lead).Error
 	if err == nil {
-		// Já existe: atualiza os campos informados (upsert por telefone).
-		updates := map[string]any{"name": in.Name}
-		if in.Email != nil {
-			updates["email"] = in.Email
+		updates := map[string]any{"name": name}
+		if phone != "" {
+			updates["phone"] = phone
+		}
+		if email != "" {
+			updates["email"] = email
 		}
 		if in.CourseInterest != nil {
 			updates["course_interest"] = in.CourseInterest
@@ -85,8 +119,18 @@ func (h *Handler) CreateLeadPublic(c *gin.Context) {
 		if in.Interesse != nil {
 			updates["interesse"] = in.Interesse
 		}
-		h.db.Model(&lead).Updates(updates)
+		if in.Origem != nil && strings.TrimSpace(*in.Origem) != "" {
+			updates["origem"] = strings.TrimSpace(*in.Origem)
+		}
+		if err := h.db.Model(&lead).Updates(updates).Error; err != nil {
+			httpx.Error(c, http.StatusInternalServerError, "falha ao atualizar contato")
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": lead.ID})
+		return
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.Error(c, http.StatusInternalServerError, "falha ao consultar contato")
 		return
 	}
 
@@ -95,7 +139,7 @@ func (h *Handler) CreateLeadPublic(c *gin.Context) {
 		origem = *in.Origem
 	}
 	lead = models.Lead{
-		Name: in.Name, Phone: phone, Email: in.Email,
+		Name: name, Phone: phone, Email: stringPointer(email),
 		CourseInterest: in.CourseInterest, Message: in.Message,
 		Interesse: in.Interesse, Origem: &origem, Status: "novo",
 	}

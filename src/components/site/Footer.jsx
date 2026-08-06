@@ -43,6 +43,7 @@ const Footer = () => {
         phone: phoneValue,
         email: emailValue,
         course_interest: 'Newsletter',
+        origem: 'newsletter',
         message: `E-mail inscrito na newsletter: ${emailValue || 'Não informado'} | WhatsApp: ${phoneValue || 'Não informado'}`,
       });
       setNewsletterStatus('success');

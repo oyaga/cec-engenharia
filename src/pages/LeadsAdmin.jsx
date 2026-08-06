@@ -125,6 +125,7 @@ const LeadsAdmin = () => {
             <option value="Estação Total Aplicado a Caldeiraria">Estação Total</option>
             <option value="Inspetor Dimensional de Mecânica (CD-MC)">Mecânica (CD-MC)</option>
             <option value="Inspetor Dimensional de Topografia (CD-TO)">Topografia (CD-TO)</option>
+            <option value="Newsletter">Newsletter</option>
           </select>
 
           <select 
