@@ -271,11 +271,17 @@ export default function Matriculas() {
 
     // Filtragem de Matrículas
     const filteredEnrollments = enrollments.filter(e => {
-        const matchesSearch = e.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              e.cpf.includes(searchTerm) ||
-                              e.matricula_numero.toLowerCase().includes(searchTerm.toLowerCase())
+        const normalizedSearch = String(searchTerm ?? '').trim().toLocaleLowerCase('pt-BR')
+        const searchDigits = normalizedSearch.replace(/\D/g, '')
+        const studentName = String(e?.student_name ?? '').toLocaleLowerCase('pt-BR')
+        const cpf = String(e?.cpf ?? '')
+        const enrollmentNumber = String(e?.matricula_numero ?? '').toLocaleLowerCase('pt-BR')
+        const matchesSearch = studentName.includes(normalizedSearch) ||
+                              cpf.toLocaleLowerCase('pt-BR').includes(normalizedSearch) ||
+                              enrollmentNumber.includes(normalizedSearch) ||
+                              (searchDigits !== '' && cpf.replace(/\D/g, '').includes(searchDigits))
         const matchesClass = classFilter === 'todas' || e.class_id === classFilter
-        const matchesCourse = courseFilter === 'todos' || e.course_name.toLowerCase().includes(courseFilter.toLowerCase())
+        const matchesCourse = courseFilter === 'todos' || String(e?.course_name ?? '').toLocaleLowerCase('pt-BR').includes(String(courseFilter).toLocaleLowerCase('pt-BR'))
         const matchesStatus = statusFilter === 'todas' || e.status === statusFilter
         
         // Filtro de período

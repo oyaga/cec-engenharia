@@ -604,10 +604,17 @@ export default function Alunos() {
         }
     }
 
-    const filteredStudents = students.filter(s =>
-        (s.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-        (s.cpf || '').includes(searchTerm)
-    )
+    const normalizedSearchTerm = String(searchTerm ?? '').trim().toLocaleLowerCase('pt-BR')
+    const normalizedSearchDigits = normalizedSearchTerm.replace(/\D/g, '')
+    const filteredStudents = students.filter(s => {
+        const studentName = String(s?.name ?? '').toLocaleLowerCase('pt-BR')
+        const studentCpf = String(s?.cpf ?? '')
+        const studentCpfDigits = studentCpf.replace(/\D/g, '')
+
+        return studentName.includes(normalizedSearchTerm) ||
+            studentCpf.toLocaleLowerCase('pt-BR').includes(normalizedSearchTerm) ||
+            (normalizedSearchDigits !== '' && studentCpfDigits.includes(normalizedSearchDigits))
+    })
 
     const handleFormChange = async (e) => {
         let { name, value } = e.target

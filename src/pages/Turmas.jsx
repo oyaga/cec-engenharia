@@ -1533,7 +1533,13 @@ export default function Turmas() {
                                     ) : (
                                         (() => {
                                             const filtered = availableStudents.filter(st => {
-                                                const matchesSearch = st.full_name.toLowerCase().includes(schedulingSearch.toLowerCase()) || st.cpf.includes(schedulingSearch);
+                                                const normalizedSearch = String(schedulingSearch ?? '').trim().toLocaleLowerCase('pt-BR');
+                                                const searchDigits = normalizedSearch.replace(/\D/g, '');
+                                                const studentName = String(st?.full_name ?? '').toLocaleLowerCase('pt-BR');
+                                                const cpf = String(st?.cpf ?? '');
+                                                const matchesSearch = studentName.includes(normalizedSearch) ||
+                                                    cpf.toLocaleLowerCase('pt-BR').includes(normalizedSearch) ||
+                                                    (searchDigits !== '' && cpf.replace(/\D/g, '').includes(searchDigits));
                                                 
                                                 let matchesCourse = true;
                                                 if (schedulingCourseFilter !== 'todos') {
