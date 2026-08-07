@@ -46,6 +46,7 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 	}
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(audit.MutationLogger(gdb))
 
 	// Headers de segurança (hardening). HSTS só em produção (HTTPS).
 	r.Use(func(c *gin.Context) {

@@ -20,8 +20,17 @@ func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
 
 // List: GET /audit (admin) — logs recentes.
 func (h *Handler) List(c *gin.Context) {
-	list := []models.AuditLog{}
-	h.db.Order("created_at DESC").Limit(500).Find(&list)
+	type auditRow struct {
+		models.AuditLog
+		UserName  string `json:"user_name"`
+		UserEmail string `json:"user_email"`
+		UserRole  string `json:"user_role"`
+	}
+	list := []auditRow{}
+	h.db.Table("audit_logs a").
+		Select("a.*, COALESCE(u.full_name, '') AS user_name, COALESCE(u.email, '') AS user_email, COALESCE(u.role, '') AS user_role").
+		Joins("LEFT JOIN users u ON u.id = a.user_id").
+		Order("a.created_at DESC").Limit(1000).Scan(&list)
 	c.JSON(http.StatusOK, gin.H{"logs": list})
 }
 

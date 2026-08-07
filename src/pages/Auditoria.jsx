@@ -1,21 +1,31 @@
 import { useState, useEffect } from 'react'
-import { Shield, FileText, User, Trash2, Key, Search, Calendar as CalendarIcon } from 'lucide-react'
+import { Shield, FileText, User, Trash2, Key, Search, RefreshCw } from 'lucide-react'
 import { auditApi } from '../services/financial'
 
 export default function Auditoria() {
     const [searchTerm, setSearchTerm] = useState('')
     const [logs, setLogs] = useState([])
+	const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
+	const fetchLogs = () => {
+		setLoading(true)
         auditApi.list()
             .then(({ logs }) => setLogs((logs || []).map(l => ({
                 id: l.id,
                 action: l.action,
-                user: l.user_id || '—',
+				user: l.user_name || l.user_email || l.user_id || '—',
+				email: l.user_email || '',
+				role: l.user_role || '',
                 date: l.created_at,
+				entity: l.entity_type || 'sistema',
                 details: l.details ? (typeof l.details === 'string' ? l.details : JSON.stringify(l.details)) : `${l.entity_type}${l.entity_id ? ' · ' + l.entity_id : ''}`,
             }))))
             .catch(() => setLogs([]))
+			.finally(() => setLoading(false))
+	}
+
+    useEffect(() => {
+		fetchLogs()
     }, [])
 
     const getActionIcon = (action) => {
@@ -56,8 +66,8 @@ export default function Auditoria() {
                             style={{ paddingLeft: '2.5rem' }}
                         />
                     </div>
-                    <button className="btn btn-secondary">
-                        <CalendarIcon size={18} /> Últimos 7 Dias
+					<button className="btn btn-secondary" onClick={fetchLogs} disabled={loading}>
+						<RefreshCw size={18} className={loading ? 'animate-spin' : ''} /> Atualizar
                     </button>
                 </div>
 
@@ -68,18 +78,24 @@ export default function Auditoria() {
                             <th style={{ padding: '1rem', width: '40px' }}></th>
                             <th style={{ padding: '1rem' }}>Ação Executada</th>
                             <th style={{ padding: '1rem' }}>Usuário Pessoal</th>
+							<th style={{ padding: '1rem' }}>Papel</th>
+							<th style={{ padding: '1rem' }}>Módulo</th>
                             <th style={{ padding: '1rem' }}>Data & Hora</th>
                             <th style={{ padding: '1rem' }}>Detalhes Contextuais</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {logs.filter(l => String(l.user).includes(searchTerm) || l.action.toLowerCase().includes(searchTerm.toLowerCase())).map(log => (
+						{logs.filter(l => `${l.user} ${l.email} ${l.role} ${l.action} ${l.entity} ${l.details}`.toLowerCase().includes(searchTerm.toLowerCase())).map(log => (
                             <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: getLogColor(log.action) }}>
                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     {getActionIcon(log.action)}
                                 </td>
                                 <td style={{ padding: '1rem', fontWeight: 600, fontSize: '0.875rem' }}>{log.action}</td>
-                                <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 500 }}>{log.user}</td>
+								<td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 500 }}>
+									{log.user}{log.email && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>{log.email}</div>}
+								</td>
+								<td style={{ padding: '1rem', fontSize: '0.8rem' }}>{log.role || '—'}</td>
+								<td style={{ padding: '1rem', fontSize: '0.8rem' }}>{log.entity}</td>
                                 <td style={{ padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                                     {new Date(log.date).toLocaleString('pt-BR')}
                                 </td>
