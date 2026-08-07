@@ -1,40 +1,50 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { coursesApi } from '../../services/academic';
 import { publicCheckout } from '../../services/asaas';
 import CheckoutForm from './components/CheckoutForm';
-import PixDisplay from './components/PixDisplay';
-import BoletoDisplay from './components/BoletoDisplay';
-import { CheckCircle, ShieldCheck, Loader } from 'lucide-react';
+import { ShieldCheck, Loader } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function CheckoutPage() {
   const { courseId } = useParams();
-  const navigate = useNavigate();
+  const { userProfile } = useAuth();
   
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   
-  const [step, setStep] = useState('form'); // 'form', 'pix', 'boleto', 'success'
-  const [paymentData, setPaymentData] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('pix');
+
+  const getCoursePrice = (method = paymentMethod) => {
+    if (!course) return null;
+    const priceByMethod = {
+      pix: course.price_pix,
+      credit_card: course.price_card,
+      boleto: course.price_boleto,
+    };
+    const value = priceByMethod[method] ?? course.default_value;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+  };
 
   useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        const { courses } = await coursesApi.listPublic();
+        const data = (courses || []).find(c => c.id === courseId) || null;
+        setCourse(data);
+      } catch (err) {
+        console.error('Erro ao buscar curso:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchCourse();
   }, [courseId]);
 
-  const fetchCourse = async () => {
-    try {
-      const { courses } = await coursesApi.listPublic();
-      const data = (courses || []).find(c => c.id === courseId) || null;
-      setCourse(data);
-    } catch (err) {
-      console.error('Erro ao buscar curso:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCheckoutSubmit = async (formData) => {
+    setPaymentMethod(formData.paymentMethod);
     setProcessing(true);
     try {
       // Checkout server-side: a chave do Asaas nunca vai ao browser e o preço é
@@ -92,7 +102,9 @@ export default function CheckoutPage() {
             <div className="mb-6">
               <span className="block text-primary-100 text-sm">Total a Pagar</span>
               <span className="block text-3xl font-bold">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(course.price)}
+                {getCoursePrice() !== null
+                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getCoursePrice())
+                  : 'Consulte a equipe'}
               </span>
             </div>
 
@@ -106,31 +118,18 @@ export default function CheckoutPage() {
 
           {/* Formulário / Pagamento (Lado Direito) */}
           <div className="md:w-2/3 p-8">
-            {step === 'form' && (
-              <CheckoutForm onSubmit={handleCheckoutSubmit} processing={processing} />
-            )}
-            
-            {step === 'pix' && (
-              <PixDisplay pixData={paymentData.pixData} value={course.price} onFinish={() => navigate('/login')} />
-            )}
-
-            {step === 'boleto' && (
-              <BoletoDisplay url={paymentData.bankSlipUrl} onFinish={() => navigate('/login')} />
-            )}
-
-            {step === 'success' && (
-              <div className="text-center py-12">
-                <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Pagamento Confirmado!</h3>
-                <p className="text-gray-600 mb-6">Sua matrícula foi realizada com sucesso.</p>
-                <button 
-                  onClick={() => navigate('/login')}
-                  className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary-dark transition-colors font-semibold"
-                >
-                  Acessar Portal do Aluno
-                </button>
-              </div>
-            )}
+              <CheckoutForm
+                key={userProfile?.id || userProfile?.user_id || 'visitor'}
+                onSubmit={handleCheckoutSubmit}
+                processing={processing}
+                initialData={{
+                  name: userProfile?.full_name,
+                  email: userProfile?.email,
+                  cpf: userProfile?.cpf,
+                  phone: userProfile?.phone,
+                }}
+                onPaymentMethodChange={setPaymentMethod}
+              />
           </div>
         </div>
       </div>

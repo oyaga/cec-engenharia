@@ -2445,6 +2445,8 @@ export default function AreaAluno() {
   // ABA 9: FINANCEIRO (Mensalidades e Faturas)
   const renderFinanceiro = () => {
     const installments = financialRecord?.installments || [];
+    const contractedValue = financialRecord?.total_value ??
+      Math.max(0, Number(studentData?.base_value || 0) - Number(studentData?.discount_value || 0));
     
     return (
       <div className="aa-stack" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', flexWrap: 'wrap' }}>
@@ -2522,7 +2524,7 @@ export default function AreaAluno() {
             <div>
               <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Valor Total Contratado</span>
               <p style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-dark)', margin: '4px 0 0 0' }}>
-                R$ {financialRecord ? Number(financialRecord.total_value).toFixed(2) : '0,00'}
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(contractedValue) || 0)}
               </p>
             </div>
             

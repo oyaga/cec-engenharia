@@ -549,7 +549,9 @@ export default function Financeiro() {
                 } else {
                     // Criar um novo registro com as 3 parcelas, definindo a selecionada como paga
                     const studentObj = studentsData.find(s => s.id === studentId)
-                    const totalVal = studentObj.base_value > 0 ? (studentObj.base_value - (studentObj.discount_value || 0)) : 3300
+                    if (!studentObj) throw new Error('Aluno não localizado para gerar as parcelas.')
+                    const totalVal = Math.max(0, Number(studentObj.base_value || 0) - Number(studentObj.discount_value || 0))
+                    if (totalVal <= 0) throw new Error('O valor contratado da matrícula não está cadastrado.')
                     const partVal = totalVal / 3
 
                     const installments = []
@@ -1136,7 +1138,11 @@ export default function Financeiro() {
                     const studentCount = cls.students[0]?.count || 0
                     if (studentCount === 0) return null
 
-                    const revenue = studentCount * (cls.course_value || 3300)
+                    const classStudents = studentsData.filter(student => student.turma_id === cls.id)
+                    const revenue = classStudents.reduce((total, student) => {
+                        const contracted = Math.max(0, Number(student.base_value || 0) - Number(student.discount_value || 0))
+                        return total + (contracted || Number(cls.course_value || 0))
+                    }, 0)
                     const specificCosts = expenses
                         .filter(e => e.class_id === cls.id)
                         .reduce((acc, curr) => acc + curr.amount, 0)
@@ -1202,7 +1208,13 @@ export default function Financeiro() {
                     const studentCount = course.classes?.reduce((acc, curr) => acc + (curr.students[0]?.count || 0), 0) || 0
                     if (studentCount === 0) return null
 
-                    const revenue = studentCount * 3300 // Exemplo de preço
+                    const courseStudents = studentsData.filter(student =>
+                        course.classes?.some(cls => cls.id === student.turma_id)
+                    )
+                    const revenue = courseStudents.reduce((total, student) => {
+                        const contracted = Math.max(0, Number(student.base_value || 0) - Number(student.discount_value || 0))
+                        return total + (contracted || Number(course.default_value || course.price_pix || 0))
+                    }, 0)
                     const specificCosts = expenses
                         .filter(e => course.classes?.some(c => c.id === e.class_id))
                         .reduce((acc, curr) => acc + curr.amount, 0)

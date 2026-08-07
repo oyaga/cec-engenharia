@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { CreditCard, Smartphone, FileText, Loader } from 'lucide-react';
 
-export default function CheckoutForm({ onSubmit, processing }) {
+export default function CheckoutForm({ onSubmit, processing, initialData, onPaymentMethodChange }) {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    cpf: '',
-    phone: '',
+    name: initialData?.name || '',
+    email: initialData?.email || '',
+    cpf: initialData?.cpf || '',
+    phone: initialData?.phone || '',
     paymentMethod: 'pix'
   });
+
+  const selectPaymentMethod = (paymentMethod) => {
+    setFormData(current => ({ ...current, paymentMethod }));
+    onPaymentMethodChange?.(paymentMethod);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -81,7 +86,7 @@ export default function CheckoutForm({ onSubmit, processing }) {
             name="paymentMethod" 
             value="pix"
             checked={formData.paymentMethod === 'pix'}
-            onChange={() => setFormData({...formData, paymentMethod: 'pix'})}
+            onChange={() => selectPaymentMethod('pix')}
           />
           <Smartphone className={`w-8 h-8 ${formData.paymentMethod === 'pix' ? 'text-primary' : 'text-gray-400'}`} />
           <span className="font-medium text-gray-900">PIX</span>
@@ -99,7 +104,7 @@ export default function CheckoutForm({ onSubmit, processing }) {
             name="paymentMethod" 
             value="credit_card"
             checked={formData.paymentMethod === 'credit_card'}
-            onChange={() => setFormData({...formData, paymentMethod: 'credit_card'})}
+            onChange={() => selectPaymentMethod('credit_card')}
           />
           <CreditCard className={`w-8 h-8 ${formData.paymentMethod === 'credit_card' ? 'text-primary' : 'text-gray-400'}`} />
           <span className="font-medium text-gray-900">Cartão de Crédito</span>
@@ -117,7 +122,7 @@ export default function CheckoutForm({ onSubmit, processing }) {
             name="paymentMethod" 
             value="boleto"
             checked={formData.paymentMethod === 'boleto'}
-            onChange={() => setFormData({...formData, paymentMethod: 'boleto'})}
+            onChange={() => selectPaymentMethod('boleto')}
           />
           <FileText className={`w-8 h-8 ${formData.paymentMethod === 'boleto' ? 'text-primary' : 'text-gray-400'}`} />
           <span className="font-medium text-gray-900">Boleto</span>
