@@ -51,10 +51,36 @@ var validRoles = map[string]bool{
 // papéis "elevados" que só um admin pode criar/alterar/excluir.
 func isElevated(role string) bool { return role == "admin" || role == "coordenador" }
 
+func (h *Handler) canManageWebdesigners(c *gin.Context) bool {
+	if middleware.Role(c) != "webdesigner" {
+		return true
+	}
+	var user models.User
+	if err := h.db.Select("permissions").First(&user, "id = ?", middleware.UserID(c)).Error; err != nil {
+		return false
+	}
+	permissions := map[string]any{}
+	if err := json.Unmarshal(user.Permissions, &permissions); err != nil {
+		return false
+	}
+	allowed, _ := permissions["can_add_webdesigners"].(bool)
+	return allowed
+}
+
+func (h *Handler) requireWebdesignerManager(c *gin.Context) bool {
+	if h.canManageWebdesigners(c) {
+		return true
+	}
+	httpx.Error(c, http.StatusForbidden, "permissão para gerenciar webdesigners não concedida")
+	return false
+}
+
 // List: GET /users?role=admin,webdesigner
 func (h *Handler) List(c *gin.Context) {
 	q := h.db.Model(&models.User{}).Order("created_at DESC")
-	if roleParam := c.Query("role"); roleParam != "" {
+	if middleware.Role(c) == "webdesigner" {
+		q = q.Where("role IN ?", []string{"admin", "webdesigner"})
+	} else if roleParam := c.Query("role"); roleParam != "" {
 		roles := strings.Split(roleParam, ",")
 		q = q.Where("role IN ?", roles)
 	}
@@ -108,6 +134,15 @@ func (h *Handler) Create(c *gin.Context) {
 	if !validRoles[req.Role] {
 		httpx.Error(c, http.StatusBadRequest, "papel inválido")
 		return
+	}
+	if middleware.Role(c) == "webdesigner" {
+		if !h.requireWebdesignerManager(c) {
+			return
+		}
+		if req.Role != "webdesigner" {
+			httpx.Error(c, http.StatusForbidden, "webdesigner só pode criar outro webdesigner")
+			return
+		}
 	}
 	// Só admin cria papéis elevados.
 	if isElevated(req.Role) && middleware.Role(c) != "admin" {
@@ -194,6 +229,15 @@ func (h *Handler) Update(c *gin.Context) {
 	if err := h.db.First(&user, "id = ?", c.Param("id")).Error; err != nil {
 		httpx.Error(c, http.StatusNotFound, "usuário não encontrado")
 		return
+	}
+	if middleware.Role(c) == "webdesigner" {
+		if !h.requireWebdesignerManager(c) {
+			return
+		}
+		if user.Role != "webdesigner" {
+			httpx.Error(c, http.StatusForbidden, "webdesigner só pode alterar outro webdesigner")
+			return
+		}
 	}
 	var req updateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -380,6 +424,15 @@ func (h *Handler) Delete(c *gin.Context) {
 	if err := h.db.First(&user, "id = ?", targetID).Error; err != nil {
 		httpx.Error(c, http.StatusNotFound, "usuário não encontrado")
 		return
+	}
+	if middleware.Role(c) == "webdesigner" {
+		if !h.requireWebdesignerManager(c) {
+			return
+		}
+		if user.Role != "webdesigner" {
+			httpx.Error(c, http.StatusForbidden, "webdesigner só pode excluir outro webdesigner")
+			return
+		}
 	}
 	if isElevated(user.Role) && middleware.Role(c) != "admin" {
 		httpx.Error(c, http.StatusForbidden, "apenas admin pode excluir admin/coordenador")
