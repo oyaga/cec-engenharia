@@ -1135,10 +1135,10 @@ export default function Financeiro() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
                 {classes.map(cls => {
-                    const studentCount = cls.students[0]?.count || 0
+                    const classStudents = studentsData.filter(student => student.turma_id === cls.id)
+                    const studentCount = classStudents.length
                     if (studentCount === 0) return null
 
-                    const classStudents = studentsData.filter(student => student.turma_id === cls.id)
                     const revenue = classStudents.reduce((total, student) => {
                         const contracted = Math.max(0, Number(student.base_value || 0) - Number(student.discount_value || 0))
                         return total + (contracted || Number(cls.course_value || 0))
@@ -1205,18 +1205,19 @@ export default function Financeiro() {
             <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)', margin: '2rem 0 0 0' }}>Cursos EAD / Online</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
                 {lmsCourses.map(course => {
-                    const studentCount = course.classes?.reduce((acc, curr) => acc + (curr.students[0]?.count || 0), 0) || 0
+                    const courseClassIds = new Set(
+                        classes.filter(cls => cls.lms_course_id === course.id).map(cls => cls.id)
+                    )
+                    const courseStudents = studentsData.filter(student => courseClassIds.has(student.turma_id))
+                    const studentCount = courseStudents.length
                     if (studentCount === 0) return null
 
-                    const courseStudents = studentsData.filter(student =>
-                        course.classes?.some(cls => cls.id === student.turma_id)
-                    )
                     const revenue = courseStudents.reduce((total, student) => {
                         const contracted = Math.max(0, Number(student.base_value || 0) - Number(student.discount_value || 0))
                         return total + (contracted || Number(course.default_value || course.price_pix || 0))
                     }, 0)
                     const specificCosts = expenses
-                        .filter(e => course.classes?.some(c => c.id === e.class_id))
+                        .filter(e => courseClassIds.has(e.class_id))
                         .reduce((acc, curr) => acc + curr.amount, 0)
                     
                     const taxes = revenue * 0.15
