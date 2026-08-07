@@ -114,6 +114,24 @@ func (h *Handler) resolvePrice(req checkoutRequest) (float64, *models.LMSCourse)
 	if val == 0 {
 		val = pick(course.DefaultValue)
 	}
+	// A Secretaria define os valores comerciais na turma. Quando o catálogo do
+	// curso não tem preço, usa a próxima turma vinculada ao curso para manter o
+	// checkout igual ao valor exibido no site.
+	if val == 0 {
+		var class models.Class
+		classQuery := h.db.Where("lms_course_id = ?", course.ID)
+		if err := classQuery.Where("start_date >= CURRENT_DATE").Order("start_date ASC").First(&class).Error; err != nil {
+			_ = h.db.Where("lms_course_id = ?", course.ID).Order("created_at DESC").First(&class).Error
+		}
+		switch req.PaymentMethod {
+		case "pix":
+			val = class.PriceCash
+		case "credit_card":
+			val = class.PriceCard10x
+		case "boleto":
+			val = class.PriceInstallments3x
+		}
+	}
 	return val, &course
 }
 

@@ -342,7 +342,7 @@ func (h *Handler) UpcomingClasses(c *gin.Context) {
 func (h *Handler) PublicUpcomingClasses(c *gin.Context) {
 	rows := []map[string]any{}
 	h.db.Table("classes").
-		Select("course_name, start_date").
+		Select("id, name, course_name, lms_course_id, start_date, price_cash, price_card_10x, price_installments_3x, card_installments, boleto_installments").
 		Where("start_date >= CURRENT_DATE").
 		Order("start_date ASC").Find(&rows)
 	c.JSON(http.StatusOK, gin.H{"classes": rows})

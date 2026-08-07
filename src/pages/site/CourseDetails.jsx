@@ -12,6 +12,7 @@ import Navbar from '../../components/site/Navbar';
 import Footer from '../../components/site/Footer';
 import AdminToolbar from '../../components/site/AdminToolbar';
 import { coursesApi } from '../../services/academic';
+import { upcomingClassesApi } from '../../services/misc';
 
 const DEFAULT_COURSE_IMAGES = [
   'https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=1200&auto=format&fit=crop',
@@ -82,7 +83,10 @@ const CourseDetails = () => {
       setDbCourse(null);
       setDbPricing(null);
       try {
-        const { courses } = await coursesApi.listPublic();
+        const [{ courses }, { classes }] = await Promise.all([
+          coursesApi.listPublic(),
+          upcomingClassesApi.listPublic(),
+        ]);
         const matchingCourse = (courses || []).find(item => (
           item.id === slug ||
           normalizeSlug(item.slug) === routeSlug ||
@@ -119,6 +123,26 @@ const CourseDetails = () => {
 
         if (hasOfficialPricing) {
           setDbPricing(pricingCourse);
+          return;
+        }
+
+        const matchingClass = (classes || []).find(item =>
+          item.lms_course_id === pricingCourse?.id ||
+          normalizeSlug(item.course_name) === normalizeSlug(pricingCourse?.title) ||
+          normalizeSlug(item.course_name) === routeSlug
+        );
+        if (matchingClass) {
+          const classPricing = {
+            ...pricingCourse,
+            title: pricingCourse?.title || matchingClass.course_name,
+            price_pix: Number(matchingClass.price_cash) || null,
+            price_card: Number(matchingClass.price_card_10x) || null,
+            price_boleto: Number(matchingClass.price_installments_3x) || null,
+            max_installments: Number(matchingClass.card_installments) || null,
+          };
+          if ([classPricing.price_pix, classPricing.price_card, classPricing.price_boleto].some(value => Number(value) > 0)) {
+            setDbPricing(classPricing);
+          }
         }
       } catch {
         console.warn('Preços dinâmicos indisponíveis, usando CMS editável');
@@ -403,26 +427,33 @@ const CourseDetails = () => {
                       Pagamento seguro processado via Asaas
                     </p>
                   </>
-                ) : (
+                ) : isEditing ? (
                   <>
                     <div className="price-box">
                       <div className="price-item">
                         <span>Cartão de Crédito:</span>
-                        <strong><EditableText path={`course_details.${slug}.investment.credit`} initialValue={data.investment.credit} /></strong>
+                        <strong><EditableText path={`course_details.${slug}.investment.credit`} initialValue={data.investment?.credit || 'Consulte condições de pagamento'} /></strong>
                       </div>
                       <div className="price-item highlighted">
                         <span>PIX / Dinheiro (DESCONTO):</span>
-                        <strong><EditableText path={`course_details.${slug}.investment.pix`} initialValue={data.investment.pix} /></strong>
+                        <strong><EditableText path={`course_details.${slug}.investment.pix`} initialValue={data.investment?.pix || 'Consulte o valor à vista'} /></strong>
                       </div>
                       <div className="price-item">
                         <span>Boleto:</span>
-                        <EditableText path={`course_details.${slug}.investment.boleto`} initialValue={data.investment.boleto} />
+                        <EditableText path={`course_details.${slug}.investment.boleto`} initialValue={data.investment?.boleto || 'Condições sob consulta'} />
                       </div>
                     </div>
                     <div className="tip-box">
-                      <EditableText path={`course_details.${slug}.investment.tip`} initialValue={data.investment.tip} />
+                      <EditableText path={`course_details.${slug}.investment.tip`} initialValue={data.investment?.tip || 'Fale com nossa equipe para conhecer as condições disponíveis.'} />
                     </div>
                   </>
+                ) : (
+                  <div className="price-box">
+                    <div className="price-item highlighted">
+                      <span>Valores e condições de pagamento</span>
+                      <strong>Consulte a equipe CEC</strong>
+                    </div>
+                  </div>
                 )}
               </div>
 
