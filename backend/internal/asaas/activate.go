@@ -90,7 +90,6 @@ func (h *Handler) activateStudent(enr *models.Enrollment) {
 
 	// 2) Turma: preserva a reserva enquanto houver vaga. Se a turma tiver sido
 	//    preenchida manualmente durante o pagamento, avança para a próxima.
-	var turma models.Class
 	var turmaID *uuid.UUID
 	var candidates []models.Class
 	classQuery := h.db.Where("start_date >= CURRENT_DATE OR is_immediate_start = ?", true).
@@ -123,7 +122,6 @@ func (h *Handler) activateStudent(enr *models.Enrollment) {
 				candidate.ID, enr.ID, []string{"pending", "pending_payment", "pendente"}, time.Now().Add(-30*time.Minute), "paid").
 			Count(&reservations)
 		if active+reservations < int64(capacity) {
-			turma = candidate
 			id := candidate.ID
 			turmaID = &id
 			break
