@@ -57,7 +57,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	if err := h.db.Create(&s).Error; err != nil {
-		httpx.Error(c, http.StatusInternalServerError, "falha ao criar colaborador")
+		httpx.Error(c, http.StatusConflict, "falha ao criar colaborador: CPF, e-mail ou usuário já vinculado")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"staff": s})

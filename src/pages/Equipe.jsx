@@ -375,7 +375,16 @@ export default function Equipe() {
                 try {
                     await staffApi.create(staffPayload)
                 } catch (staffInsertError) {
-                    console.warn('Erro ao inserir na tabela staff:', staffInsertError.message)
+                    console.error('Erro ao inserir na tabela staff:', staffInsertError)
+                    if (createdUserId) {
+                        try {
+                            await usersApi.remove(createdUserId)
+                            createdUserId = null
+                        } catch (rollbackError) {
+                            console.error('Falha ao desfazer usuário após erro no cadastro da Equipe:', rollbackError)
+                        }
+                    }
+                    throw new Error(`Não foi possível concluir o cadastro na Equipe: ${staffInsertError.message}`)
                 }
 
                 alert('Colaborador cadastrado com sucesso!')
@@ -1073,11 +1082,11 @@ export default function Equipe() {
                                     <option value="atendente">Atendente (Secretaria)</option>
                                     <option value="coordenador">Coordenador Pedagógico</option>
                                     <option value="financeiro">Gestor Financeiro</option>
-                                    <option value="marketing">Marketing / Webdesigner</option>
+                                    <option value="webdesigner">Marketing / Webdesigner</option>
                                     <option value="instrutor">Instrutor Técnico (PR-127)</option>
                                     <option value="administrativo">Administrativo Interno</option>
-                                    <option value="financeiro_externo">Financeiro Externo</option>
-                                    <option value="outro">Outro Cargo Interno</option>
+                                    <option value="financeiro">Financeiro Externo</option>
+                                    <option value="administrativo">Outro Cargo Interno</option>
                                 </select>
                             </div>
 
