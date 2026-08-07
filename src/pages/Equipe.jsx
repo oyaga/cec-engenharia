@@ -298,7 +298,7 @@ export default function Equipe() {
                     role: formData.role,
                     email: formData.email || null,
                     phone: formData.phone || null,
-                    admission_date: formData.admission_date || null,
+                    admission_date: formData.admission_date ? `${formData.admission_date}T00:00:00Z` : null,
                     salary: formData.salary ? parseFloat(formData.salary) : null,
                     has_platform_access: formData.has_platform_access,
                     user_id: targetStaff?.user_id || null
@@ -366,7 +366,7 @@ export default function Equipe() {
                     role: formData.role,
                     email: formData.email || null,
                     phone: formData.phone || null,
-                    admission_date: formData.admission_date || null,
+                    admission_date: formData.admission_date ? `${formData.admission_date}T00:00:00Z` : null,
                     salary: formData.salary ? parseFloat(formData.salary) : null,
                     has_platform_access: formData.has_platform_access,
                     is_active: true
@@ -1126,7 +1126,7 @@ export default function Equipe() {
                                     {!editingStaffId && (
                                         <div className="form-group">
                                             <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>Senha Provisória *</label>
-                                            <input type="password" required={formData.has_platform_access && !editingStaffId} minLength={6} className="form-control" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Mínimo 6 caracteres" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                            <input type="password" autoComplete="new-password" required={formData.has_platform_access && !editingStaffId} minLength={6} className="form-control" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Mínimo 6 caracteres" style={{ padding: '0.65rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                                         </div>
                                     )}
 
