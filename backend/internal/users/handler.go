@@ -86,6 +86,18 @@ type createRequest struct {
 	Permissions map[string]any `json:"permissions"`
 }
 
+func permissionsForRole(role string, requested map[string]any) map[string]any {
+	permissions := map[string]any{}
+	for key, value := range requested {
+		permissions[key] = value
+	}
+	if role == "webdesigner" {
+		permissions["edit_site"] = true
+		permissions["access_config"] = true
+	}
+	return permissions
+}
+
 // Create: POST /users
 func (h *Handler) Create(c *gin.Context) {
 	var req createRequest
@@ -130,8 +142,8 @@ func (h *Handler) Create(c *gin.Context) {
 		IsActive:           true,
 		MustChangePassword: true, // senha criada por gestor é temporária
 	}
-	if req.Permissions != nil {
-		user.Permissions = toJSON(req.Permissions)
+	if req.Permissions != nil || req.Role == "webdesigner" {
+		user.Permissions = toJSON(permissionsForRole(req.Role, req.Permissions))
 	}
 	if err := h.db.Create(&user).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao criar usuário")
@@ -214,8 +226,16 @@ func (h *Handler) Update(c *gin.Context) {
 		}
 		updates["role"] = *req.Role
 	}
+	effectiveRole := user.Role
+	if req.Role != nil {
+		effectiveRole = *req.Role
+	}
 	if req.Permissions != nil {
-		updates["permissions"] = toJSON(req.Permissions)
+		updates["permissions"] = toJSON(permissionsForRole(effectiveRole, req.Permissions))
+	} else if req.Role != nil && *req.Role == "webdesigner" {
+		currentPermissions := map[string]any{}
+		_ = json.Unmarshal(user.Permissions, &currentPermissions)
+		updates["permissions"] = toJSON(permissionsForRole(*req.Role, currentPermissions))
 	}
 
 	if err := h.db.Model(&user).Updates(updates).Error; err != nil {

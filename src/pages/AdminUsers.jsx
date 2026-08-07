@@ -5,7 +5,7 @@ import AdminToolbar from '../components/AdminToolbar';
 import { useEdit } from '../context/EditContext';
 
 const AdminUsers = () => {
-  const { userProfile: currentUserProfile, hasPermission } = useEdit();
+  const { userProfile: currentUserProfile } = useEdit();
   
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,11 @@ const AdminUsers = () => {
         email: form.email,
         password: form.password,
         role: 'webdesigner',
-        permissions: { can_add_webdesigners: form.canAddWebdesigners },
+        permissions: {
+          edit_site: true,
+          access_config: true,
+          can_add_webdesigners: form.canAddWebdesigners,
+        },
       });
 
       setStatus({ type: 'success', msg: `Usuário ${form.email} criado como Webdesigner com sucesso!` });
