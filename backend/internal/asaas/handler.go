@@ -119,9 +119,17 @@ func (h *Handler) resolvePrice(req checkoutRequest) (float64, *models.LMSCourse)
 	// checkout igual ao valor exibido no site.
 	if val == 0 {
 		var class models.Class
+		if req.EnrollmentID != nil {
+			var enrollment models.Enrollment
+			if h.db.First(&enrollment, "id = ?", *req.EnrollmentID).Error == nil && enrollment.TurmaID != nil {
+				_ = h.db.First(&class, "id = ?", *enrollment.TurmaID).Error
+			}
+		}
 		classQuery := h.db.Where("lms_course_id = ?", course.ID)
-		if err := classQuery.Where("start_date >= CURRENT_DATE").Order("start_date ASC").First(&class).Error; err != nil {
-			_ = h.db.Where("lms_course_id = ?", course.ID).Order("created_at DESC").First(&class).Error
+		if class.ID == uuid.Nil {
+			if err := classQuery.Where("start_date >= CURRENT_DATE").Order("start_date ASC").First(&class).Error; err != nil {
+				_ = h.db.Where("lms_course_id = ?", course.ID).Order("created_at DESC").First(&class).Error
+			}
 		}
 		switch req.PaymentMethod {
 		case "pix":

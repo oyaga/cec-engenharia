@@ -88,20 +88,55 @@ func (h *Handler) activateStudent(enr *models.Enrollment) {
 		}
 	}
 
-	// 2) Turma: a escolhida na matrícula tem prioridade; senão, resolve pelo
-	//    nome do curso, preferindo a que tem curso EAD vinculado.
+	// 2) Turma: preserva a reserva enquanto houver vaga. Se a turma tiver sido
+	//    preenchida manualmente durante o pagamento, avança para a próxima.
 	var turma models.Class
 	var turmaID *uuid.UUID
-	if enr.TurmaID != nil && h.db.First(&turma, "id = ?", *enr.TurmaID).Error == nil {
-		turmaID = &turma.ID
-	} else if h.db.Where("course_name = ? AND lms_course_id IS NOT NULL", enr.CourseName).
-		Order("start_date DESC NULLS LAST").First(&turma).Error == nil {
-		turmaID = &turma.ID
-	} else if h.db.Where("course_name = ?", enr.CourseName).
-		Order("created_at DESC").First(&turma).Error == nil {
-		turmaID = &turma.ID
+	var candidates []models.Class
+	classQuery := h.db.Where("start_date >= CURRENT_DATE OR is_immediate_start = ?", true).
+		Order("start_date ASC NULLS FIRST, created_at ASC")
+	if enr.TurmaID != nil {
+		var reserved models.Class
+		if h.db.First(&reserved, "id = ?", *enr.TurmaID).Error == nil {
+			candidates = append(candidates, reserved)
+			if reserved.LMSCourseID != nil {
+				classQuery = classQuery.Where("lms_course_id = ? AND id <> ?", *reserved.LMSCourseID, reserved.ID)
+			} else {
+				classQuery = classQuery.Where("course_name = ? AND id <> ?", reserved.CourseName, reserved.ID)
+			}
+		}
 	} else {
+		classQuery = classQuery.Where("course_name = ?", enr.CourseName)
+	}
+	var alternatives []models.Class
+	classQuery.Find(&alternatives)
+	candidates = append(candidates, alternatives...)
+	for _, candidate := range candidates {
+		capacity := candidate.MaxCapacity
+		if capacity <= 0 {
+			capacity = 10
+		}
+		var active, reservations int64
+		h.db.Model(&models.Student{}).Where("turma_id = ? AND status <> ?", candidate.ID, "cancelada").Count(&active)
+		h.db.Model(&models.Enrollment{}).
+			Where("turma_id = ? AND id <> ? AND ((status IN ? AND created_at >= ?) OR (status = ? AND processed_at IS NULL))",
+				candidate.ID, enr.ID, []string{"pending", "pending_payment", "pendente"}, time.Now().Add(-30*time.Minute), "paid").
+			Count(&reservations)
+		if active+reservations < int64(capacity) {
+			turma = candidate
+			id := candidate.ID
+			turmaID = &id
+			break
+		}
+	}
+	if turmaID == nil {
 		log.Printf("[asaas] nenhuma turma para o curso %q — aluno criado sem turma (secretaria vincula)", enr.CourseName)
+		h.db.Model(enr).Updates(map[string]any{"turma_id": nil, "status": "paid_waiting_class"})
+		enr.TurmaID = nil
+		enr.Status = "paid_waiting_class"
+	} else if enr.TurmaID == nil || *enr.TurmaID != *turmaID {
+		h.db.Model(enr).Update("turma_id", *turmaID)
+		enr.TurmaID = turmaID
 	}
 
 	// 3) Cadastro de aluno — cria ou vincula (CPF é único).

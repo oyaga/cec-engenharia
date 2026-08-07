@@ -179,7 +179,7 @@ const Enrollment = () => {
       const errMsg = err.message || '';
       
       // Se for erro de validação amigável da nossa Edge Function, exibe alerta e não abre WhatsApp
-      if (errMsg.includes('CPF') || errMsg.includes('CNPJ') || errMsg.includes('inválido') || errMsg.includes('documento')) {
+      if (errMsg.includes('CPF') || errMsg.includes('CNPJ') || errMsg.includes('inválido') || errMsg.includes('documento') || errMsg.includes('lotada')) {
         alert(errMsg);
       } else {
         // Contingência do WhatsApp para erros inesperados

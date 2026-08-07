@@ -7,12 +7,15 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
 	"github.com/PITICALYN/cec-backend/internal/mailer"
 	"github.com/PITICALYN/cec-backend/internal/models"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Handler struct {
@@ -396,7 +399,50 @@ func (h *Handler) CreateEnrollmentPublic(c *gin.Context) {
 	if in.Status == "" {
 		in.Status = "pending"
 	}
-	if err := h.db.Create(&in).Error; err != nil {
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		if in.TurmaID == nil {
+			var course models.LMSCourse
+			tx.Where("LOWER(title) = LOWER(?)", in.CourseName).First(&course)
+			q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("start_date >= CURRENT_DATE OR is_immediate_start = ?", true).
+				Order("start_date ASC NULLS FIRST, created_at ASC")
+			if course.ID != uuid.Nil {
+				q = q.Where("lms_course_id = ?", course.ID)
+			} else {
+				q = q.Where("LOWER(course_name) = LOWER(?)", in.CourseName)
+			}
+			var candidates []models.Class
+			if err := q.Find(&candidates).Error; err != nil {
+				return err
+			}
+			for _, class := range candidates {
+				capacity := class.MaxCapacity
+				if capacity <= 0 {
+					capacity = 10
+				}
+				var students, reservations int64
+				tx.Model(&models.Student{}).Where("turma_id = ? AND status <> ?", class.ID, "cancelada").Count(&students)
+				tx.Model(&models.Enrollment{}).
+					Where("turma_id = ? AND ((status IN ? AND created_at >= ?) OR (status = ? AND processed_at IS NULL))",
+						class.ID, []string{"pending", "pending_payment", "pendente"}, time.Now().Add(-30*time.Minute), "paid").
+					Count(&reservations)
+				if students+reservations < int64(capacity) {
+					id := class.ID
+					in.TurmaID = &id
+					break
+				}
+			}
+			if len(candidates) > 0 && in.TurmaID == nil {
+				return gorm.ErrRecordNotFound
+			}
+		}
+		return tx.Create(&in).Error
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.Error(c, http.StatusConflict, "todas as turmas deste curso estão lotadas — consulte a próxima abertura")
+			return
+		}
 		httpx.Error(c, http.StatusInternalServerError, "falha ao registrar pré-matrícula")
 		return
 	}
