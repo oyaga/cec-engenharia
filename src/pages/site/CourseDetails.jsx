@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { 
   CheckCircle, Clock, Calendar, Laptop, Award, 
   MapPin, CreditCard, ArrowRight, HelpCircle, ChevronDown
