@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { 
   CheckCircle, Clock, Calendar, Laptop, Award, 
   MapPin, CreditCard, ArrowRight, HelpCircle, ChevronDown
@@ -79,10 +78,9 @@ const CourseDetails = () => {
   // Busca todos os cursos com o mesmo code e seleciona o principal (não retreinamento)
   useEffect(() => {
     const fetchPricing = async () => {
+      setDbCourse(null);
+      setDbPricing(null);
       try {
-        const codeA = slug.toUpperCase();
-        const codeB = slug.toUpperCase().replace(/-/g, '_');
-
         const { courses } = await coursesApi.listPublic();
         const matchingCourse = (courses || []).find(item => (
           item.id === slug ||
@@ -91,14 +89,14 @@ const CourseDetails = () => {
           normalizeSlug(item.title) === routeSlug
         ));
         setDbCourse(matchingCourse || null);
-        const data = (courses || []).filter(c => {
-          const code = (c.code || '').toUpperCase();
-          return code === codeA || code === codeB;
-        });
+        const sameCodeCourses = (courses || []).filter(item =>
+          normalizeSlug(item.code) === routeSlug
+        );
+        let pricingCourse = matchingCourse;
 
-        if (data && data.length > 0) {
+        if (!pricingCourse && sameCodeCourses.length > 0) {
           // Filtrar retreinamentos — priorizar o curso principal
-          const mainCourses = data.filter(c => {
+          const mainCourses = sameCodeCourses.filter(c => {
             const t = (c.title || '').toLowerCase();
             const code = (c.code || '').toUpperCase();
             // Exclui cursos cujo título indica retreinamento
@@ -107,34 +105,31 @@ const CourseDetails = () => {
             const isRetrainCode = code.startsWith('R') && code.length > 3;
             return !isRetrain && !isRetrainCode;
           });
-
-          // Usar o curso principal se encontrado, senão qualquer um
-          const best = mainCourses.length > 0 ? mainCourses[0] : data[0];
-          
-          if (best && (best.price_pix || best.price_card)) {
-            setDbPricing(best);
-          }
+          pricingCourse = mainCourses[0] || sameCodeCourses[0];
         }
-      } catch (err) {
+
+        const hasOfficialPricing = pricingCourse && [
+          pricingCourse.price_pix,
+          pricingCourse.price_card,
+          pricingCourse.price_boleto,
+          pricingCourse.price_financing,
+          pricingCourse.default_value,
+        ].some(value => Number(value) > 0);
+
+        if (hasOfficialPricing) {
+          setDbPricing(pricingCourse);
+        }
+      } catch {
         console.warn('Preços dinâmicos indisponíveis, usando CMS editável');
       } finally {
         setCatalogLoaded(true);
       }
     };
     if (slug) fetchPricing();
-  }, [slug]);
+  }, [slug, routeSlug]);
 
   const handleMatricula = (course) => {
     navigate(`/matricular-se?course=${encodeURIComponent(course.title)}`);
-  };
-
-  const redirectToWhatsApp = (course) => {
-    const message = encodeURIComponent(
-      `Olá! Tenho interesse em me matricular no curso:\n\n` +
-      `📚 *${course.title || data.title}* (${course.code || ''})\n\n` +
-      `Poderia me informar sobre disponibilidade?`
-    );
-    window.open(`https://wa.me/5521965554180?text=${message}`, '_blank');
   };
 
   if (!course && !isEditing && !catalogLoaded) {
