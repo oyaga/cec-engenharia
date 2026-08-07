@@ -1015,21 +1015,33 @@ export default function LMSAdmin() {
             {/* RESUMO DE CARGA HORÁRIA */}
             {(() => {
                 let totalMin = 0
+                let lessonCount = 0
+                let lessonsWithoutMinimum = 0
                 Object.values(lessons).forEach(lessArr => {
-                    lessArr.forEach(l => totalMin += (l.min_watch_time_sec || 0) / 60)
+                    lessArr.forEach(l => {
+                        lessonCount += 1
+                        const minimumSeconds = Number(l.min_watch_time_sec || 0)
+                        if (minimumSeconds <= 0) lessonsWithoutMinimum += 1
+                        totalMin += minimumSeconds / 60
+                    })
                 })
                 Object.values(quizzes).forEach(q => {
                     totalMin += (q.time_limit_minutes || 0)
                 })
                 
                 const goalMin = (selectedCourse?.min_theoretical_hours || 0) * 60
-                const isUnder = totalMin < goalMin
+                const needsConfiguration = lessonCount > 0 && lessonsWithoutMinimum > 0
+                const isUnder = !needsConfiguration && goalMin > 0 && totalMin < goalMin
+                const statusColor = needsConfiguration ? '#D97706' : (isUnder ? '#EF4444' : '#10B981')
+                const statusTextColor = needsConfiguration ? '#92400E' : (isUnder ? '#991B1B' : '#065F46')
+                const statusBackground = needsConfiguration ? '#FFFBEB' : (isUnder ? '#FEF2F2' : '#F0FDF4')
+                const statusBorder = needsConfiguration ? '#FDE68A' : (isUnder ? '#FECACA' : '#BBF7D0')
                 
                 return (
                     <div style={{ 
                         padding: '1rem', 
-                        backgroundColor: isUnder ? '#FEF2F2' : '#F0FDF4', 
-                        border: `1px solid ${isUnder ? '#FECACA' : '#BBF7D0'}`, 
+                        backgroundColor: statusBackground,
+                        border: `1px solid ${statusBorder}`,
                         borderRadius: '8px',
                         marginBottom: '2rem',
                         display: 'flex',
@@ -1039,23 +1051,25 @@ export default function LMSAdmin() {
                         gap: '1rem'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                            <div style={{ padding: '0.5rem', backgroundColor: isUnder ? '#EF4444' : '#10B981', color: 'white', borderRadius: '50%' }}>
+                            <div style={{ padding: '0.5rem', backgroundColor: statusColor, color: 'white', borderRadius: '50%' }}>
                                 <Clock size={20} />
                             </div>
                             <div>
-                                <h4 style={{ margin: 0, fontSize: '1rem', color: isUnder ? '#991B1B' : '#065F46' }}>
-                                    Carga Horária: {Math.floor(totalMin / 60)}h {Math.round(totalMin % 60)}min / {selectedCourse?.min_theoretical_hours}h total
+                                <h4 style={{ margin: 0, fontSize: '1rem', color: statusTextColor }}>
+                                    Carga teórica prevista: {selectedCourse?.min_theoretical_hours || 0}h · Conteúdo cronometrado: {Math.floor(totalMin / 60)}h {Math.round(totalMin % 60)}min
                                 </h4>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: isUnder ? '#B91C1C' : '#059669' }}>
-                                    {isUnder 
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: statusColor }}>
+                                    {needsConfiguration
+                                        ? `${lessonsWithoutMinimum} de ${lessonCount} aula(s) estão sem tempo mínimo configurado. Edite cada aula para definir uma exigência real.`
+                                        : isUnder
                                         ? `Atenção: Faltam ${Math.floor((goalMin - totalMin) / 60)}h ${Math.round((goalMin - totalMin) % 60)}min para cumprir a meta.`
                                         : 'Meta de carga horária teórica atingida! ✅'
                                     }
                                 </p>
                             </div>
                         </div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isUnder ? '#EF4444' : '#10B981' }}>
-                            {Math.round((totalMin / (goalMin || 1)) * 100)}%
+                        <div style={{ fontSize: needsConfiguration ? '0.85rem' : '1.25rem', fontWeight: 800, color: statusColor }}>
+                            {needsConfiguration ? 'CONFIGURAR AULAS' : `${Math.round((totalMin / (goalMin || 1)) * 100)}%`}
                         </div>
                     </div>
                 )
