@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/PITICALYN/cec-backend/internal/httpx"
@@ -645,17 +646,67 @@ func (h *Handler) ListCertificates(c *gin.Context) {
 
 // IssueCertificate: POST /lms/certificates
 func (h *Handler) IssueCertificate(c *gin.Context) {
-	var cert models.LMSIssuedCertificate
-	if err := c.ShouldBindJSON(&cert); err != nil {
+	var body struct {
+		StudentID uuid.UUID      `json:"student_id" binding:"required"`
+		CourseID  *uuid.UUID     `json:"course_id"`
+		Code      string         `json:"code"`
+		Metadata  datatypes.JSON `json:"metadata"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
 		httpx.Error(c, http.StatusBadRequest, "dados inválidos")
 		return
 	}
-	cert.ID = uuid.Nil
-	if cert.Code == "" {
-		cert.Code = "CEC-" + uuid.New().String()[:8]
+
+	// A gestão trabalha com o ID de students; certificados pertencem ao usuário
+	// autenticável. Aceita também user_id para compatibilidade com integrações.
+	var student models.Student
+	if err := h.db.Where("id = ? OR user_id = ?", body.StudentID, body.StudentID).First(&student).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "aluno não encontrado")
+		return
+	}
+	if strings.EqualFold(student.Status, "cancelada") || strings.EqualFold(student.Status, "cancelado") {
+		httpx.Error(c, http.StatusUnprocessableEntity, "aluno cancelado não pode receber certificado")
+		return
+	}
+	if student.UserID == nil {
+		httpx.Error(c, http.StatusUnprocessableEntity, "aluno sem conta de acesso vinculada")
+		return
+	}
+
+	courseID := body.CourseID
+	if courseID == nil && student.TurmaID != nil {
+		var class models.Class
+		if h.db.First(&class, "id = ?", *student.TurmaID).Error == nil {
+			courseID = class.LMSCourseID
+		}
+	}
+	if courseID == nil {
+		httpx.Error(c, http.StatusUnprocessableEntity, "turma sem curso LMS vinculado")
+		return
+	}
+	var course models.LMSCourse
+	if err := h.db.First(&course, "id = ?", *courseID).Error; err != nil {
+		httpx.Error(c, http.StatusNotFound, "curso não encontrado")
+		return
+	}
+	var existing models.LMSIssuedCertificate
+	if h.db.First(&existing, "student_id = ? AND course_id = ?", *student.UserID, course.ID).Error == nil {
+		c.JSON(http.StatusOK, gin.H{"certificate": existing, "already_issued": true})
+		return
+	}
+
+	code := body.Code
+	if code == "" {
+		code = "CEC-" + uuid.New().String()[:8]
+	}
+	cert := models.LMSIssuedCertificate{
+		StudentID: student.UserID,
+		CourseID:  &course.ID,
+		Code:      code,
+		Metadata:  body.Metadata,
 	}
 	if err := h.db.Create(&cert).Error; err != nil {
-		httpx.Error(c, http.StatusConflict, "falha ao emitir certificado")
+		httpx.Error(c, http.StatusConflict, "falha ao emitir certificado: código já utilizado")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"certificate": cert})

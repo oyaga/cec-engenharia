@@ -66,22 +66,33 @@ export default function Certificados() {
             // 3. Alunos elegíveis (sem certificado ainda)
             const { students: stdData } = await studentsApi.list()
             const issuedIds = new Set((emsData || []).map(e => e.student_id))
+            const classesById = new Map((clsData || []).map(item => [item.id, item]))
             const formattedPendentes = (stdData || [])
-                .filter(s => !issuedIds.has(s.id))
-                .map(s => ({
+                .filter(s => {
+                    const status = String(s.status || '').toLocaleLowerCase('pt-BR')
+                    const linkedClass = classesById.get(s.turma_id)
+                    return status !== 'cancelada' && status !== 'cancelado' &&
+                        Boolean(s.user_id) && Boolean(linkedClass?.lms_course_id) &&
+                        !issuedIds.has(s.user_id)
+                })
+                .map(s => {
+                    const linkedClass = classesById.get(s.turma_id)
+                    return ({
                     id: s.id,
+                    user_id: s.user_id,
                     full_name: s.full_name || 'Estudante',
                     cpf: s.cpf || '',
                     class_name: s.turma_name || 'Sem Turma',
                     class_id: s.turma_id || '',
                     course_name: s.turma_course || 'Sem Curso',
-                    course_id: '',
+                    course_id: linkedClass?.lms_course_id || '',
                     base_value: 0,
                     discount_value: 0,
                     status_frequencia: 'Aprovada (>= 75%) ✅',
                     status_nota: 'Aprovada (>= 6.0) ✅',
                     created_at: s.created_at
-                }))
+                    })
+                })
             setPendentes(formattedPendentes)
 
             // 4. Template padrão (aba 2)
