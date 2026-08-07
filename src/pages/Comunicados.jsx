@@ -105,6 +105,14 @@ export default function Comunicados() {
             return
         }
 
+        if (form.expires_at) {
+            const selectedDate = new Date(`${form.expires_at}T23:59:59`)
+            if (selectedDate < new Date()) {
+                setErrorMsg('A data de validade não pode estar no passado.')
+                return
+            }
+        }
+
         setSaving(true)
         setErrorMsg('')
 

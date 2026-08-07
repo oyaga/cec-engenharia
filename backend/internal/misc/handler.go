@@ -206,12 +206,19 @@ func (h *Handler) chatClassUserIDs(classID uuid.UUID) []uuid.UUID {
 
 func (h *Handler) ListAnnouncements(c *gin.Context) {
 	list := []models.Announcement{}
-	if err := h.db.Where("expires_at IS NULL OR expires_at > NOW()").Order("is_pinned DESC, created_at DESC").Find(&list).Error; err != nil {
+	q := h.db.Order("is_pinned DESC, created_at DESC")
+	role := middleware.Role(c)
+	// A gestão precisa continuar vendo comunicados expirados para poder
+	// revisar, editar a validade ou excluir. Para os destinatários, eles
+	// permanecem ocultos assim que expiram.
+	if role != "admin" && role != "coordenador" {
+		q = q.Where("expires_at IS NULL OR expires_at > NOW()")
+	}
+	if err := q.Find(&list).Error; err != nil {
 		httpx.Error(c, http.StatusInternalServerError, "falha ao carregar comunicados")
 		return
 	}
 
-	role := middleware.Role(c)
 	if role != "admin" && role != "coordenador" {
 		filtered := make([]models.Announcement, 0, len(list))
 		for _, announcement := range list {

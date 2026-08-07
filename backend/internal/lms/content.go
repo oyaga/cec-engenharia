@@ -700,6 +700,7 @@ func (h *Handler) IssueCertificate(c *gin.Context) {
 		code = "CEC-" + uuid.New().String()[:8]
 	}
 	cert := models.LMSIssuedCertificate{
+		ID:        uuid.New(),
 		StudentID: student.UserID,
 		CourseID:  &course.ID,
 		Code:      code,
@@ -801,6 +802,7 @@ func (h *Handler) ClaimCertificate(c *gin.Context) {
 	metaJSON, _ := json.Marshal(meta)
 
 	cert := models.LMSIssuedCertificate{
+		ID:        uuid.New(),
 		StudentID: &sid,
 		CourseID:  &course.ID,
 		Code:      uuid.NewString(),
