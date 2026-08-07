@@ -20,7 +20,12 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
   };
 
   const currentValue = getNestedValue(content, path) || initialValue;
-  const savedSettings = getNestedValue(content, `${path}_settings`) || { scale: 1, y: 50 };
+  const storedSettings = getNestedValue(content, `${path}_settings`);
+  const savedSettings = {
+    ...(storedSettings || {}),
+    scale: storedSettings?.scale ?? 1,
+    y: storedSettings?.y ?? 50
+  };
 
   console.log(`[EditableImage] Renderizando ${path}:`, { currentValue, savedSettings });
 
@@ -40,15 +45,19 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     try {
       const cleanUrl = url.split('?')[0];
       return !!cleanUrl.match(/\.(mp4|webm|ogg|mov)$/i);
-    } catch (e) {
+    } catch {
       return false;
     }
   };
 
   useEffect(() => {
     setTempUrl(currentValue);
-    setTempSettings(savedSettings);
-  }, [isOpen, currentValue, JSON.stringify(savedSettings)]);
+    setTempSettings({
+      ...(storedSettings || {}),
+      scale: storedSettings?.scale ?? 1,
+      y: storedSettings?.y ?? 50
+    });
+  }, [isOpen, currentValue, storedSettings]);
 
   const handleUpdate = () => {
     console.log(`Atualizando ${path} com URL:`, tempUrl);
@@ -100,8 +109,9 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    transform: `scale(${savedSettings.scale || 1})`,
-    objectPosition: `center ${savedSettings.y || 50}%`,
+    transform: `scale(${savedSettings.scale})`,
+    transformOrigin: `center ${savedSettings.y}%`,
+    objectPosition: `center ${savedSettings.y}%`,
     transition: 'all 0.3s'
   };
 
@@ -112,12 +122,11 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
 
   const renderMedia = (url, style, customSettings) => {
     if (!url) return null;
-    
-    // Só adiciona timestamp se NÃO for um link temporário (blob:) e se estiver em modo de edição
+
+    // A URL precisa permanecer estável enquanto os controles da prévia mudam.
+    // Um timestamp novo em cada render reiniciava o carregamento da foto/vídeo.
+    const finalUrl = url;
     const isBlob = url.startsWith('blob:');
-    const finalUrl = (isBlob || !isEditing) ? url : (url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`);
-    
-    console.log(`[renderMedia] Renderizando SRC:`, finalUrl);
 
     const settings = customSettings || savedSettings;
 
@@ -236,6 +245,7 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
                {renderMedia(preview || tempUrl, {
                    width:'100%', height:'100%', objectFit:'cover',
                    transform: `scale(${tempSettings.scale})`,
+                   transformOrigin: `center ${tempSettings.y}%`,
                    objectPosition: `center ${tempSettings.y}%`
                }, tempSettings)}
                <div style={{ position:'absolute', top:10, left:10, background:'rgba(0,0,0,0.5)', color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'10px' }}>PRÉVIA</div>
@@ -250,11 +260,13 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>ZOOM</span>
-                <input type="range" min="1" max="3" step="0.1" value={tempSettings.scale} onChange={e => setTempSettings({...tempSettings, scale: parseFloat(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
+                <input type="range" min="1" max="3" step="0.1" value={tempSettings.scale ?? 1} onChange={e => setTempSettings({...tempSettings, scale: parseFloat(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
+                <span style={{ color:'#10b981', fontSize:'0.75rem', width:'40px' }}>{(tempSettings.scale ?? 1).toFixed(1)}×</span>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>POS. Y</span>
-                <input type="range" min="0" max="100" step="1" value={tempSettings.y} onChange={e => setTempSettings({...tempSettings, y: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
+                <input type="range" min="0" max="100" step="1" value={tempSettings.y ?? 50} onChange={e => setTempSettings({...tempSettings, y: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
+                <span style={{ color:'#10b981', fontSize:'0.75rem', width:'40px' }}>{tempSettings.y ?? 50}%</span>
               </div>
 
               {isVideo(preview || tempUrl, preview ? selectedFile : null) && (
