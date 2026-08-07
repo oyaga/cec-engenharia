@@ -116,9 +116,13 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
   };
 
   const containerStyle = {
-    maxWidth: savedSettings.width ? `${savedSettings.width}px` : '100%',
+    width: savedSettings.width ? `${savedSettings.width}px` : '100%',
+    maxWidth: '100%',
     margin: '0 auto'
   };
+
+  const previewWidth = tempSettings.width ?? 800;
+  const previewWidthPercent = Math.max(10, Math.min(100, (previewWidth / 1600) * 100));
 
   const renderMedia = (url, style, customSettings) => {
     if (!url) return null;
@@ -243,10 +247,12 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
             {/* Pré-visualização */}
             <div style={{ position:'relative', height:'180px', background:'#0f172a', borderRadius:'12px', overflow:'hidden', border:'1px solid #334155' }}>
                {renderMedia(preview || tempUrl, {
-                   width:'100%', height:'100%', objectFit:'cover',
+                   width:`${previewWidthPercent}%`, height:'100%', objectFit:'cover',
+                   margin:'0 auto', display:'block',
                    transform: `scale(${tempSettings.scale})`,
                    transformOrigin: `center ${tempSettings.y}%`,
-                   objectPosition: `center ${tempSettings.y}%`
+                   objectPosition: `center ${tempSettings.y}%`,
+                   transition:'width 0.15s ease, transform 0.15s ease, object-position 0.15s ease'
                }, tempSettings)}
                <div style={{ position:'absolute', top:10, left:10, background:'rgba(0,0,0,0.5)', color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'10px' }}>PRÉVIA</div>
             </div>
@@ -255,8 +261,8 @@ const EditableImage = ({ path, initialValue, className, alt = "Mídia Editável"
             <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem', background:'#0f172a', padding:'1.25rem', borderRadius:'12px' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>LARGURA</span>
-                <input type="range" min="100" max="1600" step="10" value={tempSettings.width || 800} onChange={e => setTempSettings({...tempSettings, width: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
-                <span style={{ color:'#10b981', fontSize:'0.75rem', width:'40px' }}>{tempSettings.width || 'Auto'}</span>
+                <input type="range" min="100" max="1600" step="10" value={tempSettings.width ?? 800} onChange={e => setTempSettings({...tempSettings, width: parseInt(e.target.value)})} style={{ flex:1, accentColor:'#10b981' }} />
+                <span style={{ color:'#10b981', fontSize:'0.75rem', width:'52px' }}>{tempSettings.width ?? 800}px</span>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
                 <span style={{ color:'#94a3b8', fontSize:'0.75rem', width:'60px', fontWeight:'700' }}>ZOOM</span>
