@@ -265,7 +265,12 @@ func New(cfg *config.Config, gdb *gorm.DB, tm *auth.TokenManager, cch *cache.Cac
 		mg.POST("/general-announcements", miscH.CreateAnnouncement)
 		mg.PUT("/general-announcements/:id", miscH.UpdateAnnouncement)
 		mg.DELETE("/general-announcements/:id", miscH.DeleteAnnouncement)
-		mg.PUT("/site-content", cch.InvalidateOn(ckSiteContent), miscH.SaveSiteContent)
+		v1.PUT("/site-content",
+			middleware.RequireAuth(tm),
+			middleware.RequireRole("admin", "coordenador", "webdesigner"),
+			cch.InvalidateOn(ckSiteContent),
+			miscH.SaveSiteContent,
+		)
 
 		// ─── Students (alunos) ───
 		studentsH := students.NewHandler(gdb, ml, cfg.PublicURL)
