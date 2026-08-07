@@ -3170,13 +3170,16 @@ export default function AreaAluno() {
         /* Chat como JANELA: preenche a area a direita do menu, abaixo do topo. */
         .aa-chat-window {
           position: fixed;
-          top: 70px; left: 260px; right: 0; bottom: 0;
+          inset: 70px 0 0 260px;
+          height: calc(100dvh - 70px);
+          min-height: 0;
           background: #ffffff;
           z-index: 20;
           display: flex;
+          overflow: hidden;
         }
         @media (max-width: 768px) {
-          .aa-chat-window { left: 0; top: 71px; }
+          .aa-chat-window { inset: 70px 0 0; height: calc(100dvh - 70px); }
         }
       `}</style>
       {getActiveTabContent()}

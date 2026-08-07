@@ -5,15 +5,8 @@ import ChatPanel from '../components/ChatPanel';
 // Professores e Equipe).
 export default function StaffChat() {
   return (
-    <div className="animate-fade-in" style={{ padding: '1.5rem' }}>
-      <div style={{
-        height: 'calc(100vh - 130px)',
-        minHeight: 500,
-        border: '1px solid #e8edf3',
-        borderRadius: 18,
-        overflow: 'hidden',
-        boxShadow: '0 18px 50px -24px rgba(15, 23, 42, 0.25)',
-      }}>
+    <div className="staff-chat-page animate-fade-in">
+      <div className="staff-chat-frame">
         <ChatPanel />
       </div>
     </div>

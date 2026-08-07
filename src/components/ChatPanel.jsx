@@ -20,6 +20,7 @@ export default function ChatPanel() {
   const [onlineIds, setOnlineIds] = useState([])
   const [wsConnected, setWsConnected] = useState(false)
   const [search, setSearch] = useState('')
+  const [modalSearch, setModalSearch] = useState('')
   const [selected, setSelected] = useState(null)
   const [messages, setMessages] = useState([])
   const [summaries, setSummaries] = useState({})
@@ -82,6 +83,7 @@ export default function ChatPanel() {
     setSendError('')
     setUnreadBy(current => ({ ...current, [targetKey(target)]: 0 }))
     setShowNewChat(false)
+    setModalSearch('')
     try {
       const data = target.kind === 'class'
         ? await messagesApi.listClass(target.id)
@@ -203,7 +205,7 @@ export default function ChatPanel() {
                 <i /> {wsConnected ? 'Online' : 'Reconectando'}
               </span>
             </div>
-            <button className="cec-chat-new-button" type="button" onClick={() => setShowNewChat(true)} title="Iniciar conversa">
+            <button className="cec-chat-new-button" type="button" onClick={() => { setModalSearch(''); setShowNewChat(true) }} title="Iniciar conversa">
               <Plus size={19} />
             </button>
           </div>
@@ -300,7 +302,7 @@ export default function ChatPanel() {
             <div><MessageCircle size={38} /></div>
             <h3>Suas conversas em um só lugar</h3>
             <p>Escolha uma conversa recente ou inicie uma nova mensagem.</p>
-            <button type="button" onClick={() => setShowNewChat(true)}><Plus size={17} /> Nova conversa</button>
+            <button type="button" onClick={() => { setModalSearch(''); setShowNewChat(true) }}><Plus size={17} /> Nova conversa</button>
           </div>
         )}
       </main>
@@ -308,10 +310,10 @@ export default function ChatPanel() {
       {showNewChat && (
         <div className="cec-chat-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
           <div className="cec-chat-modal">
-            <header><div><h3 id="new-chat-title">Iniciar conversa</h3><p>Escolha uma turma ou uma pessoa.</p></div><button type="button" onClick={() => setShowNewChat(false)}><X size={20} /></button></header>
-            <label className="cec-chat-search"><Search size={17} /><input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar aluno, turma ou equipe..." /></label>
+            <header><div><h3 id="new-chat-title">Iniciar conversa</h3><p>Escolha uma turma ou uma pessoa.</p></div><button type="button" onClick={() => { setShowNewChat(false); setModalSearch('') }}><X size={20} /></button></header>
+            <label className="cec-chat-search"><Search size={17} /><input autoFocus value={modalSearch} onChange={event => setModalSearch(event.target.value)} placeholder="Buscar aluno, turma ou equipe..." /></label>
             <div className="cec-chat-modal-list">
-              {allTargets.filter(target => !search.trim() || `${target.full_name} ${target.course_name || ''}`.toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR'))).map(target => (
+              {allTargets.filter(target => !modalSearch.trim() || `${target.full_name} ${target.course_name || ''}`.toLocaleLowerCase('pt-BR').includes(modalSearch.trim().toLocaleLowerCase('pt-BR'))).map(target => (
                 <button type="button" key={targetKey(target)} onClick={() => loadConversation(target)}>
                   <span className={`cec-chat-avatar ${target.kind === 'class' ? 'group' : ''}`}>{target.kind === 'class' ? <Users size={19} /> : target.full_name.charAt(0).toUpperCase()}</span>
                   <span><strong>{target.full_name}</strong><small>{target.kind === 'class' ? `Turma · ${target.course_name}` : labels[target.category]}</small></span>
